@@ -1,0 +1,155 @@
+Secure sign-in. Sign in with your account. Keep your password private and enable two-factor authentication when available.
+
+Chapter 1 — Dashboard. The dashboard is the account control center. We will cover the header, account state, portfolio summary, performance chart, market overview, activity tabs, quick actions, and news area one by one.
+
+Dashboard overview. Start here: review portfolio value, available balance, active positions, performance, and market cards before placing any trade.
+
+Main navigation. Home returns to this dashboard. Swap opens asset conversion. Futures opens leveraged crypto trading. CFD opens forex, commodity, index, and stock contracts. The highlighted item shows the current section.
+
+Portfolio value control. Portfolio Value estimates the combined account value in the selected display currency. The eye control hides or reveals the number; the currency menu changes display only and does not convert holdings.
+
+Demo or live badge. The DEMO or LIVE badge is critical. Demo activity uses simulated funds. Live activity can affect real balances. Always verify this badge before touching an order button.
+
+Account tier and user menu. The tier badge represents the account status. The profile menu contains wallet, profile, security, and sign-out actions. Account settings are separate from trading controls.
+
+Dashboard summary cards. The change card summarizes account movement for the selected period. Positions P and L totals open-position profit and loss. BTC Price is market reference data. Trading Volume summarizes executed activity.
+
+Understanding P and L. Positive unrealized P and L is not secured profit. It changes with live prices until the position is closed. Negative P and L is likewise unrealized until exit or liquidation.
+
+Portfolio performance chart. The performance chart plots account value over time. Use the period selectors to compare short and long windows. A rising line can reflect deposits as well as trading performance, so check transactions too.
+
+Market overview. Market Overview gives quick prices and percentage changes for major assets. Green or red movement describes the selected time window; it is not a recommendation to buy or sell.
+
+Overview, positions, and transactions tabs. Overview combines recent information. Positions lists current exposure. Transactions lists balance-changing activity. Switching tabs changes the dataset; it does not open or close anything.
+
+Check existing exposure. Review open positions and recent activity first. This prevents accidental overexposure or duplicating an existing position.
+
+Position cards. Each position card identifies the symbol, long or short side, leverage, entry price, live price, and unrealized result. Read all of them before adding risk in the same market.
+
+Recent transactions. Recent Transactions records deposits, withdrawals, swaps, trading adjustments, and other balance events. Use the date, description, direction, and amount to reconcile account changes.
+
+Quick actions and news. Quick actions are shortcuts into trading or wallet flows. The news section provides context only; headlines can be delayed or incomplete and should never replace independent analysis.
+
+Chapter 2 — Futures workspace. The Futures screen has five functional regions: header and pair selector, order book, chart, market list, order-entry forms, and the position and order-management table below.
+
+Open Futures. Choose Futures from the main navigation. Futures use leverage, so both gains and losses can grow quickly.
+
+Futures header. The header confirms the selected symbol, current reference price, portfolio value, account mode, and account tier. Re-check the symbol after every navigation or search action.
+
+Choose the crypto pair. Use the pair selector to choose the market. Confirm the symbol and live price before entering an order.
+
+Markets panel. The markets list is another pair selector. It compares available symbols, current prices, and changes. Selecting a row updates the chart, order book, and both order forms together.
+
+Order book. Red rows represent resting sell liquidity and green rows resting buy liquidity. Price is the quote, amount is size at that level, and cumulative totals show visible depth. The book changes continuously.
+
+Spread in the order book. The distance between the best ask and best bid is the market spread. A wider spread increases immediate trading cost and can cause a market order to fill away from the last displayed price.
+
+Trading chart. The chart visualizes price history for the selected pair. Timeframe, candle, and indicator controls change analysis only. Drawing on a chart never creates an order.
+
+Live price versus execution price. The displayed live price is a reference. A market order may execute at multiple prices when liquidity is thin. A limit order controls price but may remain unfilled.
+
+Market or limit order. Market executes near the current price. Limit waits for your chosen price. Always verify the order type before continuing.
+
+Market order behavior. A market order prioritizes execution, not exact price. Use it only when immediate entry matters more than slippage. The final fill can differ from the preview.
+
+Limit order behavior. A limit order prioritizes price, not execution. A buy limit normally sits below the market and a sell limit above it. It stays in Open Orders until filled or cancelled.
+
+Set leverage and margin mode. Lower leverage gives more room before liquidation. Isolated limits risk to this position; cross can use more of the account balance.
+
+Isolated margin. Isolated margin assigns a defined margin amount to one position. Losses are contained more clearly, although the position can liquidate sooner if that assigned margin is exhausted.
+
+Cross margin. Cross margin can draw on eligible account margin to support the position. This may delay liquidation but exposes more of the available balance to one losing trade.
+
+How leverage changes exposure. Leverage multiplies market exposure relative to required margin. At ten times leverage, one thousand dollars of exposure may use roughly one hundred dollars of initial margin before fees and buffers.
+
+Leverage is not a profit setting. Selecting higher leverage does not make a trade idea better. It reduces required margin and moves liquidation closer. Risk is determined by exposure, stop distance, and account size together.
+
+Available margin. Available Margin is the amount currently eligible to support new exposure. It differs from total portfolio value because open positions and pending orders reserve margin.
+
+Enter position size. Enter the asset amount and review required margin, spread cost, and liquidation price. Position size should come from your risk limit—not from the maximum available balance.
+
+Amount field and percentage shortcuts. The amount field is denominated in the base asset, such as BTC or ETH. Percentage buttons calculate a size from available margin. They are convenience tools, not recommended risk levels.
+
+Required margin calculation. Required margin is approximately position notional divided by leverage, plus any platform buffers. It is collateral, not the maximum possible loss if the position uses cross margin.
+
+Spread cost preview. Spread cost estimates the entry disadvantage created by bid and ask pricing. It can change before execution and is separate from commissions, funding, and later slippage.
+
+Liquidation price. Liquidation Price estimates where the platform may forcibly close the position because margin is insufficient. It is not a substitute for a stop loss and may move under cross margin.
+
+Add protection. Set stop loss before entry to cap planned risk, and take profit to define the exit. A long benefits if price rises; a short benefits if price falls.
+
+Stop-loss trigger and execution. The trigger price activates the stop. A market execution prioritizes exit but can slip; a limit execution controls price but might not fill during a fast move.
+
+Take-profit trigger and execution. Take profit automates a planned favorable exit. Its trigger must be placed on the profitable side of entry: above a long entry or below a short entry.
+
+Long order form. The long form is used when the plan expects price to rise. Profit and loss are based on exit price minus entry price, multiplied by position amount, before costs.
+
+Short order form. The short form is used when the plan expects price to fall. Profit and loss reverse direction: entry price minus exit price, multiplied by amount, before costs.
+
+Final review—do not rush. Before pressing Open Long or Open Short, re-check pair, side, size, leverage, margin mode, fees, stop loss, and take profit. This walkthrough does not submit an order.
+
+Positions tab. After a market fill, Positions shows symbol, size, side, entry and current prices, liquidation, margin, swap or funding cost, stop and target, P and L, return, and close controls.
+
+Open Orders tab. Pending limit orders appear in Open Orders with order type, side, price, amount, leverage, reserved margin, and status. Cancel individual orders or Cancel All only after checking the scope.
+
+Position History tab. Position History records completed trades with entry, exit, size, duration, costs, and realized result. Realized P and L is the figure that actually affects the balance.
+
+Closing a position. Use the Close control on the correct row, confirm the symbol and amount, and review the quoted exit. Closing the page, signing out, or switching sections does not close a position.
+
+Chapter 3 — CFD workspace. The CFD workspace combines instrument details, chart, markets list, order entry, and the same position-management system. CFD contract specifications make sizing different from crypto Futures.
+
+Open CFD trading. CFDs let you speculate on instruments such as forex, commodities, indices, or stocks without owning the underlying asset. They are leveraged and high risk.
+
+Instrument details panel. The left panel describes the selected instrument, current quote, category, trading status, and contract-related information. Verify the exact instrument because similar symbols can represent different products.
+
+CFD markets categories. The markets panel groups forex, commodities, indices, and stocks. Search or select a row to update the whole workspace. View-only or closed instruments cannot accept a new trade.
+
+Forex CFDs. Forex pairs quote one currency against another. EUR slash USD, for example, expresses dollars per euro. Pip value, contract size, leverage limits, and trading hours determine exposure and cost.
+
+Commodity CFDs. Commodity CFDs can track gold, silver, oil, or other benchmarks. Contract sizes and price units differ significantly, so never reuse a forex lot assumption for a commodity.
+
+Index CFDs. Index CFDs track a basket benchmark rather than one company. Session gaps, overnight financing, and news from many constituent companies can move the quote quickly.
+
+Stock CFDs. Stock CFDs track individual shares without transferring ownership. Corporate actions, market hours, gaps, dividends, and instrument availability can affect pricing and adjustments.
+
+CFD size is measured in lots. Confirm the instrument and contract size. Enter lots—not dollars. Even 0.01 lot can represent meaningful market exposure.
+
+Lot size and units. A lot is a contract quantity defined by the instrument. The platform converts lots into underlying units before calculating notional value, margin, profit, and loss.
+
+Minimum trade size. The minimum is commonly 0.01 lot on this form, but minimum size does not mean low risk. Multiply lots by contract size and price to understand total exposure.
+
+CFD price source. The displayed quote is a market-data snapshot or live feed depending on availability. Check the connection indicator and refresh state before relying on the preview.
+
+CFD leverage limits. Allowed leverage can vary by account setting and asset class. Forex, commodities, and stocks may each have different minimum and maximum choices.
+
+CFD market and limit orders. Market orders seek immediate execution at the available quote. Limit orders wait at a chosen price. Closed markets, gaps, and fast movement can affect fills.
+
+Review CFD costs and risk. Check spread, required margin, leverage, swap or overnight costs, and liquidation risk. Market hours and liquidity differ by instrument.
+
+CFD spread. The spread is the difference between buy and sell prices and is an immediate trading cost. It can widen during low liquidity, session changes, and important news.
+
+Overnight swap cost. Keeping a CFD open across the daily financing cutoff can add a swap charge or credit. The amount depends on instrument, direction, size, and number of nights.
+
+Weekend and session risk. Many CFDs stop quoting outside their market session. News can create a gap when trading resumes, causing stop orders to execute beyond the requested trigger.
+
+Long versus short. Use Long only when your plan expects a rise; use Short only when it expects a fall. Add stop loss and take profit, then verify every field before submission.
+
+CFD long calculation. For a long CFD, gross result is exit minus entry, multiplied by underlying units. Spread, commission, financing, and slippage then reduce or change the net result.
+
+CFD short calculation. For a short CFD, gross result is entry minus exit, multiplied by units. Losses can grow as the price rises, so position size and stop placement remain essential.
+
+CFD stop and target placement. Set triggers using the instrument price scale. Forex may use several decimal places, while indices or commodities use different increments. Confirm the displayed precision.
+
+Order and position management. After submission, monitor Positions, Open Orders, and Position History. Cancel unwanted pending orders and close positions deliberately—never assume a browser close exits a trade.
+
+Monitoring an open CFD. Watch live price, unrealized P and L, margin, liquidation level, financing cost, and stop or target status. A profitable trade can reverse before it is closed.
+
+Cancelling is not closing. Cancel affects a pending order that has not filled. Close exits an existing position. If part of a limit order already filled, cancelling the remainder does not close the filled portion.
+
+Final pre-trade checklist. Confirm account mode, instrument, market status, order type, side, lots, units, leverage, margin mode, required margin, spread, financing, liquidation, stop loss, take profit, and available balance.
+
+Chapter 4 — Complete operating routine. Before trading, inspect the dashboard and existing exposure. Build the order carefully. After entry, monitor positions and orders. At exit, verify the realized result and transaction record.
+
+What this demonstration did. This recording signed in, navigated every relevant workspace, searched and selected instruments, entered example sizes, and highlighted every decision point. It intentionally stopped before financial confirmation.
+
+Safe trading checklist. Use small risk, understand leverage, confirm every order, and never trade money you cannot afford to lose. This video is a platform guide—not financial advice.

@@ -1,0 +1,16 @@
+# Hosted Edge Function schedules are configured with pg_cron and pg_net.
+# The Supabase CLI does not support schedule keys in function configuration.
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false
+
+[functions.admin-user-management]
+# The function verifies the bearer token and database admin role itself. Keeping
+# gateway verification off ensures unauthenticated browser OPTIONS preflight works.
+verify_jwt = false
+
+[functions.cfd-market-data]
+# Browser preflight is public; the function validates the user JWT internally.
+verify_jwt = false

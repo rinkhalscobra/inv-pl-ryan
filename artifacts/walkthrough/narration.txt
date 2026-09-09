@@ -1,0 +1,31 @@
+Secure sign-in. Sign in with your account. Keep your password private and enable two-factor authentication when available.
+
+Dashboard overview. Start here: review portfolio value, available balance, active positions, performance, and market cards before placing any trade.
+
+Check existing exposure. Review open positions and recent activity first. This prevents accidental overexposure or duplicating an existing position.
+
+Open Futures. Choose Futures from the main navigation. Futures use leverage, so both gains and losses can grow quickly.
+
+Choose the crypto pair. Use the pair selector to choose the market. Confirm the symbol and live price before entering an order.
+
+Market or limit order. Market executes near the current price. Limit waits for your chosen price. Always verify the order type before continuing.
+
+Set leverage and margin mode. Lower leverage gives more room before liquidation. Isolated limits risk to this position; cross can use more of the account balance.
+
+Enter position size. Enter the asset amount and review required margin, spread cost, and liquidation price. Position size should come from your risk limit—not from the maximum available balance.
+
+Add protection. Set stop loss before entry to cap planned risk, and take profit to define the exit. A long benefits if price rises; a short benefits if price falls.
+
+Final review—do not rush. Before pressing Open Long or Open Short, re-check pair, side, size, leverage, margin mode, fees, stop loss, and take profit. This walkthrough does not submit an order.
+
+Open CFD trading. CFDs let you speculate on instruments such as forex, commodities, indices, or stocks without owning the underlying asset. They are leveraged and high risk.
+
+CFD size is measured in lots. Confirm the instrument and contract size. Enter lots—not dollars. Even 0.01 lot can represent meaningful market exposure.
+
+Review CFD costs and risk. Check spread, required margin, leverage, swap or overnight costs, and liquidation risk. Market hours and liquidity differ by instrument.
+
+Long versus short. Use Long only when your plan expects a rise; use Short only when it expects a fall. Add stop loss and take profit, then verify every field before submission.
+
+Order and position management. After submission, monitor Positions, Open Orders, and Position History. Cancel unwanted pending orders and close positions deliberately—never assume a browser close exits a trade.
+
+Safe trading checklist. Use small risk, understand leverage, confirm every order, and never trade money you cannot afford to lose. This video is a platform guide—not financial advice.

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingView Advanced Chart</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #0f172a;
+            color: white;
+            overflow-x: hidden;
+        }
+        
+        .chart-container {
+            width: 100%;
+            min-height: 600px;
+            height: 100vh;
+            position: relative;
+            background-color: #0f172a;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+        
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #334155;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        
+        .header {
+            background-color: #1e293b;
+            padding: 16px 24px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        
+        .pair-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .pair-name {
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .pair-price {
+            font-size: 18px;
+            font-weight: 600;
+            color: #10b981;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background-color: #065f46;
+            color: #10b981;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .interval-selector {
+            display: flex;
+            background-color: #334155;
+            border-radius: 8px;
+            padding: 4px;
+            gap: 2px;
+        }
+        
+        .interval-btn {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .interval-btn:hover {
+            background-color: #475569;
+            color: white;
+        }
+        
+        .interval-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .fullscreen-btn {
+            background-color: #475569;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .fullscreen-btn:hover {
+            background-color: #64748b;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .header {
+                padding: 12px 16px;
+            }
+            
+            .pair-name {
+                font-size: 20px;
+            }
+            
+            .pair-price {
+                font-size: 16px;
+            }
+            
+            .controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .interval-selector {
+                flex: 1;
+                justify-content: space-around;
+            }
+            
+            .interval-btn {
+                flex: 1;
+                text-align: center;
+                padding: 8px 4px;
+            }
+        }
+        
+        /* Ensure chart takes full available space */
+        #tradingview_chart {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="pair-info">
+            <h1 class="pair-name">BTC/USDT</h1>
+            <div class="pair-price" id="current-price">Loading...</div>
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                <span>Live Data</span>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="interval-selector">
+                <button class="interval-btn" data-interval="1">1m</button>
+                <button class="interval-btn" data-interval="5">5m</button>
+                <button class="interval-btn" data-interval="15">15m</button>
+                <button class="interval-btn active" data-interval="60">1h</button>
+                <button class="interval-btn" data-interval="240">4h</button>
+                <button class="interval-btn" data-interval="1D">1D</button>
+            </div>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <div class="loading-overlay" id="loading-overlay">
+            <div class="spinner"></div>
+            <div class="loading-text">Loading TradingView Chart...</div>
+        </div>
+        <div id="tradingview_chart"></div>
+    </div>
+
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+    {
+        "autosize": true,
+        "symbol": "BYBIT:BTCUSDT",
+        "interval": "60",
+        "timezone": "Etc/UTC",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "enable_publishing": false,
+        "backgroundColor": "rgba(15, 23, 42, 1)",
+        "gridColor": "rgba(71, 85, 105, 0.3)",
+        "hide_top_toolbar": false,
+        "hide_legend": false,
+        "save_image": false,
+        "container_id": "tradingview_chart",
+        "studies": [
+            "Volume@tv-basicstudies"
+        ],
+        "overrides": {
+            "paneProperties.background": "#0f172a",
+            "paneProperties.backgroundType": "solid",
+            "paneProperties.vertGridProperties.color": "#334155",
+            "paneProperties.horzGridProperties.color": "#334155",
+            "symbolWatermarkProperties.transparency": 90,
+            "scalesProperties.textColor": "#94a3b8",
+            "mainSeriesProperties.candleStyle.upColor": "#10b981",
+            "mainSeriesProperties.candleStyle.downColor": "#ef4444",
+            "mainSeriesProperties.candleStyle.borderUpColor": "#10b981",
+            "mainSeriesProperties.candleStyle.borderDownColor": "#ef4444",
+            "mainSeriesProperties.candleStyle.wickUpColor": "#10b981",
+            "mainSeriesProperties.candleStyle.wickDownColor": "#ef4444"
+        },
+        "width": "100%",
+        "height": "100%",
+        "allow_symbol_change": true,
+        "details": true,
+        "hotlist": true,
+        "calendar": true,
+        "studies_overrides": {},
+        "show_popup_button": true,
+        "popup_width": "1000",
+        "popup_height": "650"
+    }
+    </script>
+
+    <script>
+        let currentWidget = null;
+        let currentInterval = '60';
+        
+        // Initialize chart
+        function initializeChart(symbol = 'BYBIT:BTCUSDT', interval = '60') {
+            const container = document.getElementById('tradingview_chart');
+            if (!container) return;
+            
+            // Clear existing content
+            container.innerHTML = '';
+            
+            // Show loading overlay
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove('hidden');
+            }
+            
+            // Create new widget
+            try {
+                currentWidget = new TradingView.widget({
+                    autosize: true,
+                    symbol: symbol,
+                    interval: interval,
+                    timezone: 'Etc/UTC',
+                    theme: 'dark',
+                    style: '1',
+                    locale: 'en',
+                    enable_publishing: false,
+                    backgroundColor: 'rgba(15, 23, 42, 1)',
+                    gridColor: 'rgba(71, 85, 105, 0.3)',
+                    hide_top_toolbar: false,
+                    hide_legend: false,
+                    save_image: false,
+                    container_id: 'tradingview_chart',
+                    studies: [
+                        'Volume@tv-basicstudies'
+                    ],
+                    overrides: {
+                        'paneProperties.background': '#0f172a',
+                        'paneProperties.backgroundType': 'solid',
+                        'paneProperties.vertGridProperties.color': '#334155',
+                        'paneProperties.horzGridProperties.color': '#334155',
+                        'symbolWatermarkProperties.transparency': 90,
+                        'scalesProperties.textColor': '#94a3b8',
+                        'mainSeriesProperties.candleStyle.upColor': '#10b981',
+                        'mainSeriesProperties.candleStyle.downColor': '#ef4444',
+                        'mainSeriesProperties.candleStyle.borderUpColor': '#10b981',
+                        'mainSeriesProperties.candleStyle.borderDownColor': '#ef4444',
+                        'mainSeriesProperties.candleStyle.wickUpColor': '#10b981',
+                        'mainSeriesProperties.candleStyle.wickDownColor': '#ef4444'
+                    },
+                    width: '100%',
+                    height: '100%',
+                    allow_symbol_change: true,
+                    details: true,
+                    hotlist: true,
+                    calendar: true,
+                    studies_overrides: {},
+                    show_popup_button: true,
+                    popup_width: '1000',
+                    popup_height: '650',
+                    onChartReady: function() {
+                        console.log('TradingView chart loaded successfully');
+                        // Hide loading overlay
+                        if (loadingOverlay) {
+                            setTimeout(() => {
+                                loadingOverlay.classList.add('hidden');
+                            }, 500);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error creating TradingView widget:', error);
+                if (loadingOverlay) {
+                    loadingOverlay.innerHTML = '<div style="color: #ef4444;">Failed to load chart</div>';
+                }
+            }
+        }
+        
+        // Handle interval changes
+        function changeInterval(interval) {
+            currentInterval = interval;
+            
+            // Update active button
+            document.querySelectorAll('.interval-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-interval="${interval}"]`).classList.add('active');
+            
+            // Reinitialize chart with new interval
+            if (currentWidget) {
+                try {
+                    currentWidget.remove();
+                } catch (e) {
+                    console.warn('Error removing widget:', e);
+                }
+            }
+            
+            setTimeout(() => {
+                initializeChart('BYBIT:BTCUSDT', interval);
+            }, 100);
+        }
+        
+        // Handle symbol changes
+        function changeSymbol(symbol) {
+            if (currentWidget) {
+                try {
+                    currentWidget.remove();
+                } catch (e) {
+                    console.warn('Error removing widget:', e);
+                }
+            }
+            
+            setTimeout(() => {
+                initializeChart(symbol, currentInterval);
+            }, 100);
+        }
+        
+        // Fullscreen functionality
+        function toggleFullscreen() {
+            const container = document.querySelector('.chart-container');
+            
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.error('Error attempting to enable fullscreen:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Handle fullscreen changes
+        document.addEventListener('fullscreenchange', function() {
+            const container = document.querySelector('.chart-container');
+            if (document.fullscreenElement) {
+                container.style.height = '100vh';
+            } else {
+                container.style.height = 'calc(100vh - 80px)';
+            }
+            
+            // Trigger resize after fullscreen change
+            setTimeout(() => {
+                if (currentWidget && currentWidget.activeChart) {
+                    try {
+                        currentWidget.activeChart().executeActionById('chartProperties');
+                    } catch (e) {
+                        // Fallback: reinitialize chart
+                        initializeChart('BYBIT:BTCUSDT', currentInterval);
+                    }
+                }
+            }, 300);
+        });
+        
+        // Add event listeners for interval buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait for TradingView library to load
+            function waitForTradingView() {
+                if (typeof TradingView !== 'undefined') {
+                    initializeChart();
+                } else {
+                    setTimeout(waitForTradingView, 100);
+                }
+            }
+            
+            waitForTradingView();
+            
+            // Add click listeners to interval buttons
+            document.querySelectorAll('.interval-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const interval = this.getAttribute('data-interval');
+                    changeInterval(interval);
+                });
+            });
+        });
+        
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (currentWidget) {
+                    try {
+                        currentWidget.activeChart().executeActionById('chartProperties');
+                    } catch (e) {
+                        console.warn('Chart resize failed, reinitializing...');
+                        initializeChart('BYBIT:BTCUSDT', currentInterval);
+                    }
+                }
+            }, 250);
+        });
+        
+        // Simulate real-time price updates (optional)
+        function updatePrice() {
+            const priceElement = document.getElementById('current-price');
+            if (priceElement) {
+                // In a real app, you'd fetch this from your WebSocket or API
+                const basePrice = 65000;
+                const randomChange = (Math.random() - 0.5) * 100;
+                const currentPrice = basePrice + randomChange;
+                priceElement.textContent = `$${currentPrice.toFixed(2)}`;
+            }
+        }
+        
+        // Update price every 5 seconds (demo)
+        setInterval(updatePrice, 5000);
+        updatePrice(); // Initial call
+        
+        // Expose functions globally for external use
+        window.TradingViewChart = {
+            changeSymbol: changeSymbol,
+            changeInterval: changeInterval,
+            toggleFullscreen: toggleFullscreen,
+            getCurrentWidget: () => currentWidget
+        };
+        
+        // Error handling for TradingView script loading
+        window.addEventListener('error', function(e) {
+            if (e.filename && e.filename.includes('tradingview')) {
+                console.error('TradingView script error:', e);
+                const loadingOverlay = document.getElementById('loading-overlay');
+                if (loadingOverlay) {
+                    loadingOverlay.innerHTML = `
+                        <div style="color: #ef4444; text-align: center;">
+                            <div style="font-size: 18px; margin-bottom: 8px;">Failed to load TradingView</div>
+                            <div style="font-size: 14px; color: #94a3b8;">Please check your internet connection</div>
+                        </div>
+                    `;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1006 @@
+
+Payment API API Documentation
+Postman collection → OpenAPI spec →
+Introduction
+Production URL: https://live.galiapay.com
+
+Sandbox URL: https://api.sandbox.galiapay.com
+
+Welcome to the Payment API documentation. This API provides a comprehensive payment processing solution that enables you to accept payments, manage transactions, and handle payment-related operations with ease.
+Overview
+
+This API allows you to:
+
+    Process Payments: Accept and process payments securely through multiple payment gateways
+    Manage Transactions: Track, retrieve, and manage payment transactions
+    Handle Webhooks: Receive real-time notifications about payment events
+
+Getting Started
+
+To get started with the Payment API:
+
+    Authentication: Obtain your API key from our integration team.
+    Make Your First Request: Try out the endpoints using the interactive examples below.
+    Handle Responses: Process API responses and handle errors appropriately.
+    Webhooks Setup: Configure webhook endpoints to receive payment notifications.
+    Signature Verification: Implement webhook signature verification for security (see below).
+
+API Conventions
+
+This API follows REST principles and returns JSON responses. All requests should include:
+
+    Content-Type: application/json header
+    Accept: application/json header
+    Authentication credentials (see Authentication section below)
+
+Response Format
+
+Error responses include detailed information to help you troubleshoot:
+
+{
+    "status": "ERROR",
+    "message": "Error description",
+    "errors": {}
+}
+
+Rate Limiting
+
+API requests are subject to rate limiting to ensure service quality. Rate limit information is included in response headers.
+Webhook Security (IPN Signatures)
+
+All Instant Payment Notification (IPN) webhooks include HMAC-SHA256 signatures to ensure authenticity and integrity. It is strongly recommended that you verify these signatures before processing webhook notifications.
+Webhook Headers
+
+Each IPN request includes three security headers:
+
+    X-Signature: HMAC-SHA256 signature of specific payload fields (64 hexadecimal characters)
+    X-Timestamp: Unix timestamp when the IPN was sent
+    X-Request-ID: Unique identifier (UUID v7) for tracking and idempotency
+
+Webhook Payload
+
+The webhook payload includes transaction data, customer information, and security fields:
+
+{
+  "uuid": "transaction-uuid",
+  "referenceNo": "REF123",
+  "returnUrl": "https://example.com/return",
+  "status": "APPROVED",
+  "amount": 10000,
+  "currency": "USD",
+  "timestamp": 1234567890,
+  "requestId": "018e1234-5678-7abc-def0-123456789abc",
+  "transaction": { ... },
+  "customerInfo": { ... }
+}
+
+Important: The signature is computed using only specific fields (amount, currency, referenceNo, requestId, returnUrl, status, timestamp, uuid) in alphabetical order, not the entire payload.
+Signature Verification
+
+To verify the webhook signature:
+
+    Extract the X-Signature header value
+    Create a payload object with ONLY these fields in alphabetical order: amount, currency, referenceNo, requestId, returnUrl, status, timestamp, uuid
+    Generate HMAC-SHA256 hash of the JSON-encoded signature payload using your API key as the secret
+    Compare the generated signature with the header value using timing-safe comparison
+
+PHP Example:
+
+function verifyIpnSignature(array $payload, string $signature, string $apiKey): bool
+{
+    // Extract only the fields used for signature (in alphabetical order)
+    $signaturePayload = [
+        'amount' => $payload['amount'],
+        'currency' => $payload['currency'],
+        'referenceNo' => $payload['referenceNo'],
+        'requestId' => $payload['requestId'],
+        'returnUrl' => $payload['returnUrl'],
+        'status' => $payload['status'],
+        'timestamp' => $payload['timestamp'],
+        'uuid' => $payload['uuid'],
+    ];
+
+    $jsonPayload = json_encode($signaturePayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $expectedSignature = hash_hmac('sha256', $jsonPayload, $apiKey);
+    return hash_equals($expectedSignature, $signature);
+}
+
+Complete implementation examples in PHP, JavaScript, and Python are available in the repository at docs/IPN_SIGNATURE_VERIFICATION.md.
+Security Best Practices
+
+    ✅ Always verify signatures before processing webhooks
+    ✅ Validate the timestamp to prevent replay attacks (reject IPNs older than 5 minutes)
+    ✅ Use timing-safe comparison functions (hash_equals, timingSafeEqual, compare_digest)
+    ✅ Store your API key securely (never commit to version control)
+    ✅ Log failed verification attempts for security monitoring
+    ✅ Return 2xx status codes for valid webhooks to prevent retries
+
+Support
+
+If you have questions or need assistance, please contact our support team or refer to the detailed endpoint documentation below.
+Authenticating requests
+
+To authenticate requests, include an Authorization header with the value "Bearer {YOUR_AUTH_KEY}".
+
+All authenticated endpoints are marked with a requires authentication badge in the documentation below.
+
+You can retrieve your token by visiting your dashboard and clicking Generate API token.
+Endpoints
+POST v1/initiate
+POST
+https://live.galiapay.com
+/v1/initiate
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Body Parameters
+amount
+number
+required
+
+Payment amount without decimal point, multiplied by 100 (e.g., 1.23 EUR = 123, 50.00 USD = 5000).
+Example:
+5000
+currency
+string
+required
+
+Three-letter ISO 4217 currency code.
+Example:
+USD
+referenceNo
+string
+required
+
+Unique reference number for this payment transaction.
+Example:
+ORD-2025-12345
+returnUrl
+string
+required
+
+URL where the customer will be redirected after completing the payment. Must be a valid URL.
+Example:
+https://example.com/payment/callback
+email
+string
+required
+
+Customer email address for transaction notifications. Must be a valid email address.
+Example:
+customer@example.com
+billingFirstName
+string
+required
+
+Customer first name for billing.
+Example:
+John
+billingLastName
+string
+required
+
+Customer last name for billing.
+Example:
+Doe
+billingAddress1
+string
+required
+
+Primary billing address line.
+Example:
+123 Main Street
+billingAddress2
+string
+
+Secondary billing address line (optional).
+Example:
+Apartment 4B
+billingCity
+string
+required
+
+Billing city.
+Example:
+New York
+billingState
+string
+required
+
+Billing state or province.
+Example:
+NY
+billingPostcode
+string
+required
+
+Billing postal or ZIP code.
+Example:
+10001
+billingCountry
+string
+required
+
+Two-letter ISO 3166-1 alpha-2 country code for billing address.
+Example:
+US
+billingPhone
+string
+required
+
+Customer phone number for billing.
+Example:
++1-555-123-4567
+shippingFirstName
+string
+
+Customer first name for shipping (optional).
+Example:
+Jane
+shippingLastName
+string
+
+Customer last name for shipping (optional).
+Example:
+Smith
+shippingAddress1
+string
+
+Primary shipping address line (optional).
+Example:
+456 Oak Avenue
+shippingAddress2
+string
+
+Secondary shipping address line (optional).
+Example:
+Suite 100
+shippingCity
+string
+
+Shipping city (optional).
+Example:
+Los Angeles
+shippingState
+string
+
+Shipping state or province (optional).
+Example:
+CA
+shippingPostalCode
+string
+
+Shipping postal or ZIP code (optional).
+Example:
+90001
+shippingCountry
+string
+
+Two-letter ISO 3166-1 alpha-2 country code for shipping address (optional).
+Example:
+US
+shippingEmail
+string
+
+Email address for shipping notifications (optional). Must be a valid email address.
+Example:
+shipping@example.com
+shippingPhone
+string
+
+Phone number for shipping contact (optional).
+Example:
++1-555-987-6543
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+{ "amount": 5000, "currency": "USD", "referenceNo": "ORD-2025-12345", "returnUrl": "https:\/\/example.com\/payment\/callback", "email": "customer@example.com", "billingFirstName": "John", "billingLastName": "Doe", "billingAddress1": "123 Main Street", "billingAddress2": "Apartment 4B", "billingCity": "New York", "billingState": "NY", "billingPostcode": "10001", "billingCountry": "US", "billingPhone": "+1-555-123-4567", "shippingFirstName": "Jane", "shippingLastName": "Smith", "shippingAddress1": "456 Oak Avenue", "shippingAddress2": "Suite 100", "shippingCity": "Los Angeles", "shippingState": "CA", "shippingPostalCode": "90001", "shippingCountry": "US", "shippingEmail": "shipping@example.com", "shippingPhone": "+1-555-987-6543" }
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/initiate';
+$response = $client->post(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+        'json' => [
+            'amount' => 5000.0,
+            'currency' => 'USD',
+            'referenceNo' => 'ORD-2025-12345',
+            'returnUrl' => 'https://example.com/payment/callback',
+            'email' => 'customer@example.com',
+            'billingFirstName' => 'John',
+            'billingLastName' => 'Doe',
+            'billingAddress1' => '123 Main Street',
+            'billingAddress2' => 'Apartment 4B',
+            'billingCity' => 'New York',
+            'billingState' => 'NY',
+            'billingPostcode' => '10001',
+            'billingCountry' => 'US',
+            'billingPhone' => '+1-555-123-4567',
+            'shippingFirstName' => 'Jane',
+            'shippingLastName' => 'Smith',
+            'shippingAddress1' => '456 Oak Avenue',
+            'shippingAddress2' => 'Suite 100',
+            'shippingCity' => 'Los Angeles',
+            'shippingState' => 'CA',
+            'shippingPostalCode' => '90001',
+            'shippingCountry' => 'US',
+            'shippingEmail' => 'shipping@example.com',
+            'shippingPhone' => '+1-555-987-6543',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+{
+    "uuid": "b15401ba-3f5b-4fee-a9e8-21e7fd2d26e4",
+    "referenceNo": "ORD-2025-12345",
+    "returnUrl": "https://example.com/payment/callback",
+    "status": "PENDING",
+    "amount": 5000,
+    "currency": "USD",
+    "redirectUrl": "https://cryptonara.test/checkout?checkoutToken=eyJpdiI6IjJjUmhXYUtzVmFoSWlSUWtNcnJTdnc9PSIsInZhbHVlIjoiQmpxNjYyU0UycThDaFNpeExvT1hoQk4xdjlmT1lDVDBjVmpQUEhoU3dEcWdJSnNwSDFmK1hVNW1SS2FFbXQ1czFHR25UeTNTVm1QRUttRHhUM0pOZUE9PSIsIm1hYyI6IjgwNjEzOThmMTA5ZmYyODZjNTQwZmY0ZjY5OTc3YTA0MDcwZDk5ZGJmZGEzOGVkYjhhMDExNWY3YjU5ZjVlZjYiLCJ0YWciOiIifQ=="
+}
+
+POST v1/payment
+POST
+https://live.galiapay.com
+/v1/payment
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Body Parameters
+number
+string
+required
+
+Credit card number (13-19 digits). Must be between 13 and 19 digits.
+Example:
+4012888888881881
+expiryMonth
+number
+required
+
+Card expiry month (1-12). Must be between 1 and 12.
+Example:
+12
+expiryYear
+string
+required
+
+Card expiry year (2 or 4 digits, e.g., 25 or 2025). Must be between 2 and 4 digits.
+Example:
+2025
+cvv
+string
+required
+
+Card security code (CVV/CVC).
+Example:
+123
+referenceNo
+string
+required
+
+Unique reference number for the transaction.
+Example:
+REF-12345
+returnUrl
+string
+required
+
+URL to redirect after payment completion. Must be a valid URL.
+Example:
+https://example.com/return
+amount
+number
+required
+
+Payment amount without decimal point, multiplied by 100 (e.g., 1.23 EUR = 123, 50.00 USD = 5000).
+Example:
+5000
+currency
+string
+required
+
+Three-letter ISO 4217 currency code.
+Example:
+EUR
+email
+string
+required
+
+Customer email address for transaction notifications. Must be a valid email address.
+Example:
+customer@example.com
+ip
+string
+
+Customer IP address (optional). Must be a valid IP address.
+Example:
+192.0.2.1
+birthday
+string
+
+Customer date of birth in Y-m-d format (optional). Must be a valid date in the format Y-m-d.
+Example:
+1990-01-15
+billingFirstName
+string
+required
+
+Customer first name for billing.
+Example:
+John
+billingLastName
+string
+required
+
+Customer last name for billing.
+Example:
+Doe
+billingAddress1
+string
+required
+
+Primary billing address line.
+Example:
+123 Main Street
+billingAddress2
+string
+
+Secondary billing address line (optional).
+Example:
+Apartment 4B
+billingCity
+string
+required
+
+Billing city.
+Example:
+New York
+billingState
+string
+required
+
+Billing state or province.
+Example:
+NY
+billingPostcode
+string
+required
+
+Billing postal or ZIP code.
+Example:
+10001
+billingCountry
+string
+required
+
+Two-letter ISO 3166-1 alpha-2 country code for billing address.
+Example:
+US
+billingPhone
+string
+required
+
+Customer phone number for billing.
+Example:
++1-555-123-4567
+shippingFirstName
+string
+
+Customer first name for shipping (optional).
+Example:
+Jane
+shippingLastName
+string
+
+Customer last name for shipping (optional).
+Example:
+Smith
+shippingAddress1
+string
+
+Primary shipping address line (optional).
+Example:
+456 Oak Avenue
+shippingAddress2
+string
+
+Secondary shipping address line (optional).
+Example:
+Suite 100
+shippingCity
+string
+
+Shipping city (optional).
+Example:
+Los Angeles
+shippingState
+string
+
+Shipping state or province (optional).
+Example:
+CA
+shippingPostalCode
+string
+
+Shipping postal or ZIP code (optional).
+Example:
+90001
+shippingCountry
+string
+
+Two-letter ISO 3166-1 alpha-2 country code for shipping address (optional).
+Example:
+US
+shippingEmail
+string
+
+Email address for shipping notifications (optional). Must be a valid email address.
+Example:
+shipping@example.com
+shippingPhone
+string
+
+Phone number for shipping contact (optional).
+Example:
++1-555-987-6543
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+{ "number": "4012888888881881", "expiryMonth": 12, "expiryYear": 2025, "cvv": "123", "referenceNo": "REF-12345", "returnUrl": "https:\/\/example.com\/return", "amount": 5000, "currency": "EUR", "email": "customer@example.com", "ip": "192.0.2.1", "birthday": "1990-01-15", "billingFirstName": "John", "billingLastName": "Doe", "billingAddress1": "123 Main Street", "billingAddress2": "Apartment 4B", "billingCity": "New York", "billingState": "NY", "billingPostcode": "10001", "billingCountry": "US", "billingPhone": "+1-555-123-4567", "shippingFirstName": "Jane", "shippingLastName": "Smith", "shippingAddress1": "456 Oak Avenue", "shippingAddress2": "Suite 100", "shippingCity": "Los Angeles", "shippingState": "CA", "shippingPostalCode": "90001", "shippingCountry": "US", "shippingEmail": "shipping@example.com", "shippingPhone": "+1-555-987-6543" }
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/payment';
+$response = $client->post(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+        'json' => [
+            'number' => '4012888888881881',
+            'expiryMonth' => 12.0,
+            'expiryYear' => 2025,
+            'cvv' => '123',
+            'referenceNo' => 'REF-12345',
+            'returnUrl' => 'https://example.com/return',
+            'amount' => 5000.0,
+            'currency' => 'EUR',
+            'email' => 'customer@example.com',
+            'ip' => '192.0.2.1',
+            'birthday' => '1990-01-15',
+            'billingFirstName' => 'John',
+            'billingLastName' => 'Doe',
+            'billingAddress1' => '123 Main Street',
+            'billingAddress2' => 'Apartment 4B',
+            'billingCity' => 'New York',
+            'billingState' => 'NY',
+            'billingPostcode' => '10001',
+            'billingCountry' => 'US',
+            'billingPhone' => '+1-555-123-4567',
+            'shippingFirstName' => 'Jane',
+            'shippingLastName' => 'Smith',
+            'shippingAddress1' => '456 Oak Avenue',
+            'shippingAddress2' => 'Suite 100',
+            'shippingCity' => 'Los Angeles',
+            'shippingState' => 'CA',
+            'shippingPostalCode' => '90001',
+            'shippingCountry' => 'US',
+            'shippingEmail' => 'shipping@example.com',
+            'shippingPhone' => '+1-555-987-6543',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+{
+    "uuid": "52db0d21-f681-45e8-ac91-d20342c5cc45",
+    "amount": "5000",
+    "currency": "EUR",
+    "status": "WAITING",
+    "referenceNo": "REF-12345",
+    "returnUrl": "https://example.com/return",
+    "message": "3D Secure required",
+    "isLive": false,
+    "redirectUrl": "https://checkout.payment.test/3d/secure?token=eyJpdiI6ImJiUlp3UkZmMzR3b2xzaGMwNnJEc1E9PSIsInZhbHVlIjoiSzJiUlp5RDh0UU4yMkVINzBxT3lEUTVnSG0yOGhtU1hlQ3M0SjRjM2N3Z2lVOXVSalhEVVRHbERBUU4yYngzMUVQajI1akpUcnZWMWFFbFRkVGlCNEE9PSIsIm1hYyI6IjgyYTdjNWM5NDJlZDEzYzZhZGEyODM1OWM5OTZhNjUxMWYwYjFiZmM0ZmFkNGNiOWVhYmVjZjgxZDM5YTU4YmIiLCJ0YWciOiIifQ==",
+    "3d": true
+}
+
+GET v1/payment/status
+GET
+https://live.galiapay.com
+/v1/payment/status
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Body Parameters
+uuid
+string
+required
+
+Must be a valid UUID.
+Example:
+6ff8f7f6-1eb3-3525-be4a-3932c805afed
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+{ "uuid": "6ff8f7f6-1eb3-3525-be4a-3932c805afed" }
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/payment/status';
+$response = $client->get(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+        'json' => [
+            'uuid' => '6ff8f7f6-1eb3-3525-be4a-3932c805afed',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+{
+    "status": "ERROR",
+    "message": "Not found."
+}
+
+GET v1/allowed-cards
+GET
+https://live.galiapay.com
+/v1/allowed-cards
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/allowed-cards';
+$response = $client->get(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+[]
+
+POST v1/allowed-cards
+POST
+https://live.galiapay.com
+/v1/allowed-cards
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Body Parameters
+first_six
+string
+required
+
+First six digits of the card number (BIN). Must match the regex /^[0-9]{6}$/. Must be 6 characters.
+Example:
+401288
+last_four
+string
+required
+
+Last four digits of the card number. Must match the regex /^[0-9]{4}$/. Must be 4 characters.
+Example:
+1881
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+{ "first_six": "401288", "last_four": "1881" }
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/allowed-cards';
+$response = $client->post(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+        'json' => [
+            'first_six' => '401288',
+            'last_four' => '1881',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+{
+    "message": "Allowed card added successfully",
+    "allowed_card": {
+        "first_six": "401288",
+        "last_four": "1881",
+        "updated_at": "2025-11-04T11:51:34.000000Z",
+        "created_at": "2025-11-04T11:51:34.000000Z"
+    }
+}
+
+GET v1/allowed-cards/search
+GET
+https://live.galiapay.com
+/v1/allowed-cards/search
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Body Parameters
+first_six
+string
+
+First six digits of the card number (BIN) to filter results (optional). Must match the regex /^[0-9]{6}$/. Must be 6 characters.
+Example:
+401288
+last_four
+string
+
+Last four digits of the card number to filter results (optional). Must match the regex /^[0-9]{4}$/. Must be 4 characters.
+Example:
+1881
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+{ "first_six": "401288", "last_four": "1881" }
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/allowed-cards/search';
+$response = $client->get(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+        'json' => [
+            'first_six' => '401288',
+            'last_four' => '1881',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+[]
+
+DELETE v1/allowed-cards
+DELETE
+https://live.galiapay.com
+/v1/allowed-cards
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Body Parameters
+first_six
+string
+required
+
+First six digits of the card number (BIN). Must match the regex /^[0-9]{6}$/. Must be 6 characters.
+Example:
+401288
+last_four
+string
+required
+
+Last four digits of the card number. Must match the regex /^[0-9]{4}$/. Must be 4 characters.
+Example:
+1881
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+{ "first_six": "401288", "last_four": "1881" }
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/allowed-cards';
+$response = $client->delete(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+        'json' => [
+            'first_six' => '401288',
+            'last_four' => '1881',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+{
+    "status": "ERROR",
+    "message": "Allowed card not found"
+}
+
+DELETE v1/allowed-cards/all
+DELETE
+https://live.galiapay.com
+/v1/allowed-cards/all
+requires authentication
+Headers
+Authorization
+Example:
+Bearer {YOUR_AUTH_KEY}
+Content-Type
+Example:
+application/json
+Accept
+Example:
+application/json
+Authorization
+:
+Bearer
+Content-Type
+:
+Accept
+:
+
+$client = new \GuzzleHttp\Client();
+$url = 'https://live.galiapay.com/v1/allowed-cards/all';
+$response = $client->delete(
+    $url,
+    [
+        'headers' => [
+            'Authorization' => 'Bearer {YOUR_AUTH_KEY}',
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ],
+    ]
+);
+$body = $response->getBody();
+print_r(json_decode((string) $body));
+
+Headers
+
+Headers
+
+{
+    "message": "Deleted 0 allowed card(s)",
+    "deleted_count": 0
+}
+
+
+
+
+API KEY : sandbox_evekAlmRh16puingi5kxe3Xbmp6k7nUF8hSlPunB67f386a0

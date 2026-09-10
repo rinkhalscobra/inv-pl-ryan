@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   Bell,
   Bot,
-  Briefcase,
   CheckCircle2,
   Coins,
   CreditCard,
@@ -33,7 +32,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 type JsonRow = Record<string, unknown>;
-type CRMTab = 'dashboard' | 'profile' | 'wallet' | 'swap' | 'futures' | 'cfd' | 'prop' | 'robot' | 'staking' | 'wheel' | 'deposits' | 'referrals' | 'support' | 'notifications' | 'audit';
+type CRMTab = 'dashboard' | 'profile' | 'wallet' | 'swap' | 'futures' | 'cfd' | 'robot' | 'staking' | 'wheel' | 'deposits' | 'referrals' | 'support' | 'notifications' | 'audit';
 
 interface AdminUser extends JsonRow {
   id: string;
@@ -74,11 +73,6 @@ interface UserWorkspace {
   spot_orders: JsonRow[];
   binary_trades: JsonRow[];
   stakes: JsonRow[];
-  prop_positions: JsonRow[];
-  prop_orders: JsonRow[];
-  prop_history: JsonRow[];
-  prop_accounts: JsonRow[];
-  prop_logs: JsonRow[];
   trading_logs: JsonRow[];
   deposit_addresses: JsonRow[];
   deposits: JsonRow[];
@@ -607,7 +601,6 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     { key: 'swap', label: 'Swap', icon: RefreshCw },
     { key: 'futures', label: 'Futures', icon: TrendingUp },
     { key: 'cfd', label: 'CFD', icon: Activity },
-    { key: 'prop', label: 'Prop', icon: Briefcase },
     { key: 'robot', label: 'Robot', icon: Bot },
     { key: 'staking', label: 'Staking', icon: Landmark },
     { key: 'wheel', label: 'Spin Wheel', icon: Gift },
@@ -747,9 +740,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   <div className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {[
-                        ['Total wallet', `$${money(asNumber(workspace.balance.usdt_balance) + asNumber(workspace.robot.allocated_balance))}`, Wallet],
-                        ['Open positions', (workspace.futures_positions || []).length + (workspace.prop_positions || []).length, TrendingUp],
-                        ['Orders', (workspace.spot_orders || []).length + (workspace.futures_orders || []).length + (workspace.prop_orders || []).length, ReceiptText],
+                        ['Total wallet', formatFiat(asNumber(workspace.balance.usdt_balance) + asNumber(workspace.robot.allocated_balance)), Wallet],
+                        ['Open positions', (workspace.futures_positions || []).length, TrendingUp],
+                        ['Orders', (workspace.spot_orders || []).length + (workspace.futures_orders || []).length, ReceiptText],
                         ['Support cases', (workspace.conversations || []).length, Headphones]
                       ].map(([label, value, Icon]) => {
                         const DashboardIcon = Icon as React.ElementType;
@@ -880,16 +873,6 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                     {managedSection('CFD orders', 'futures_orders', cfdRows(workspace.futures_orders))}
                     {managedSection('CFD position history', 'futures_position_history', cfdRows(workspace.futures_history))}
                     {managedSection('CFD overnight swap charges', 'position_swap_charges', cfdRows(workspace.swap_charges))}
-                  </div>
-                )}
-
-                {tab === 'prop' && (
-                  <div className="space-y-5">
-                    {managedSection('Prop challenge accounts', 'prop_account_balances', workspace.prop_accounts)}
-                    {managedSection('Prop positions', 'prop_positions', workspace.prop_positions)}
-                    {managedSection('Prop orders', 'prop_orders', workspace.prop_orders)}
-                    {managedSection('Prop position history', 'prop_position_history', workspace.prop_history)}
-                    {managedSection('Prop activity logs', 'prop_logs', workspace.prop_logs)}
                   </div>
                 )}
 

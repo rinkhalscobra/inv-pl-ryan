@@ -7,7 +7,6 @@ import {
   Repeat,
   TrendingUp,
   Bot,
-  Target,
   Wallet,
   User,
   Settings,
@@ -143,7 +142,6 @@ const Header: React.FC<HeaderProps> = ({
     { key: 'swap', label: t('trading.swap'), icon: Repeat },
     { key: 'futures', label: t('trading.futures'), icon: TrendingUp },
     { key: 'cfd', label: t('trading.cfd'), icon: BarChart3 },
-    { key: 'prop_firm', label: t('propFirm.prop'), icon: Target },
     { key: 'robot', label: t('trading.robot'), icon: Bot },
     { key: 'staking', label: t('trading.staking'), icon: Layers },
     { key: 'wheel', label: 'Spin Wheel', icon: Gift }
@@ -299,7 +297,7 @@ const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Center Section - Pair Selector and Price */}
-          {(tradingMode === 'futures' || tradingMode === 'cfd' || tradingMode === 'prop_firm') && (
+          {(tradingMode === 'futures' || tradingMode === 'cfd') && (
             <div className={`hidden items-center gap-2.5 2xl:gap-3 ${desktopHeaderBreakpoint}`}>
               {/* Pair Selector */}
               <div className="relative" ref={pairSelectorRef}>
@@ -537,7 +535,7 @@ const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Mobile Pair Selector */}
-            {(tradingMode === 'futures' || tradingMode === 'cfd' || tradingMode === 'prop_firm') && (
+            {(tradingMode === 'futures' || tradingMode === 'cfd') && (
               <div className="mt-3 border-t border-slate-700/50 pt-3" ref={pairSelectorRef}>
                 <div className="mb-2">
                   <div className="text-slate-400 text-xs mb-2">Current Pair</div>

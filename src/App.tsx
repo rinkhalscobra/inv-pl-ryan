@@ -13,7 +13,6 @@ import Markets from './components/Markets';
 import SpotMyOrders from './components/SpotMyOrders';
 import ArbitrageRobotPage from './components/ArbitrageRobotPage';
 import CryptoWithdrawalModal from './components/CryptoWithdrawalModal';
-import PropFirmChallengePage from './components/PropFirmChallengePage';
 import WalletPage from './components/WalletPage';
 import ProfilePage from './components/ProfilePage';
 import OrderBook from './components/OrderBook';
@@ -37,7 +36,6 @@ import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS } from './constants/tradingPairs';
 import { getUserCfdTier } from './constants/tradingTiers';
 import { useUserAssets } from './hooks/useUserAssets';
 import { useFuturesTrading } from './hooks/useFuturesTrading';
-import { usePropFirmTrading } from './hooks/usePropFirmTrading';
 import { useWalletBreakdown } from './hooks/useWalletBreakdown';
 import { useUserLeverage } from './hooks/useUserLeverage';
 import SwapCryptoPage from './components/SwapCryptoPage';
@@ -45,7 +43,7 @@ import SpinTheWheel from './components/SpinTheWheel';
 import PaymentSandbox from './components/PaymentSandbox';
 import AdminCRMPage from './components/AdminCRMPage';
 
-export type TradingMode = 'home' | 'swap' | 'futures' | 'cfd' | 'prop_firm' | 'robot' | 'wallet' | 'profile' | 'staking' | 'wheel' | 'payment_sandbox';
+export type TradingMode = 'home' | 'swap' | 'futures' | 'cfd' | 'robot' | 'wallet' | 'profile' | 'staking' | 'wheel' | 'payment_sandbox';
 
 export interface FuturesPosition {
   id: string;
@@ -118,25 +116,6 @@ function AppContent() {
     cancelAllOpenOrders,
     calculateLiquidationPrice
   } = useFuturesTrading();
-  
-  const {
-    propPositions,
-    propOrders,
-    propPositionHistory,
-    propChallengeAccount,
-    fetchPropPositions,
-    fetchPropOrders,
-    fetchPropPositionHistory,
-    fetchPropChallengeAccount,
-    initializeChallenge,
-    cancelChallenge,
-    placePropOrder,
-    closePropPosition,
-    cancelPropOrder,
-    cancelAllPropOrders,
-    closeAllPropPositions,
-    loading: propFirmLoading
-  } = usePropFirmTrading();
   
   // Wallet breakdown for margin tracking
   const {
@@ -264,11 +243,6 @@ const handleUpdatePassword = async (newPassword: string) => {
       if (p.symbol) neededSymbols.add(p.symbol);
     });
     
-    // Include symbols with prop positions
-    propPositions.forEach(p => {
-      if (p.symbol) neededSymbols.add(p.symbol);
-    });
-    
     // Convert to array with selectedPair first
     const symbolsArray = Array.from(neededSymbols);
     const finalSymbols = selectedPair ? 
@@ -279,7 +253,7 @@ const handleUpdatePassword = async (newPassword: string) => {
     const limitedSymbols = finalSymbols.slice(0, 10);
     
     return limitedSymbols;
-  }, [selectedPair, activePositions, propPositions]);
+  }, [selectedPair, activePositions]);
   
   // Always enable polling as fallback regardless of WebSocket status
 
@@ -423,10 +397,6 @@ const handleUpdatePassword = async (newPassword: string) => {
           // Refresh futures positions
           await fetchActivePositions();
           
-          // Refresh prop firm positions if there's an active challenge
-          if (propChallengeAccount) {
-            await fetchPropPositions(propChallengeAccount.challengeId);
-          }
         } catch (error) {
           console.error('Error refreshing positions:', error);
         }
@@ -440,7 +410,7 @@ const handleUpdatePassword = async (newPassword: string) => {
         }
       };
     }
-  }, [user, fetchActivePositions, fetchPropPositions, propChallengeAccount]);
+  }, [user, fetchActivePositions]);
 
   // Handle futures trade
   const handleFuturesTrade = useCallback(async (
@@ -892,11 +862,6 @@ const handleUpdatePassword = async (newPassword: string) => {
   }, [balances, updateBalances, addTransaction, fetchBalances, fetchAssets, fetchTransactions, availableBalance, currentSelectedPairPrice, refreshBreakdown]);
 
   // Calculate time remaining for a stake
-  // Show loading state while checking for existing challenge
-  if (propFirmLoading && propChallengeAccount === null) {
-    return <LoadingScreen message="Loading prop firm challenge data..." />;
-  }
-
   // Set default pair when changing trading mode
   const handleTradingModeChange = (mode: TradingMode) => {
     setTradingMode(mode);
@@ -1109,54 +1074,6 @@ const handleUpdatePassword = async (newPassword: string) => {
                           </div>
                         </div>
                       </div>
-                    )}
-                    
-                    {tradingMode === 'prop_firm' && (
-                      <PropFirmChallengePage
-                        currentPrice={currentSelectedPairPrice}
-                        usdtBalance={balances.usdt_balance}
-                        selectedPair={selectedPair}
-                        setSelectedPair={setSelectedPair}
-                        robotState={robotState}
-                        updateRobotState={updateRobotState}
-                        refreshChallengeState={async () => {
-                          await Promise.all([
-                            fetchBalances(),
-                            fetchRobotState(),
-                            fetchTransactions()
-                          ]);
-                        }}
-                        onClosePropPosition={async (positionId: string, livePrice?: number) => {
-                          try {
-                            const success = await closePropPosition(positionId, selectedChallenge?.id || '', livePrice);
-                            if (success) {
-                              refreshBreakdown();
-                            }
-                            return success;
-                          } catch (error) {
-                            console.error('Error closing prop position:', error);
-                            return false;
-                          }
-                        }}
-                        onCancelPropOrder={async (orderId: string) => {
-                          try {
-                            const success = await cancelPropOrder(orderId, selectedChallenge?.id || '');
-                            return success;
-                          } catch (error) {
-                            console.error('Error cancelling prop order:', error);
-                            return false;
-                          }
-                        }}
-                        onCancelAllPropOrders={async () => {
-                          try {
-                            const success = await cancelAllPropOrders(selectedChallenge?.id || '');
-                            return success;
-                          } catch (error) {
-                            console.error('Error cancelling all prop orders:', error);
-                            return false;
-                          }
-                        }}
-                      />
                     )}
                     
                     {tradingMode === 'robot' && (

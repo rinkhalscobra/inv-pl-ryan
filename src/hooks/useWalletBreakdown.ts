@@ -6,9 +6,7 @@ export interface WalletBreakdown {
   totalBalance: number;
   usedMargin: number;
   futuresUsedMargin: number;
-  propUsedMargin: number;
   futuresOrdersReserved: number;
-  propOrdersReserved: number;
   unrealizedPnl: number;
   availableBalance: number;
   robotAllocatedBalance: number;
@@ -33,9 +31,7 @@ export const useWalletBreakdown = (
     totalBalance: 0,
     usedMargin: 0,
     futuresUsedMargin: 0,
-    propUsedMargin: 0,
     futuresOrdersReserved: 0,
-    propOrdersReserved: 0,
     unrealizedPnl: 0,
     availableBalance: 0,
     robotAllocatedBalance: 0,
@@ -117,24 +113,18 @@ export const useWalletBreakdown = (
 
       const [
         { data: futuresPositions, error: futuresError },
-        { data: propPositions, error: propError },
         { data: futuresOrders, error: futuresOrdersError },
-        { data: propOrders, error: propOrdersError },
         { data: robotState, error: robotError },
         { data: userStakes, error: stakesError }
       ] = await Promise.all([
         supabase.from('futures_positions').select('margin, unrealized_pnl').eq('user_id', user.id).eq('is_open', true),
-        supabase.from('prop_positions').select('margin, unrealized_pnl').eq('user_id', user.id).eq('is_open', true),
         supabase.from('futures_orders').select('reserved_margin').eq('user_id', user.id).eq('status', 'open'),
-        supabase.from('prop_orders').select('reserved_margin').eq('user_id', user.id).eq('status', 'open'),
         supabase.from('robot_states').select('allocated_balance').eq('user_id', user.id).maybeSingle(),
         supabase.from('user_stakes').select('asset_symbol, staked_amount').eq('user_id', user.id).eq('status', 'active')
       ]);
 
       if (futuresError) throw futuresError;
-      if (propError) throw propError;
       if (futuresOrdersError) throw futuresOrdersError;
-      if (propOrdersError) throw propOrdersError;
       if (robotError) throw robotError;
       if (stakesError) throw stakesError;
 
@@ -142,19 +132,11 @@ export const useWalletBreakdown = (
         return sum + (parseFloat(pos.margin?.toString() || '0') || 0);
       }, 0) || 0;
 
-      const propUsedMargin = propPositions?.reduce((sum, pos) => {
-        return sum + (parseFloat(pos.margin?.toString() || '0') || 0);
-      }, 0) || 0;
-
       const futuresOrdersReserved = futuresOrders?.reduce((sum, order) => {
         return sum + (parseFloat(order.reserved_margin?.toString() || '0') || 0);
       }, 0) || 0;
 
-      const propOrdersReserved = propOrders?.reduce((sum, order) => {
-        return sum + (parseFloat(order.reserved_margin?.toString() || '0') || 0);
-      }, 0) || 0;
-
-      const usedMargin = futuresUsedMargin + propUsedMargin + futuresOrdersReserved + propOrdersReserved;
+      const usedMargin = futuresUsedMargin + futuresOrdersReserved;
 
       const futuresUnrealizedPnl = futuresPositions?.reduce((sum, pos) => {
         return sum + (parseFloat(pos.unrealized_pnl?.toString() || '0') || 0);
@@ -191,9 +173,7 @@ export const useWalletBreakdown = (
         totalBalance,
         usedMargin,
         futuresUsedMargin,
-        propUsedMargin,
         futuresOrdersReserved,
-        propOrdersReserved,
         unrealizedPnl,
         availableBalance,
         robotAllocatedBalance,

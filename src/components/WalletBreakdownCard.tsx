@@ -6,9 +6,7 @@ interface WalletBreakdownCardProps {
   totalBalance: number;
   usedMargin: number;
   futuresUsedMargin: number;
-  propUsedMargin: number;
   futuresOrdersReserved: number;
-  propOrdersReserved: number;
   unrealizedPnl: number;
   availableBalance: number;
   robotAllocatedBalance: number;
@@ -21,9 +19,7 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
   totalBalance,
   usedMargin,
   futuresUsedMargin,
-  propUsedMargin,
   futuresOrdersReserved,
-  propOrdersReserved,
   unrealizedPnl,
   availableBalance,
   robotAllocatedBalance,
@@ -94,15 +90,6 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
                       <span className="text-orange-300">{formatCurrency(futuresUsedMargin)}</span>
                     </div>
                   )}
-                  {propUsedMargin > 0 && (
-                    <div className="flex justify-between items-center text-sm">
-                      <div className="flex items-center gap-2">
-                        <Activity size={12} className="text-orange-300" />
-                        <span className="text-slate-400">Prop Positions</span>
-                      </div>
-                      <span className="text-orange-300">{formatCurrency(propUsedMargin)}</span>
-                    </div>
-                  )}
                   {futuresOrdersReserved > 0 && (
                     <div className="flex justify-between items-center text-sm">
                       <div className="flex items-center gap-2">
@@ -110,15 +97,6 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
                         <span className="text-slate-400">Futures Orders</span>
                       </div>
                       <span className="text-orange-300">{formatCurrency(futuresOrdersReserved)}</span>
-                    </div>
-                  )}
-                  {propOrdersReserved > 0 && (
-                    <div className="flex justify-between items-center text-sm">
-                      <div className="flex items-center gap-2">
-                        <Package size={12} className="text-orange-300" />
-                        <span className="text-slate-400">Prop Orders</span>
-                      </div>
-                      <span className="text-orange-300">{formatCurrency(propOrdersReserved)}</span>
                     </div>
                   )}
                 </div>

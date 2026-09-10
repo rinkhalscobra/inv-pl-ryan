@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { Package, X, AlertCircle, Clock, CheckCircle, TrendingUp, TrendingDown, Loader2, ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
 import { useFuturesTrading, PositionHistoryEntry } from '../hooks/useFuturesTrading';
 import { DatabaseFuturesPosition } from '../hooks/useDatabase';
-import { PropPositionHistoryEntry } from '../hooks/usePropFirmTrading';
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
 import { supabase } from '../lib/supabaseClient';
 import { TradingMode } from '../App';
@@ -22,13 +21,8 @@ interface FuturesMyOrdersProps {
   onCancelOrder?: (orderId: string) => Promise<boolean>;
   onCancelAllOrders?: () => Promise<boolean>;
   balances?: { usdt_balance?: number };
-  propHistory?: PropPositionHistoryEntry[];
-  challengeId?: string;
   selectedPair: string;
   tradingMode: TradingMode;
-  onClosePropPosition?: (positionId: string, livePrice?: number) => Promise<boolean>;
-  onCancelPropOrder?: (orderId: string) => Promise<boolean>;
-  onCancelAllPropOrders?: () => Promise<boolean>;
   currentSelectedPairPrice: number;
 }
 
@@ -144,13 +138,8 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
   onCancelOrder,
   onCancelAllOrders,
   balances,
-  propHistory = [],
-  challengeId,
   selectedPair,
   tradingMode,
-  onClosePropPosition,
-  onCancelPropOrder,
-  onCancelAllPropOrders,
   currentSelectedPairPrice
 }) => {
   const { t } = useTranslation();
@@ -326,36 +315,31 @@ const getPricePrecision = useCallback((symbol: string): number => {
   };
 
 
-  // Filter positions based on selectedPair and tradingMode
+  // Filter positions based on trading mode
   const filteredFuturesPositions = useMemo(() => {
-    if (challengeId) {
-      return futuresPositions; // Show all positions for prop firm challenges
-    } else if (tradingMode === 'cfd') {
+    if (tradingMode === 'cfd') {
       // In CFD mode, show all non-crypto positions
       return futuresPositions.filter(position => getInstrumentType(position.symbol) !== 'crypto');
     } else { // tradingMode === 'futures'
       // In Futures mode, show all crypto positions (not just the selected pair)
       return futuresPositions.filter(position => getInstrumentType(position.symbol) === 'crypto');
     }
-  }, [futuresPositions, challengeId, tradingMode, selectedPair, getInstrumentType]);
+  }, [futuresPositions, tradingMode, getInstrumentType]);
 
   // Filter open orders based on selectedPair and tradingMode
   const filteredOpenOrders = useMemo(() => {
-    if (challengeId) {
-      return openOrders; // Show all orders for prop firm challenges
-    } else if (tradingMode === 'cfd') {
+    if (tradingMode === 'cfd') {
       // In CFD mode, show all non-crypto orders
       return openOrders.filter(order => getInstrumentType(order.symbol) !== 'crypto');
     } else { // tradingMode === 'futures'
       // In Futures mode, filter by selectedPair and ensure it's a crypto pair
       return openOrders.filter(order => order.symbol === selectedPair && getInstrumentType(order.symbol) === 'crypto');
     }
-  }, [openOrders, challengeId, tradingMode, selectedPair, getInstrumentType]);
+  }, [openOrders, tradingMode, selectedPair, getInstrumentType]);
 
   // Debug logs - only log when data changes
   useEffect(() => {
     console.log('FuturesMyOrders - Data update:', {
-      challengeId,
       selectedPair,
       totalFuturesPositions: futuresPositions.length,
       filteredFuturesPositions: filteredFuturesPositions.length,
@@ -364,7 +348,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
       futuresPositions: futuresPositions.map(p => ({ id: p.id, symbol: p.symbol })),
       openOrders: openOrders.map(o => ({ id: o.id, symbol: o.symbol }))
     });
-  }, [challengeId, selectedPair, futuresPositions.length, filteredFuturesPositions.length, openOrders.length, filteredOpenOrders.length]);
+  }, [selectedPair, futuresPositions.length, filteredFuturesPositions.length, openOrders.length, filteredOpenOrders.length]);
 
   // Calculate real-time PnL and ROI for each position
   const positionsWithLiveData = filteredFuturesPositions.map(position => {
@@ -477,8 +461,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
     }
   };
 
-  // Get the appropriate position history data
-  const positionHistoryData = challengeId ? propHistory : positionHistory;
+  const positionHistoryData = positionHistory;
   
   // Calculate pagination for position history
   const totalPages = Math.ceil(positionHistoryData.length / itemsPerPage);
@@ -503,12 +486,9 @@ const getPricePrecision = useCallback((symbol: string): number => {
   // Load position history when tab changes to Position History
   useEffect(() => {
     if (activeTab === 'positionHistory') {
-      // Only load position history if we're not in a challenge view
-      if (!challengeId) {
-        loadPositionHistory();
-      }
+      loadPositionHistory();
     }
-  }, [activeTab, loadPositionHistory, challengeId]);
+  }, [activeTab, loadPositionHistory]);
 
   // Update error message when error changes
   useEffect(() => {
@@ -582,26 +562,11 @@ const getPricePrecision = useCallback((symbol: string): number => {
       const livePrice = symbol ? getPriceBySymbol(symbol) : 0;
       console.log(`Closing position ${positionId} (${symbol}) with live price: ${livePrice}`);
 
-      let success = false;
-      if (challengeId && onClosePropPosition) {
-        success = await onClosePropPosition(positionId, livePrice > 0 ? livePrice : undefined);
-      } else {
-        const result = onClosePosition(positionId, livePrice > 0 ? livePrice : undefined);
-        if (result && typeof (result as any).then === 'function') {
-          await result;
-        }
-        success = true;
+      const result = onClosePosition(positionId, livePrice > 0 ? livePrice : undefined);
+      if (result && typeof (result as any).then === 'function') {
+        await result;
       }
-      
-      if (success) {
-        setSuccessMessage('Position closed successfully');
-        
-        // If updateBalances is available, refresh the balances to show returned margin
-        if (updateBalances && !challengeId) {
-          // For regular futures positions, we need to refresh balances from the parent component
-          // The parent component (App.tsx) will handle this via fetchBalances in handleClosePosition
-        }
-      }
+      setSuccessMessage('Position closed successfully');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to close position');
     } finally {
@@ -625,14 +590,13 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
   const handleUpdateTPSL = async (positionId: string, type: 'takeProfit' | 'stopLoss', price: number) => {
     try {
-      const tableName = challengeId ? 'prop_positions' : 'futures_positions';
       const column = type === 'takeProfit' ? 'tp_price' : 'sl_price';
 
       // If price is 0, remove the TP/SL by setting it to null
       const value = price > 0 ? price : null;
 
       const { error } = await supabase
-        .from(tableName)
+        .from('futures_positions')
         .update({ [column]: value })
         .eq('id', positionId);
 
@@ -651,17 +615,10 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
   // Handle cancel order
   const handleCancelOrder = async (orderId: string) => {
-    if (!onCancelOrder && !onCancelPropOrder) return;
+    if (!onCancelOrder) return;
     
     try {
-      let success = false;
-      if (challengeId && onCancelPropOrder) {
-        // Use prop firm specific cancel function
-        success = await onCancelPropOrder(orderId);
-      } else if (onCancelOrder) {
-        // Use regular futures cancel function
-        success = await onCancelOrder(orderId);
-      }
+      const success = await onCancelOrder(orderId);
       
       if (success) {
         setSuccessMessage('Order cancelled successfully');
@@ -675,18 +632,11 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
   // Handle cancel all orders
   const handleCancelAllOrders = async () => {
-    if (!onCancelAllOrders && !onCancelAllPropOrders) return;
+    if (!onCancelAllOrders) return;
     
     setIsProcessingAll(true);
     try {
-      let success = false;
-      if (challengeId && onCancelAllPropOrders) {
-        // Use prop firm specific cancel all function
-        success = await onCancelAllPropOrders();
-      } else if (onCancelAllOrders) {
-        // Use regular futures cancel all function
-        success = await onCancelAllOrders();
-      }
+      const success = await onCancelAllOrders();
       
       if (success) {
         setSuccessMessage('All orders cancelled successfully');

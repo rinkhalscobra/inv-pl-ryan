@@ -4,11 +4,12 @@ import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { usePrevious } from '../hooks/usePrevious';
 import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS } from '../constants/tradingPairs';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface SearchablePairSelectorProps {
   selectedPair: string;
   onPairSelect: (pair: string) => void;
-  tradingMode: 'spot' | 'futures' | 'cfd' | 'binary' | 'robot' | 'wallet' | 'events';
+  tradingMode: 'spot' | 'futures' | 'cfd' | 'binary' | 'robot' | 'wallet';
   marketDataList?: any[];
 }
 
@@ -24,6 +25,7 @@ const SearchablePairSelector: React.FC<SearchablePairSelectorProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const { getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, connectionState: cryptoConnectionState, getPriceDirection } = useBybitData();
+  const { convertUsdToEur, formatTradingPair } = useFiatCurrency();
 
   const connectionState = tradingMode === 'cfd' ? cfdConnectionState : cryptoConnectionState;
 
@@ -124,7 +126,7 @@ const SearchablePairSelector: React.FC<SearchablePairSelectorProps> = ({
       return name || symbol;
     }
     if (symbol.endsWith('USDT')) {
-      return symbol.replace('USDT', '/USDT');
+      return formatTradingPair(symbol);
     }
     return symbol;
   };
@@ -139,19 +141,21 @@ const SearchablePairSelector: React.FC<SearchablePairSelectorProps> = ({
       return price.toFixed(5);
     }
 
+    const displayPrice = convertUsdToEur(price);
+
     if (type === 'commodity') {
       if (symbol.includes('XAU') || symbol.includes('XPT') || symbol.includes('XPD')) {
-        return price.toFixed(2);
+        return `€${displayPrice.toFixed(2)}`;
       }
       if (symbol.includes('XAG')) {
-        return price.toFixed(4);
+        return `€${displayPrice.toFixed(4)}`;
       }
-      return price.toFixed(4);
+      return `€${displayPrice.toFixed(4)}`;
     }
 
-    if (price >= 1000) return price.toFixed(2);
-    if (price >= 1) return price.toFixed(4);
-    return price.toFixed(6);
+    if (displayPrice >= 1000) return `€${displayPrice.toFixed(2)}`;
+    if (displayPrice >= 1) return `€${displayPrice.toFixed(4)}`;
+    return `€${displayPrice.toFixed(6)}`;
   };
 
   const getConnectionIndicator = () => {
@@ -247,7 +251,7 @@ const SearchablePairSelector: React.FC<SearchablePairSelectorProps> = ({
         </div>
         {currentPrice > 0 && (
           <span className={`text-lg font-mono text-emerald-400 ml-2 tabular-nums ${priceFlashClass}`}>
-            ${formatPrice(currentPrice, selectedPair, currentPairInfo?.type)}
+            {formatPrice(currentPrice, selectedPair, currentPairInfo?.type)}
           </span>
         )}
         <ChevronDown size={16} className="text-slate-400" />

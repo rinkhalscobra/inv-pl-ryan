@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import BrandLogo from './BrandLogo';
 import {
   Home,
   Repeat,
@@ -16,7 +17,6 @@ import {
   ChevronDown,
   Search,
   Star,
-  Activity,
   BarChart3,
   Layers,
   Info,
@@ -32,7 +32,7 @@ import {
   Gift,
   CreditCard
 } from 'lucide-react';
-import { TradingMode, UserStatus } from '../App';
+import { TradingMode } from '../App';
 import { MarketData } from '../hooks/useDatabase';
 import { User as UserType } from '@supabase/supabase-js';
 import { useMarketData } from '../contexts/MarketDataContext';
@@ -54,7 +54,6 @@ interface HeaderProps {
   user: UserType;
   signOut: () => void;
   marketDataList: MarketData[];
-  userStatus: UserStatus;
   isAdmin: boolean;
 }
 
@@ -71,12 +70,11 @@ const Header: React.FC<HeaderProps> = ({
   user,
   signOut,
   marketDataList,
-  userStatus,
   isAdmin
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { formatFiat } = useFiatCurrency();
+  const { formatFiat, formatFiatPrice, formatTradingPair } = useFiatCurrency();
   const { marketData: cfdMarketData, isConnected: cfdConnected, getPriceBySymbol: getCfdPrice } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, isConnected: cryptoConnected } = useBybitData();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -147,40 +145,9 @@ const Header: React.FC<HeaderProps> = ({
     { key: 'cfd', label: t('trading.cfd'), icon: BarChart3 },
     { key: 'prop_firm', label: t('propFirm.prop'), icon: Target },
     { key: 'robot', label: t('trading.robot'), icon: Bot },
-    { key: 'events', label: t('trading.events'), icon: Activity },
     { key: 'staking', label: t('trading.staking'), icon: Layers },
     { key: 'wheel', label: 'Spin Wheel', icon: Gift }
   ];
-
-  // Get status color based on user tier
-  const getStatusColor = (status: UserStatus) => {
-    switch (status) {
-      case 'No-Coiner': return 'text-slate-500';
-      case 'Shrimp': return 'text-gray-400';
-      case 'Crab': return 'text-purple-400';
-      case 'Octopus': return 'text-purple-400';
-      case 'Dolphin': return 'text-blue-400';
-      case 'Shark': return 'text-red-400';
-      case 'Whale': return 'text-green-400';
-      case 'Humpback': return 'text-cyan-400';
-      default: return 'text-slate-400';
-    }
-  };
-
-  // Get status icon based on user tier
-  const getStatusIcon = (status: UserStatus) => {
-    switch (status) {
-      case 'No-Coiner': return '🚫';
-      case 'Shrimp': return '🦐';
-      case 'Crab': return '🦀';
-      case 'Octopus': return '🐙';
-      case 'Dolphin': return '🐬';
-      case 'Shark': return '🦈';
-      case 'Whale': return '🐋';
-      case 'Humpback': return '🐳';
-      default: return '📊';
-    }
-  };
 
   // Format pair display
   const formatPairDisplay = (symbol: string) => {
@@ -189,7 +156,7 @@ const Header: React.FC<HeaderProps> = ({
       return cfdInstrument.name;
     }
     if (symbol.endsWith('USDT')) {
-      return symbol.replace('USDT', '/USDT');
+      return formatTradingPair(symbol);
     }
     return symbol;
   };
@@ -226,6 +193,12 @@ const Header: React.FC<HeaderProps> = ({
   const formatPrice = (symbol: string, price: number) => {
     const decimals = getDecimalPlaces(symbol, price);
     return price.toFixed(decimals);
+  };
+
+  const formatDisplayPrice = (symbol: string, price: number) => {
+    const instrument = getCfdInstrument(symbol);
+    if (instrument?.type === 'forex') return formatPrice(symbol, price);
+    return formatFiatPrice(price, getDecimalPlaces(symbol, price));
   };
 
   // Filter pairs based on search term
@@ -295,15 +268,13 @@ const Header: React.FC<HeaderProps> = ({
   return (
     <header className={`sticky top-0 z-40 border-b border-slate-700/50 ${headerShellBackgroundClass} shadow-xl backdrop-blur-md`}>
       <div className={headerContainerClass}>
-        <div className="flex min-h-16 items-center justify-between gap-3 py-2 sm:h-16 sm:py-0">
+        <div className="flex min-h-16 items-center justify-between gap-3 py-2 sm:min-h-[72px]">
 
           {/* Left Section - Logo and Navigation */}
           <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3 lg:gap-5">
             {/* Logo */}
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
-              <span className="hidden whitespace-nowrap bg-gradient-to-r from-purple-400 to-violet-400 bg-clip-text text-xl font-bold text-transparent min-[420px]:block sm:text-2xl">
-                Atlas Market
-              </span>
+            <div className="flex shrink-0 items-center">
+              <BrandLogo className="h-auto w-24 sm:w-36" />
             </div>
 
             {/* Desktop Navigation */}
@@ -314,12 +285,12 @@ const Header: React.FC<HeaderProps> = ({
                   <button
                     key={item.key}
                     onClick={() => setTradingMode(item.key as TradingMode)}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-medium transition-all duration-300 2xl:gap-2 2xl:px-2.5 2xl:text-sm ${tradingMode === item.key
+                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-all duration-300 2xl:gap-2 2xl:px-2.5 2xl:text-[15px] ${tradingMode === item.key
                       ? 'bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg shadow-purple-500/25'
                       : `text-slate-400 hover:text-white ${headerSurfaceHoverBackgroundClass}`
                       }`}
                   >
-                    <Icon size={16} />
+                    <Icon size={17} />
                     <span>{item.label}</span>
                   </button>
                 );
@@ -386,7 +357,7 @@ const Header: React.FC<HeaderProps> = ({
                             </div>
                           </div>
                           <span className="font-mono text-xs text-slate-400">
-                            {data.price && data.price > 0 ? `$${formatPrice(data.symbol, data.price)}` : '—'}
+                            {data.price && data.price > 0 ? formatDisplayPrice(data.symbol, data.price) : '—'}
                           </span>
                         </button>
                       );
@@ -401,12 +372,12 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="flex items-center gap-2.5">
                   <span className="text-xs font-medium">{t('header.price')}</span>
                 </div>
-                <span className="ml-2.5 text-[13px] font-mono">${formatPrice(selectedPair, currentPairPrice)}</span>
+                <span className="ml-2.5 text-[13px] font-mono">{formatDisplayPrice(selectedPair, currentPairPrice)}</span>
               </div>
             </div>
           )}
 
-          {/* Right Section - Portfolio + User Status + Menu */}
+          {/* Right Section - Portfolio + User Menu */}
           <div className="flex min-w-0 items-center gap-2 sm:gap-2.5 lg:gap-3 2xl:gap-5">
             {/* Portfolio value in the platform fiat currency */}
             <div className={`hidden min-w-0 items-center gap-2 2xl:gap-4 ${desktopHeaderBreakpoint}`}>
@@ -419,8 +390,8 @@ const Header: React.FC<HeaderProps> = ({
                     {showBalances ? <Eye size={17} /> : <EyeOff size={17} />}
                   </button>
                   <div className="min-w-0">
-                    <div className="text-xs text-slate-400 2xl:text-[13px]">{t('header.portfolioValue')}</div>
-                    <div className="truncate text-[13px] font-mono text-white 2xl:text-sm">
+                    <div className="text-[13px] text-slate-400 2xl:text-sm">{t('header.portfolioValue')}</div>
+                    <div className="truncate text-sm font-mono text-white 2xl:text-[15px]">
                       {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
                     </div>
                   </div>
@@ -431,27 +402,6 @@ const Header: React.FC<HeaderProps> = ({
                 </span>
               </div>
 
-            </div>
-
-            {/* User Status Badge */}
-            <div
-              className={`flex min-w-0 items-center gap-1.5 rounded-xl border px-2 py-1.5 sm:px-2.5 2xl:gap-2 2xl:px-3.5 2xl:py-2.5 ${userStatus === 'Whale' || userStatus === 'Humpback'
-                ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-green-500/30'
-                : userStatus === 'Shark'
-                  ? 'bg-gradient-to-r from-red-500/20 to-pink-500/20 border-red-500/30'
-                  : userStatus === 'Dolphin'
-                    ? 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border-blue-500/30'
-                    : userStatus === 'Octopus'
-                      ? 'bg-gradient-to-r from-purple-500/20 to-indigo-500/20 border-purple-500/30'
-                      : userStatus === 'Crab'
-                        ? 'bg-gradient-to-r from-purple-500/20 to-violet-500/20 border-purple-500/30'
-                        : `${headerSurfaceBackgroundClass} border-slate-600/50`
-                }`}
-            >
-              <span className="text-base 2xl:text-lg">{getStatusIcon(userStatus)}</span>
-              <span className={`hidden truncate text-[11px] font-medium min-[420px]:block sm:text-xs 2xl:text-sm ${getStatusColor(userStatus)}`}>
-                {t(`header.tiers.${userStatus.toLowerCase()}`)}
-              </span>
             </div>
 
             {/* User Menu */}
@@ -472,9 +422,6 @@ const Header: React.FC<HeaderProps> = ({
                     <div className="flex items-center gap-2.5">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-white">{user.email}</div>
-                        <div className={`text-xs ${getStatusColor(userStatus)}`}>
-                          {getStatusIcon(userStatus)} {userStatus}
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -561,10 +508,6 @@ const Header: React.FC<HeaderProps> = ({
                   >
                     {showBalances ? <Eye size={15} /> : <EyeOff size={15} />}
                   </button>
-                  <div className={`flex min-w-0 items-center gap-1 rounded-lg px-2 py-1 ${getStatusColor(userStatus)}`}>
-                    <span>{getStatusIcon(userStatus)}</span>
-                    <span className="truncate text-xs font-medium">{userStatus}</span>
-                  </div>
                 </div>
               </div>
 
@@ -651,7 +594,7 @@ const Header: React.FC<HeaderProps> = ({
                               )}
                             </div>
                             <span className="shrink-0 text-xs font-mono text-slate-400">
-                              ${formatPrice(data.symbol, data.price || 0)}
+                              {formatDisplayPrice(data.symbol, data.price || 0)}
                             </span>
                           </button>
                           );

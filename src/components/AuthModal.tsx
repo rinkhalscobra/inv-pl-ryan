@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Mail, Lock, User, AlertCircle, ArrowLeft, Gift } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import LanguageSwitcher from './LanguageSwitcher';
+import BrandLogo from './BrandLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -98,12 +99,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         
         {/* Header */}
         <div className="flex items-center justify-between mb-8 relative z-10 pb-4 border-b border-slate-600/50">
-          <div className="flex items-center gap-4">
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-            {authView === 'signIn' ? 'Sign In' : 
-             authView === 'signUp' ? 'Create Account' : 
-             'Reset Password'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <BrandLogo className="h-auto w-28 shrink-0" />
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              {authView === 'signIn' ? 'Sign In' :
+               authView === 'signUp' ? 'Create Account' :
+               'Reset Password'}
+            </h2>
             <LanguageSwitcher />
           </div>
           <button

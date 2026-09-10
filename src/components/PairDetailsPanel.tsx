@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Calendar, Activity, Info } from 'lucide-react
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
 import HotTradingPairs from './HotTradingPairs';
 import { useMarketData } from '../contexts/MarketDataContext';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface PairDetailsPanelProps {
   selectedPair: string;
@@ -36,6 +37,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
   });
 
   const { getMarketDataBySymbol } = useMarketData();
+  const { formatFiatNumber, formatFiatCompact } = useFiatCurrency();
   const instrument = CFD_INSTRUMENTS.find(item => item.symbol === selectedPair);
   const pairName = instrument?.name || selectedPair;
   const pairType = instrument?.type || 'forex';
@@ -89,7 +91,10 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
   const actualPrice = marketData?.price || currentPrice;
 
   const isPositive = stats.priceChange24h >= 0;
-  const displayPrice = actualPrice.toFixed(pairType === 'forex' ? 5 : 2);
+  const formatDisplayedPrice = (value: number) => pairType === 'forex'
+    ? value.toFixed(5)
+    : formatFiatNumber(value, 2);
+  const displayPrice = formatDisplayedPrice(actualPrice);
   const dayRange = actualPrice > 0 ? ((actualPrice - stats.dayLow) / (stats.dayHigh - stats.dayLow)) * 100 : 50;
 
   const getTypeLabel = (type: string) => {
@@ -132,7 +137,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
                   {displayPrice}
                 </span>
                 <span className="text-xl text-slate-400">
-                  {pairType === 'forex' ? 'USD' : pairType === 'stock' || pairType === 'index' ? 'USD' : 'USD'}
+                  {pairType === 'forex' ? 'RATE' : 'EUR'}
                 </span>
               </div>
 
@@ -143,7 +148,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
                   <TrendingDown className="w-5 h-5 text-red-400" />
                 )}
                 <span className={`text-lg font-semibold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {isPositive ? '+' : ''}{stats.priceChange24h.toFixed(pairType === 'forex' ? 5 : 2)}
+                  {isPositive ? '+' : ''}{formatDisplayedPrice(stats.priceChange24h)}
                 </span>
                 <span className={`text-lg font-semibold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
                   {isPositive ? '+' : ''}{stats.priceChangePercent24h.toFixed(2)}%
@@ -165,8 +170,8 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
 
             <div className="space-y-4">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">{stats.dayLow.toFixed(pairType === 'forex' ? 5 : 2)}</span>
-                <span className="text-slate-400">{stats.dayHigh.toFixed(pairType === 'forex' ? 5 : 2)}</span>
+                <span className="text-slate-400">{formatDisplayedPrice(stats.dayLow)}</span>
+                <span className="text-slate-400">{formatDisplayedPrice(stats.dayHigh)}</span>
               </div>
 
               <div className="relative h-2 overflow-hidden rounded-full bg-gradient-to-r from-indigo-500/12 via-purple-500/12 to-fuchsia-500/12">
@@ -192,35 +197,35 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
               <div className="space-y-1">
                 <div className="text-xs text-slate-400">Previous Close</div>
                 <div className="text-lg font-semibold text-white">
-                  {stats.prevClose.toFixed(pairType === 'forex' ? 5 : 2)}
+                  {formatDisplayedPrice(stats.prevClose)}
                 </div>
               </div>
 
               <div className="space-y-1">
                 <div className="text-xs text-slate-400">Open</div>
                 <div className="text-lg font-semibold text-white">
-                  {stats.open.toFixed(pairType === 'forex' ? 5 : 2)}
+                  {formatDisplayedPrice(stats.open)}
                 </div>
               </div>
 
               <div className="space-y-1">
                 <div className="text-xs text-slate-400">Day High</div>
                 <div className="text-lg font-semibold text-emerald-400">
-                  {stats.dayHigh.toFixed(pairType === 'forex' ? 5 : 2)}
+                  {formatDisplayedPrice(stats.dayHigh)}
                 </div>
               </div>
 
               <div className="space-y-1">
                 <div className="text-xs text-slate-400">Day Low</div>
                 <div className="text-lg font-semibold text-red-400">
-                  {stats.dayLow.toFixed(pairType === 'forex' ? 5 : 2)}
+                  {formatDisplayedPrice(stats.dayLow)}
                 </div>
               </div>
 
               <div className="space-y-1 col-span-2">
                 <div className="text-xs text-slate-400">24h Volume</div>
                 <div className="text-lg font-semibold text-white">
-                  ${(stats.volume24h / 1000000).toFixed(2)}M
+                  {formatFiatCompact(stats.volume24h)}
                 </div>
               </div>
             </div>

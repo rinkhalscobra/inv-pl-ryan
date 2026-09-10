@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Copy, Users, TrendingUp, DollarSign, Calendar, CheckCircle, Gift, Share2, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Copy, Users, TrendingUp, Euro, Calendar, CheckCircle, Gift, Share2, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useReferrals } from '../hooks/useReferrals';
 import { useTranslation } from 'react-i18next';
 import { formatReferralCode } from '../utils/formatReferralCode';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 const ReferralTab: React.FC = () => {
   const { t } = useTranslation();
+  const { formatFiat } = useFiatCurrency();
   const {
     loading,
     referralCode,
@@ -143,12 +145,12 @@ const ReferralTab: React.FC = () => {
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center">
-              <DollarSign size={20} className="text-emerald-400" />
+              <Euro size={20} className="text-emerald-400" />
             </div>
             <div className="text-slate-400 text-sm">Total Earnings</div>
           </div>
           <div className="text-3xl font-bold text-white">
-            ${referralStats.totalEarnings.toFixed(2)}
+            {formatFiat(referralStats.totalEarnings)}
           </div>
           <div className="text-slate-400 text-sm mt-1">Lifetime commission</div>
         </div>
@@ -161,7 +163,7 @@ const ReferralTab: React.FC = () => {
             <div className="text-slate-400 text-sm">This Month</div>
           </div>
           <div className="text-3xl font-bold text-white">
-            ${referralStats.earningsThisMonth.toFixed(2)}
+            {formatFiat(referralStats.earningsThisMonth)}
           </div>
           <div className="text-slate-400 text-sm mt-1">Current month earnings</div>
         </div>
@@ -174,7 +176,7 @@ const ReferralTab: React.FC = () => {
             <div className="text-slate-400 text-sm">Today</div>
           </div>
           <div className="text-3xl font-bold text-white">
-            ${referralStats.earningsToday.toFixed(2)}
+            {formatFiat(referralStats.earningsToday)}
           </div>
           <div className="text-slate-400 text-sm mt-1">Today's earnings</div>
         </div>
@@ -216,7 +218,7 @@ const ReferralTab: React.FC = () => {
                     </td>
                     <td className="py-3 px-2 text-right">
                       <span className="text-emerald-400 font-semibold">
-                        ${referredUser.total_earned_from_user.toFixed(2)}
+                        {formatFiat(referredUser.total_earned_from_user)}
                       </span>
                     </td>
                     <td className="py-3 px-2 text-right text-slate-400 text-sm">
@@ -241,7 +243,7 @@ const ReferralTab: React.FC = () => {
         {referralEarnings.length === 0 ? (
           <div className="text-center py-8">
             <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <DollarSign size={32} className="text-slate-500" />
+              <Euro size={32} className="text-slate-500" />
             </div>
             <p className="text-slate-400 mb-2">No earnings yet</p>
             <p className="text-slate-500 text-sm">You'll earn 1% commission when your referrals close winning positions</p>
@@ -259,11 +261,11 @@ const ReferralTab: React.FC = () => {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center">
-                          <DollarSign size={20} className="text-emerald-400" />
+                          <Euro size={20} className="text-emerald-400" />
                         </div>
                         <div>
                           <div className="text-white font-semibold">
-                            +${earning.commission_amount.toFixed(2)}
+                            +{formatFiat(earning.commission_amount)}
                           </div>
                           <div className="text-slate-400 text-sm">
                             {earning.referred_user_email || 'User'}
@@ -275,7 +277,7 @@ const ReferralTab: React.FC = () => {
                           {earning.position_symbol} {earning.position_side}
                         </div>
                         <div className="text-slate-500 text-sm">
-                          PnL: ${earning.position_pnl.toFixed(2)}
+                          PnL: {formatFiat(earning.position_pnl)}
                         </div>
                       </div>
                     </div>

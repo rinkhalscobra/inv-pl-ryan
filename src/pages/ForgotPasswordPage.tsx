@@ -4,6 +4,7 @@ import { Mail, ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import BrandLogo from '../components/BrandLogo';
 
 const ForgotPasswordPage: React.FC = () => {
   const { t } = useTranslation();
@@ -47,11 +48,7 @@ const ForgotPasswordPage: React.FC = () => {
           <div className="flex justify-end mb-4">
             <LanguageSwitcher />
           </div>
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 mb-6 shadow-xl shadow-blue-500/30">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          </div>
+          <BrandLogo className="mx-auto mb-5 h-auto w-64 sm:w-72" />
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
             {t('auth.resetYourPassword')}
           </h1>

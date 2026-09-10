@@ -6,6 +6,7 @@ import { TradingMode } from '../App';
 import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constants/tradingPairs';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface MarketData {
   symbol: string;
@@ -34,6 +35,7 @@ const Markets: React.FC<MarketsProps> = ({
   const { t } = useTranslation();
   const { marketData, isConnected: realtimeConnected, error: realtimeError, getMarketDataBySymbol, getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, connectionState: cryptoConnectionState, getPriceDirection, getCryptoDataBySymbol } = useBybitData();
+  const { formatFiatPrice, formatTradingPair } = useFiatCurrency();
   const isFuturesTheme = tradingMode === 'futures';
   const isCfdTheme = tradingMode === 'cfd';
   const isGlassTheme = isFuturesTheme || isCfdTheme;
@@ -136,7 +138,7 @@ const Markets: React.FC<MarketsProps> = ({
     }
 
     if (symbol.endsWith('USDT')) {
-      return symbol.replace('USDT', '/USDT');
+      return formatTradingPair(symbol);
     }
     return symbol;
   };
@@ -172,6 +174,14 @@ const Markets: React.FC<MarketsProps> = ({
 
     return 2;
   }, [tradingMode]);
+
+  const formatDisplayPrice = (symbol: string, price: number) => {
+    const precision = getPricePrecision(symbol);
+    if (tradingMode === 'cfd' && getCfdInstrument(symbol)?.type === 'forex') {
+      return price.toFixed(precision);
+    }
+    return formatFiatPrice(price, precision);
+  };
 
   const getFilteredMarketData = useCallback(() => {
     const predefinedList = tradingMode === 'cfd' ? CFD_INSTRUMENTS : TOP_CRYPTO_PAIRS;
@@ -494,7 +504,7 @@ const Markets: React.FC<MarketsProps> = ({
                     </div>
                   )}
                   <div className={`text-xs font-medium mt-1 font-mono tabular-nums transition-colors ${priceColorClass}`}>
-                    {market.price > 0 ? `$${market.price.toFixed(getPricePrecision(market.symbol))}` : '—'}
+                    {market.price > 0 ? formatDisplayPrice(market.symbol, market.price) : '—'}
                   </div>
                   {!market.isTradable && (
                     <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-400">

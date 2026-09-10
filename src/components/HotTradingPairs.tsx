@@ -2,6 +2,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, Flame } from 'lucide-react';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface HotTradingPairsProps {
   onPairSelect: (symbol: string) => void;
@@ -10,6 +11,7 @@ interface HotTradingPairsProps {
 
 export default function HotTradingPairs({ onPairSelect, tradingMode }: HotTradingPairsProps) {
   const { marketData, getMarketDataBySymbol } = useMarketData();
+  const { formatFiatNumber } = useFiatCurrency();
 
   const getTopPerformers = () => {
     const instruments = tradingMode === 'cfd' ? CFD_INSTRUMENTS.filter(i => i.active) : [];
@@ -99,7 +101,9 @@ export default function HotTradingPairs({ onPairSelect, tradingMode }: HotTradin
                 </div>
 
                 <div className="text-base font-bold text-white">
-                  ${pair.price.toFixed(getPricePrecision(pair.symbol))}
+                  {pair.type === 'forex'
+                    ? pair.price.toFixed(getPricePrecision(pair.symbol))
+                    : `€${formatFiatNumber(pair.price, getPricePrecision(pair.symbol))}`}
                 </div>
 
                 <div className="flex items-center justify-between">

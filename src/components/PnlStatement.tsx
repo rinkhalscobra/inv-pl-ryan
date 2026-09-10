@@ -302,8 +302,8 @@ const PnlStatement: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadPdf = () => {
-    generateTradePdf(filteredHistory, totalProfit, tradeType, dateFrom, dateTo, columns);
+  const handleDownloadPdf = async () => {
+    await generateTradePdf(filteredHistory, totalProfit, tradeType, dateFrom, dateTo, columns);
   };
 
   const handleDownloadCsv = () => {

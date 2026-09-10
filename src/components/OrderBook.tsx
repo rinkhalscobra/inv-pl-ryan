@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { TrendingUp, TrendingDown, Activity, ChevronDown, Check } from 'lucide-react';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { TradingMode } from '../App';
+import { getCfdInstrument } from '../constants/tradingPairs';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface OrderBookEntry {
   price: number;
@@ -116,12 +118,14 @@ const OrderBook: React.FC<OrderBookProps> = ({
 }) => {
   const { t } = useTranslation();
   const { getPriceBySymbol } = useMarketData();
+  const { convertUsdToEur, formatFiatNumber } = useFiatCurrency();
   const [displayMode, setDisplayMode] = useState<'both' | 'bids' | 'asks'>('both');
   const [precision, setPrecision] = useState(2);
   const [grouping, setGrouping] = useState(0.5);
   const [spread, setSpread] = useState(0);
   const [spreadPercentage, setSpreadPercentage] = useState(0);
   const currentPrice = getPriceBySymbol(selectedPair);
+  const usesNativeForexRate = tradingMode === 'cfd' && getCfdInstrument(selectedPair)?.type === 'forex';
   const isFuturesTheme = tradingMode === 'futures';
   const panelSurfaceClass = isFuturesTheme
     ? 'app-surface-primary'
@@ -226,7 +230,9 @@ const displayOrderBook = orderBook && orderBook.bids.length > 0 && orderBook.ask
 
   // Format price based on precision
   const formatPrice = (price: number) => {
-    return price.toFixed(precision);
+    return usesNativeForexRate
+      ? price.toFixed(precision)
+      : formatFiatNumber(price, precision);
   };
 
   // Format amount
@@ -236,7 +242,9 @@ const displayOrderBook = orderBook && orderBook.bids.length > 0 && orderBook.ask
 
   // Format total
   const formatTotal = (total: number) => {
-    return total.toFixed(4);
+    return usesNativeForexRate
+      ? total.toFixed(4)
+      : convertUsdToEur(total).toFixed(4);
   };
 
   // Calculate depth percentage for visualization
@@ -303,7 +311,7 @@ const displayOrderBook = orderBook && orderBook.bids.length > 0 && orderBook.ask
       >
         {/* Column Headers */}
         <div className={`sticky top-0 grid grid-cols-3 border-b border-slate-700 p-2 text-[11px] text-slate-400 sm:text-xs ${headerSurfaceClass}`}>
-          <div>Price ({tradingMode === 'cfd' ? 'USD' : 'USDT'})</div>
+          <div>Price ({usesNativeForexRate ? 'Rate' : 'EUR'})</div>
           <div className="text-right">Amount ({selectedPair.replace('USDT', '').substring(0, 3)})</div>
           <div className="text-right">Total</div>
         </div>
@@ -328,7 +336,7 @@ const displayOrderBook = orderBook && orderBook.bids.length > 0 && orderBook.ask
         {/* Current Price */}
         {displayMode === 'both' && (
           <div className={`grid grid-cols-3 border-b border-slate-700 p-2 text-xs ${priceSurfaceClass}`}>
-            <div className="text-cyan-400 font-bold">{currentPrice.toFixed(precision)}</div>
+            <div className="text-cyan-400 font-bold">{formatPrice(currentPrice)}</div>
             <div className="text-right text-slate-400">Current Price</div>
             <div className="text-right"></div>
           </div>

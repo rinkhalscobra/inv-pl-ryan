@@ -20,7 +20,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
   usdtBalance,
   onWithdraw
 }) => {
-  const { formatFiat } = useFiatCurrency();
+  const { convertUsdToEur, formatEur } = useFiatCurrency();
   const [amount, setAmount] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -65,7 +65,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
 
   // Handle max button click
   const handleMaxClick = () => {
-    setAmount(usdtBalance.toString());
+    setAmount(convertUsdToEur(usdtBalance).toFixed(2));
   };
 
   // Handle form submission
@@ -79,8 +79,8 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
       return;
     }
     
-    if (parsedAmount > usdtBalance) {
-      setError('Insufficient USDT balance');
+    if (parsedAmount > convertUsdToEur(usdtBalance)) {
+      setError('Insufficient EUR balance');
       return;
     }
     
@@ -108,7 +108,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
       });
       
       if (success) {
-        setSuccess(`Bank withdrawal of ${amount} USDT initiated successfully`);
+        setSuccess(`Bank withdrawal of ${formatEur(parseFloat(amount))} initiated successfully`);
         setStep('success');
         // Generate a fake transaction ID
         setTransactionId(`tx_${Math.random().toString(36).substring(2, 15)}`);
@@ -181,9 +181,9 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <div className="flex justify-between items-center mb-1 sm:mb-2">
-                <label className="text-xs sm:text-sm text-slate-400">Amount (USDT)</label>
+                <label className="text-xs sm:text-sm text-slate-400">Amount (EUR)</label>
                 <span className="text-xs text-slate-400 text-right">
-                  Available: {usdtBalance.toFixed(2)} USDT
+                  Available: {formatEur(convertUsdToEur(usdtBalance))}
                 </span>
               </div>
               <div className="relative">
@@ -202,11 +202,11 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
                   >
                     MAX
                   </button>
-                  <span className="text-slate-400">USDT</span>
+                  <span className="text-slate-400">EUR</span>
                 </div>
               </div>
               <p className="text-xs text-slate-500 mt-0.5 sm:mt-1 ml-1">
-                Minimum withdrawal: 100 USDT
+                Minimum withdrawal: €100.00
               </p>
             </div>
 
@@ -270,13 +270,13 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
               <div className="flex justify-between items-center mb-1 sm:mb-2">
                 <span className="text-xs sm:text-sm text-slate-400">Withdrawal Fee (0.5%)</span>
                 <span className="text-xs sm:text-sm text-white">
-                  {calculateFee().toFixed(2)} USDT
+                  {formatEur(calculateFee())}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs sm:text-sm text-slate-400">Estimated EUR Payout</span>
                 <span className="text-xs sm:text-sm text-white">
-                  {formatFiat(calculateAmountToReceive())}
+                  {formatEur(calculateAmountToReceive())}
                 </span>
               </div>
             </div>
@@ -312,10 +312,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
             <div className="app-surface-muted rounded-xl p-3 sm:p-4">
               <div className="text-center mb-3 sm:mb-4">
                 <div className="text-xs sm:text-sm text-slate-400 mb-1">You are about to withdraw</div>
-                <div className="text-xl sm:text-2xl font-bold text-white">{amount} USDT</div>
-                <div className="text-xs sm:text-sm text-slate-300">
-                  ≈ {formatFiat(parseFloat(amount))}
-                </div>
+                <div className="text-xl sm:text-2xl font-bold text-white">{formatEur(parseFloat(amount))}</div>
               </div>
               
               <div className="space-y-2 sm:space-y-3">
@@ -337,12 +334,12 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Fee (0.5%)</span>
-                  <span className="text-white text-right">{calculateFee().toFixed(2)} USDT</span>
+                  <span className="text-white text-right">{formatEur(calculateFee())}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Estimated EUR Payout</span>
                   <span className="text-white font-medium text-right">
-                    {formatFiat(calculateAmountToReceive())}
+                    {formatEur(calculateAmountToReceive())}
                   </span>
                 </div>
               </div>
@@ -396,11 +393,11 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
               <div className="space-y-2 sm:space-y-3">
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Amount</span>
-                  <span className="text-white text-right">{amount} USDT</span>
+                  <span className="text-white text-right">{formatEur(parseFloat(amount))}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Estimated EUR Payout</span>
-                  <span className="text-white text-right">{formatFiat(calculateAmountToReceive())}</span>
+                  <span className="text-white text-right">{formatEur(calculateAmountToReceive())}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Bank</span>

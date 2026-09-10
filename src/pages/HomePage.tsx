@@ -603,7 +603,7 @@ const HomePage: React.FC<HomePageProps> = ({
             <div className="min-w-0">
               <div className="text-[13px] text-purple-100">Positions P&amp;L</div>
               <div className="text-lg font-bold text-white sm:text-xl" translate="no">
-                {totalPositionsPnl >= 0 ? '+' : ''}{totalPositionsPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
+                {totalPositionsPnl >= 0 ? '+' : ''}{formatFiat(totalPositionsPnl)}
               </div>
             </div>
           </div>
@@ -849,7 +849,7 @@ const HomePage: React.FC<HomePageProps> = ({
                           </div>
                         </div>
                         <div className={`text-left font-bold sm:text-right ${transaction.amount > 0 ? 'text-purple-400' : 'text-red-400'}`}>
-                          {transaction.amount > 0 ? '+' : ''}{transaction.amount.toFixed(2)} USDT
+                          {transaction.amount > 0 ? '+' : ''}{formatFiat(transaction.amount)}
                         </div>
                       </div>
                     ))
@@ -916,7 +916,7 @@ const HomePage: React.FC<HomePageProps> = ({
                       </div>
                       <div className="text-left sm:text-right">
                         <div className={`font-bold ${unrealizedPnl >= 0 ? 'text-purple-400' : 'text-red-400'}`}>
-                          {unrealizedPnl >= 0 ? '+' : ''}{unrealizedPnl.toFixed(2)} USDT
+                          {unrealizedPnl >= 0 ? '+' : ''}{formatFiat(unrealizedPnl)}
                         </div>
                         <div className="text-sm text-slate-400">
                           ${entryPrice.toFixed(2)} → ${currentPrice.toFixed(2)}
@@ -963,7 +963,7 @@ const HomePage: React.FC<HomePageProps> = ({
                       </div>
                     </div>
                     <div className={`text-left font-bold sm:text-right ${transaction.amount > 0 ? 'text-purple-400' : 'text-red-400'}`}>
-                      {transaction.amount > 0 ? '+' : ''}{transaction.amount.toFixed(2)} USDT
+                      {transaction.amount > 0 ? '+' : ''}{formatFiat(transaction.amount)}
                     </div>
                   </div>
                 ))

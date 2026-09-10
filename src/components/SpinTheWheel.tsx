@@ -3,6 +3,7 @@ import { Trophy, Coins, Gift, Info, Zap, AlertCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { useWheelSpin } from '../hooks/useWheelSpin';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface WheelSegment {
   id: number;
@@ -16,6 +17,10 @@ const SpinTheWheel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { eligibleDeposit, loading: depositLoading, error: depositError, spinWheel } = useWheelSpin(user?.id);
+  const { formatEur, formatFiat } = useFiatCurrency();
+  const formatDepositAmount = (amount: number) => eligibleDeposit?.currency === 'EUR'
+    ? formatEur(amount)
+    : formatFiat(amount);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [result, setResult] = useState<WheelSegment | null>(null);
@@ -129,10 +134,10 @@ const SpinTheWheel: React.FC = () => {
               ) : eligibleDeposit ? (
                 <>
                   <div className="text-3xl font-black text-cyan-400 mb-2">
-                    ${Number(eligibleDeposit.amount).toLocaleString()}
+                    {formatDepositAmount(Number(eligibleDeposit.amount))}
                   </div>
                   <div className="text-sm text-slate-400">
-                    {t('spinWheel.potentialWin')}: <span className="text-cyan-400 font-bold">${(Number(eligibleDeposit.amount) * 0.05).toFixed(2)} - ${Number(eligibleDeposit.amount).toLocaleString()}</span>
+                    {t('spinWheel.potentialWin')}: <span className="text-cyan-400 font-bold">{formatDepositAmount(Number(eligibleDeposit.amount) * 0.05)} - {formatDepositAmount(Number(eligibleDeposit.amount))}</span>
                   </div>
                 </>
               ) : (
@@ -352,7 +357,7 @@ const SpinTheWheel: React.FC = () => {
                   </div>
                   <span className="text-white font-bold">{prize.percent}</span>
                   <span className="text-slate-400 ml-auto">
-                    {eligibleDeposit ? `$${((Number(eligibleDeposit.amount) * parseInt(prize.percent)) / 100).toFixed(2)}` : '-'}
+                    {eligibleDeposit ? formatDepositAmount((Number(eligibleDeposit.amount) * parseInt(prize.percent)) / 100) : '-'}
                   </span>
                 </div>
               ))}

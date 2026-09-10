@@ -2,7 +2,6 @@ import { supabase } from '../lib/supabaseClient';
 
 class BackgroundProcessor {
   private intervalId: NodeJS.Timeout | null = null;
-  private manifoldIntervalId: NodeJS.Timeout | null = null;
   private newsIntervalId: NodeJS.Timeout | null = null;
   private portfolioSnapshotIntervalId: NodeJS.Timeout | null = null;
   private stakingIntervalId: NodeJS.Timeout | null = null;
@@ -33,10 +32,6 @@ class BackgroundProcessor {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-    }
-    if (this.manifoldIntervalId) {
-      clearInterval(this.manifoldIntervalId);
-      this.manifoldIntervalId = null;
     }
     if (this.newsIntervalId) {
       clearInterval(this.newsIntervalId);
@@ -287,117 +282,6 @@ class BackgroundProcessor {
     } catch (error) {
       console.warn('Error converting date:', dateValue, error);
       return null;
-    }
-  }
-
-  // Function to categorize events based on their content
-  private categorizeEvent(question: string): string {
-    const lowerQuestion = question.toLowerCase();
-    
-    // Politics keywords
-    if (lowerQuestion.includes('election') || 
-        lowerQuestion.includes('president') || 
-        lowerQuestion.includes('biden') || 
-        lowerQuestion.includes('trump') || 
-        lowerQuestion.includes('congress') || 
-        lowerQuestion.includes('senate') || 
-        lowerQuestion.includes('government') || 
-        lowerQuestion.includes('policy') || 
-        lowerQuestion.includes('vote') || 
-        lowerQuestion.includes('political') ||
-        lowerQuestion.includes('republican') ||
-        lowerQuestion.includes('democrat') ||
-        lowerQuestion.includes('supreme court')) {
-      return 'politics';
-    }
-    
-    // Sports keywords
-    if (lowerQuestion.includes('nfl') || 
-        lowerQuestion.includes('nba') || 
-        lowerQuestion.includes('mlb') || 
-        lowerQuestion.includes('nhl') || 
-        lowerQuestion.includes('soccer') || 
-        lowerQuestion.includes('football') || 
-        lowerQuestion.includes('basketball') || 
-        lowerQuestion.includes('baseball') || 
-        lowerQuestion.includes('hockey') || 
-        lowerQuestion.includes('olympics') || 
-        lowerQuestion.includes('world cup') ||
-        lowerQuestion.includes('championship') ||
-        lowerQuestion.includes('super bowl') ||
-        lowerQuestion.includes('playoffs')) {
-      return 'sports';
-    }
-    
-    // Crypto keywords
-    if (lowerQuestion.includes('bitcoin') || 
-        lowerQuestion.includes('ethereum') || 
-        lowerQuestion.includes('crypto') || 
-        lowerQuestion.includes('btc') || 
-        lowerQuestion.includes('eth') || 
-        lowerQuestion.includes('blockchain') || 
-        lowerQuestion.includes('defi') || 
-        lowerQuestion.includes('nft') || 
-        lowerQuestion.includes('dogecoin') ||
-        lowerQuestion.includes('solana') ||
-        lowerQuestion.includes('cardano') ||
-        lowerQuestion.includes('binance')) {
-      return 'crypto';
-    }
-    
-    // Economy keywords
-    if (lowerQuestion.includes('recession') || 
-        lowerQuestion.includes('inflation') || 
-        lowerQuestion.includes('federal reserve') || 
-        lowerQuestion.includes('fed') || 
-        lowerQuestion.includes('interest rate') || 
-        lowerQuestion.includes('gdp') || 
-        lowerQuestion.includes('unemployment') || 
-        lowerQuestion.includes('stock market') || 
-        lowerQuestion.includes('dow jones') || 
-        lowerQuestion.includes('s&p 500') ||
-        lowerQuestion.includes('nasdaq') ||
-        lowerQuestion.includes('economy') ||
-        lowerQuestion.includes('economic')) {
-      return 'economy';
-    }
-    
-    // Tech keywords
-    if (lowerQuestion.includes('apple') || 
-        lowerQuestion.includes('google') || 
-        lowerQuestion.includes('microsoft') || 
-        lowerQuestion.includes('tesla') || 
-        lowerQuestion.includes('amazon') || 
-        lowerQuestion.includes('meta') || 
-        lowerQuestion.includes('ai') || 
-        lowerQuestion.includes('artificial intelligence') || 
-        lowerQuestion.includes('chatgpt') || 
-        lowerQuestion.includes('openai') ||
-        lowerQuestion.includes('nvidia') ||
-        lowerQuestion.includes('technology') ||
-        lowerQuestion.includes('software') ||
-        lowerQuestion.includes('iphone') ||
-        lowerQuestion.includes('spacex')) {
-      return 'tech';
-    }
-    
-    // Default to general
-    return 'general';
-  }
-
-  // Function to sync Manifold Markets data
-  private async syncManifoldMarketsData() {
-    try {
-      console.log('🔄 Syncing Manifold Markets data...');
-      
-      // Skip the Edge Function call completely to avoid the error
-      console.log('✅ Manifold Markets sync skipped to avoid errors');
-      const result = { success: true, data: { message: 'Skipped to avoid errors' } };
-      
-      return result;
-    } catch (error) {
-      console.error('❌ Error syncing Manifold Markets data:', error);
-      return { success: false, error: error.message };
     }
   }
 

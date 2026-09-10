@@ -5,6 +5,7 @@ import { useBybitData } from '../contexts/BybitDataContext';
 import { usePrevious } from '../hooks/usePrevious';
 import { calculateSpreadCost, formatSpreadDisplay } from '../constants/spreadConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface FuturesTradingFormsProps {
   usdtBalance: number;
@@ -45,6 +46,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   onFuturesTrade
 }) => {
   const { t } = useTranslation();
+  const { convertUsdToEur, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getPriceBySymbol, isConnected: isRealtimeConnected, connectionState, getPriceDirection } = useBybitData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isLeverageLocked = minAllowedLeverage === maxAllowedLeverage;
@@ -425,7 +427,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-400">
               <span>{t('trading.availableMargin')}</span>
               <span className="flex items-center gap-2 text-emerald-400 font-mono">
-                {(availableBalance !== undefined ? availableBalance : usdtBalance).toFixed(4)} USDT
+                {formatFiat(availableBalance !== undefined ? availableBalance : usdtBalance)}
                 <div className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></div>
               </span>
             </div>
@@ -436,11 +438,11 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
             <div className="mb-3">
               <label className="flex items-center gap-2 text-sm text-slate-400 mb-1 md:mb-3">
                 {getConnectionIndicator()}
-                {t('common.price')} (USDT)
+                {t('common.price')} (EUR)
               </label>
               <input
                 type="text"
-                value={livePairPrice.toFixed(4)}
+                value={convertUsdToEur(livePairPrice).toFixed(4)}
                 className={`w-full bg-transparent px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono ${priceColorClass} ${priceFlashClass}`}
                 readOnly
               />
@@ -502,7 +504,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
                   {t('trading.stopLoss')}
                   {longStopLoss && (
                     <>
-                      <span className="ml-2 font-mono">${longStopLoss.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{formatFiatPrice(longStopLoss.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -523,7 +525,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
                   {t('trading.takeProfit')}
                   {longTakeProfit && (
                     <>
-                      <span className="ml-2 font-mono">${longTakeProfit.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{formatFiatPrice(longTakeProfit.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -540,17 +542,17 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
               <div className="space-y-2">
                 <div className="flex flex-wrap justify-between gap-2 text-sm text-slate-400">
                   <span>{t('trading.requiredMargin')}</span>
-                  <span className="text-slate-300 font-mono" translate="no">{calculateLongCost().toFixed(2)} USDT</span>
+                  <span className="text-slate-300 font-mono" translate="no">{formatFiat(calculateLongCost())}</span>
                 </div>
                 {longSpreadInfo && (
                   <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
                     <span>Spread Cost ({longSpreadInfo.percentage})</span>
-                    <span className="text-orange-400 font-mono" translate="no">{parseFloat(longSpreadInfo.cost).toFixed(4)} USDT</span>
+                    <span className="text-orange-400 font-mono" translate="no">{formatFiat(parseFloat(longSpreadInfo.cost))}</span>
                   </div>
                 )}
                 <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
                   <span>{t('trading.liquidationPrice')}</span>
-                  <span className="text-red-400 font-mono" translate="no">${calculateLiquidationPrice('long', livePairPrice, leverage, marginType).toFixed(2)}</span>
+                  <span className="text-red-400 font-mono" translate="no">{formatFiatPrice(calculateLiquidationPrice('long', livePairPrice, leverage, marginType))}</span>
                 </div>
               </div>
             </div>
@@ -570,7 +572,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-400">
               <span>{t('trading.availableMargin')}</span>
               <span className="flex items-center gap-2 text-emerald-400 font-mono">
-                {(availableBalance !== undefined ? availableBalance : usdtBalance).toFixed(4)} USDT
+                {formatFiat(availableBalance !== undefined ? availableBalance : usdtBalance)}
                 <div className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></div>
               </span>
             </div>
@@ -581,12 +583,12 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
             <div className="mb-3">
               <label className="flex items-center gap-2 text-sm text-slate-400 mb-1 md:mb-3">
                 {getConnectionIndicator()}
-                {t('common.price')} (USDT)
+                {t('common.price')} (EUR)
               </label>
               <input
                 id="short-price-input"
                 type="text"
-                value={livePairPrice.toFixed(4)}
+                value={convertUsdToEur(livePairPrice).toFixed(4)}
                 className={`w-full bg-transparent px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono ${priceColorClass} ${priceFlashClass}`}
                 readOnly
               />
@@ -648,7 +650,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
                   {t('trading.stopLoss')}
                   {shortStopLoss && (
                     <>
-                      <span className="ml-2 font-mono">${shortStopLoss.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{formatFiatPrice(shortStopLoss.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -669,7 +671,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
                   {t('trading.takeProfit')}
                   {shortTakeProfit && (
                     <>
-                      <span className="ml-2 font-mono">${shortTakeProfit.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{formatFiatPrice(shortTakeProfit.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -686,17 +688,17 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
               <div className="space-y-2">
                 <div className="flex flex-wrap justify-between gap-2 text-sm text-slate-400">
                   <span>{t('trading.requiredMargin')}</span>
-                  <span className="text-slate-300 font-mono" translate="no">{calculateShortCost().toFixed(2)} USDT</span>
+                  <span className="text-slate-300 font-mono" translate="no">{formatFiat(calculateShortCost())}</span>
                 </div>
                 {shortSpreadInfo && (
                   <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
                     <span>Spread Cost ({shortSpreadInfo.percentage})</span>
-                    <span className="text-orange-400 font-mono" translate="no">{parseFloat(shortSpreadInfo.cost).toFixed(4)} USDT</span>
+                    <span className="text-orange-400 font-mono" translate="no">{formatFiat(parseFloat(shortSpreadInfo.cost))}</span>
                   </div>
                 )}
                 <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
                   <span>{t('trading.liquidationPrice')}</span>
-                  <span className="text-red-400 font-mono" translate="no">${calculateLiquidationPrice('short', livePairPrice, leverage, marginType).toFixed(2)}</span>
+                  <span className="text-red-400 font-mono" translate="no">{formatFiatPrice(calculateLiquidationPrice('short', livePairPrice, leverage, marginType))}</span>
                 </div>
               </div>
             </div>

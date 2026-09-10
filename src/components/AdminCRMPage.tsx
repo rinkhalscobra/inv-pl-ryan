@@ -22,7 +22,6 @@ import {
   Save,
   Search,
   ShieldCheck,
-  Sparkles,
   Trash2,
   TrendingUp,
   UserCog,
@@ -31,9 +30,10 @@ import {
   XCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 type JsonRow = Record<string, unknown>;
-type CRMTab = 'dashboard' | 'profile' | 'wallet' | 'swap' | 'futures' | 'cfd' | 'prop' | 'robot' | 'events' | 'staking' | 'wheel' | 'deposits' | 'referrals' | 'support' | 'notifications' | 'audit';
+type CRMTab = 'dashboard' | 'profile' | 'wallet' | 'swap' | 'futures' | 'cfd' | 'prop' | 'robot' | 'staking' | 'wheel' | 'deposits' | 'referrals' | 'support' | 'notifications' | 'audit';
 
 interface AdminUser extends JsonRow {
   id: string;
@@ -74,7 +74,6 @@ interface UserWorkspace {
   spot_orders: JsonRow[];
   binary_trades: JsonRow[];
   stakes: JsonRow[];
-  event_bets: JsonRow[];
   prop_positions: JsonRow[];
   prop_orders: JsonRow[];
   prop_history: JsonRow[];
@@ -206,6 +205,7 @@ const RecordSection: React.FC<{
 
 const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const navigate = useNavigate();
+  const { convertEurToUsd, convertUsdToEur, formatFiat } = useFiatCurrency();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState<CRMStats>(emptyStats);
   const [search, setSearch] = useState('');
@@ -286,7 +286,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       referral_code: asText(profile.referral_code),
       referred_by: asText(profile.referred_by),
       referral_count: asText(profile.referral_count || 0),
-      total_referral_earnings: asText(profile.total_referral_earnings || 0),
+      total_referral_earnings: convertUsdToEur(asNumber(profile.total_referral_earnings)).toFixed(2),
       referral_commission_rate: asText(profile.referral_commission_rate || 0.01),
       two_factor_required: Boolean(profile.two_factor_required),
       min_leverage_forex: asText(profile.min_leverage_forex),
@@ -298,20 +298,20 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       min_leverage_futures: asText(profile.min_leverage_futures),
       max_leverage_futures: asText(profile.max_leverage_futures)
     });
-    setBalanceForm({ usdt: asText(balance.usdt_balance || 0), btc: asText(balance.btc_balance || 0) });
+    setBalanceForm({ usdt: convertUsdToEur(asNumber(balance.usdt_balance)).toFixed(2), btc: asText(balance.btc_balance || 0) });
     setRobotForm({
       is_active: Boolean(robot.is_active),
       strategy: asText(robot.strategy || 'triangular'),
-      allocated_balance: asText(robot.allocated_balance || 0),
-      todays_profit: asText(robot.todays_profit || 0),
+      allocated_balance: convertUsdToEur(asNumber(robot.allocated_balance)).toFixed(2),
+      todays_profit: convertUsdToEur(asNumber(robot.todays_profit)).toFixed(2),
       custom_daily_profit_percentage: asText(robot.custom_daily_profit_percentage),
       min_profit_threshold: asText(robot.min_profit_threshold || 0.5),
-      max_trade_amount: asText(robot.max_trade_amount || 1000)
+      max_trade_amount: convertUsdToEur(asNumber(robot.max_trade_amount || 1000)).toFixed(2)
     });
     setSupportConversationId(current => current && (next.conversations || []).some(item => asText(item.id) === current)
       ? current
       : asText(next.conversations?.[0]?.id));
-  }, []);
+  }, [convertUsdToEur]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadUsers(search), 250);
@@ -350,9 +350,13 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   };
 
   const saveProfile = () => runMutation('profile', async () => {
+    const changes = {
+      ...profileForm,
+      total_referral_earnings: convertEurToUsd(Number(profileForm.total_referral_earnings || 0))
+    };
     const { error } = await supabase.rpc('admin_update_user_profile', {
       p_target_user_id: selectedUserId,
-      p_changes: profileForm,
+      p_changes: changes,
       p_reason: reason
     });
     return { error };
@@ -361,7 +365,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const saveBalances = () => runMutation('balances', async () => {
     const { error } = await supabase.rpc('admin_set_user_balances', {
       p_target_user_id: selectedUserId,
-      p_usdt_balance: Number(balanceForm.usdt),
+      p_usdt_balance: convertEurToUsd(Number(balanceForm.usdt)),
       p_btc_balance: Number(balanceForm.btc),
       p_reason: reason
     });
@@ -371,6 +375,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const saveRobot = () => runMutation('robot', async () => {
     const changes = {
       ...robotForm,
+      allocated_balance: convertEurToUsd(Number(robotForm.allocated_balance || 0)),
+      todays_profit: convertEurToUsd(Number(robotForm.todays_profit || 0)),
+      max_trade_amount: convertEurToUsd(Number(robotForm.max_trade_amount || 0)),
       custom_daily_profit_percentage: robotForm.custom_daily_profit_percentage === ''
         ? null
         : Number(robotForm.custom_daily_profit_percentage)
@@ -396,7 +403,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const creditProfit = () => runMutation('profit', async () => {
     const { error } = await supabase.rpc('admin_credit_robot_profit', {
       p_target_user_id: selectedUserId,
-      p_amount: Number(manualProfit),
+      p_amount: convertEurToUsd(Number(manualProfit)),
       p_reason: reason
     });
     return { error };
@@ -602,7 +609,6 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     { key: 'cfd', label: 'CFD', icon: Activity },
     { key: 'prop', label: 'Prop', icon: Briefcase },
     { key: 'robot', label: 'Robot', icon: Bot },
-    { key: 'events', label: 'Events', icon: Sparkles },
     { key: 'staking', label: 'Staking', icon: Landmark },
     { key: 'wheel', label: 'Spin Wheel', icon: Gift },
     { key: 'deposits', label: 'Deposits', icon: CreditCard },
@@ -652,8 +658,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             ['Customers', stats.total_users, Users],
             ['Pending KYC', stats.pending_kyc, FileText],
             ['Active robots', stats.active_robots, Bot],
-            ['Available USDT', `$${money(stats.total_usdt)}`, Coins],
-            ['Robot allocation', `$${money(stats.total_robot_allocated)}`, Wallet]
+            ['Available EUR', formatFiat(stats.total_usdt), Coins],
+            ['Robot allocation', formatFiat(stats.total_robot_allocated), Wallet]
           ].map(([label, value, Icon]) => {
             const StatIcon = Icon as React.ElementType;
             return (
@@ -695,7 +701,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   </div>
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <span className={user.robot_active ? 'text-emerald-400' : 'text-slate-500'}>{user.robot_active ? 'Robot active' : user.kyc_status?.replaceAll('_', ' ')}</span>
-                    <span className="font-mono text-slate-300">${money(user.usdt_balance)}</span>
+                    <span className="font-mono text-slate-300">{formatFiat(asNumber(user.usdt_balance))}</span>
                   </div>
                 </button>
               ))}
@@ -719,8 +725,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       <p className="mt-1 truncate text-sm text-slate-400">{profile.email} · {profile.id}</p>
                     </div>
                     <div className="grid grid-cols-3 gap-4 text-right text-sm">
-                      <div><div className="text-xs text-slate-500">USDT</div><div className="font-semibold text-white">${money(workspace.balance.usdt_balance)}</div></div>
-                      <div><div className="text-xs text-slate-500">Robot</div><div className="font-semibold text-white">${money(workspace.robot.allocated_balance)}</div></div>
+                      <div><div className="text-xs text-slate-500">EUR</div><div className="font-semibold text-white">{formatFiat(asNumber(workspace.balance.usdt_balance))}</div></div>
+                      <div><div className="text-xs text-slate-500">Robot</div><div className="font-semibold text-white">{formatFiat(asNumber(workspace.robot.allocated_balance))}</div></div>
                       <div><div className="text-xs text-slate-500">KYC</div><div className="font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
                     </div>
                   </div>
@@ -803,7 +809,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                     </section>
                     <section className="rounded-2xl border border-red-500/35 bg-red-500/[0.07] p-5 shadow-xl shadow-black/10">
                       <h3 className="font-semibold text-red-200">Delete customer permanently</h3>
-                      <p className="mb-4 mt-1 text-xs text-red-200/60">Deletes the Supabase Auth identity and cascades cleanup across this customer's wallet, robot, orders, positions, deposits, staking, events, referrals, messages and profile.</p>
+                      <p className="mb-4 mt-1 text-xs text-red-200/60">Deletes the Supabase Auth identity and cascades cleanup across this customer's wallet, robot, orders, positions, deposits, staking, referrals, messages and profile.</p>
                       {profile.id === currentAdminId ? (
                         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-200">Your current administrator account cannot delete itself.</div>
                       ) : (
@@ -821,7 +827,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                     <section className={`${panelClass} p-5`}>
                       <h3 className="mb-4 font-semibold text-white">Primary balances</h3>
                       <div className="grid gap-4 md:grid-cols-2">
-                        <label className="text-xs text-slate-400">USDT balance<input type="number" min="0" step="0.01" value={balanceForm.usdt} onChange={event => setBalanceForm(current => ({ ...current, usdt: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
+                        <label className="text-xs text-slate-400">EUR balance<input type="number" min="0" step="0.01" value={balanceForm.usdt} onChange={event => setBalanceForm(current => ({ ...current, usdt: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         <label className="text-xs text-slate-400">BTC balance<input type="number" min="0" step="0.00000001" value={balanceForm.btc} onChange={event => setBalanceForm(current => ({ ...current, btc: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                       </div>
                       <button onClick={saveBalances} disabled={saving !== null || !reason.trim()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-500 px-4 py-3 font-semibold text-white disabled:opacity-50">{saving === 'balances' ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}Save wallet balances</button>
@@ -893,24 +899,22 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       <div className="mb-4 flex items-center justify-between"><h3 className="font-semibold text-white">Robot configuration</h3><label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(robotForm.is_active)} onChange={event => setRobotForm(current => ({ ...current, is_active: event.target.checked }))} />Active</label></div>
                       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                         <label className="text-xs text-slate-400">CRM daily profit %<input type="number" min="0" step="0.01" value={String(robotForm.custom_daily_profit_percentage ?? '')} placeholder="Blank = tier rate" onChange={event => setRobotForm(current => ({ ...current, custom_daily_profit_percentage: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
-                        <label className="text-xs text-slate-400">Allocated USDT<input type="number" min="0" step="0.01" value={String(robotForm.allocated_balance)} onChange={event => setRobotForm(current => ({ ...current, allocated_balance: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
-                        <label className="text-xs text-slate-400">Today's profit<input type="number" min="0" step="0.01" value={String(robotForm.todays_profit)} onChange={event => setRobotForm(current => ({ ...current, todays_profit: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
+                        <label className="text-xs text-slate-400">Allocated EUR<input type="number" min="0" step="0.01" value={String(robotForm.allocated_balance)} onChange={event => setRobotForm(current => ({ ...current, allocated_balance: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
+                        <label className="text-xs text-slate-400">Today's profit (EUR)<input type="number" min="0" step="0.01" value={String(robotForm.todays_profit)} onChange={event => setRobotForm(current => ({ ...current, todays_profit: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         <label className="text-xs text-slate-400">Strategy<select value={String(robotForm.strategy)} onChange={event => setRobotForm(current => ({ ...current, strategy: event.target.value }))} className={`${fieldClass} mt-1.5`}><option value="triangular">Triangular</option><option value="spatial">Spatial</option><option value="statistical">Statistical</option><option value="latency">Latency</option></select></label>
                         <label className="text-xs text-slate-400">Minimum profit threshold %<input type="number" min="0" step="0.01" value={String(robotForm.min_profit_threshold)} onChange={event => setRobotForm(current => ({ ...current, min_profit_threshold: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
-                        <label className="text-xs text-slate-400">Maximum trade amount<input type="number" min="0" step="1" value={String(robotForm.max_trade_amount)} onChange={event => setRobotForm(current => ({ ...current, max_trade_amount: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
+                        <label className="text-xs text-slate-400">Maximum trade amount (EUR)<input type="number" min="0" step="1" value={String(robotForm.max_trade_amount)} onChange={event => setRobotForm(current => ({ ...current, max_trade_amount: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                       </div>
                       <button onClick={saveRobot} disabled={saving !== null} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 font-semibold text-white disabled:opacity-50">{saving === 'robot' ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}Save robot settings</button>
                     </section>
                     <section className={`${panelClass} p-5`}>
                       <h3 className="font-semibold text-white">Manual profit credit</h3><p className="mb-4 mt-1 text-xs text-slate-400">Adds an exact profit amount immediately. It counts as today's automated credit and is logged.</p>
-                      <div className="grid gap-3 md:grid-cols-[1fr_auto]"><input type="number" min="0" step="0.01" value={manualProfit} onChange={event => setManualProfit(event.target.value)} placeholder="Profit amount in USDT" className={fieldClass} /><button onClick={creditProfit} disabled={saving !== null || Number(manualProfit) <= 0 || !reason.trim()} className="rounded-xl bg-emerald-600 px-6 py-2.5 font-semibold text-white disabled:opacity-50">Credit profit</button></div>
+                      <div className="grid gap-3 md:grid-cols-[1fr_auto]"><input type="number" min="0" step="0.01" value={manualProfit} onChange={event => setManualProfit(event.target.value)} placeholder="Profit amount in EUR" className={fieldClass} /><button onClick={creditProfit} disabled={saving !== null || Number(manualProfit) <= 0 || !reason.trim()} className="rounded-xl bg-emerald-600 px-6 py-2.5 font-semibold text-white disabled:opacity-50">Credit profit</button></div>
                     </section>
                     {managedSection('Robot profit history', 'transactions', workspace.transactions.filter(item => item.type === 'robot_profit'))}
                     {managedSection('Robot trading logs', 'trading_logs', workspace.trading_logs)}
                   </div>
                 )}
-
-                {tab === 'events' && <div className="space-y-5">{managedSection('Event market bets', 'event_bets', workspace.event_bets)}{managedSection('Binary event trades', 'binary_trades', workspace.binary_trades)}</div>}
 
                 {tab === 'staking' && <div className="space-y-5">{managedSection('Staking positions and earnings', 'user_stakes', workspace.stakes)}</div>}
 

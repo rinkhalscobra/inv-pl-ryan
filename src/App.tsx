@@ -12,7 +12,6 @@ import TradingChart from './components/TradingChart';
 import Markets from './components/Markets';
 import SpotMyOrders from './components/SpotMyOrders';
 import ArbitrageRobotPage from './components/ArbitrageRobotPage';
-import EventBettingPage from './components/EventBettingPage';
 import CryptoWithdrawalModal from './components/CryptoWithdrawalModal';
 import PropFirmChallengePage from './components/PropFirmChallengePage';
 import WalletPage from './components/WalletPage';
@@ -46,7 +45,7 @@ import SpinTheWheel from './components/SpinTheWheel';
 import PaymentSandbox from './components/PaymentSandbox';
 import AdminCRMPage from './components/AdminCRMPage';
 
-export type TradingMode = 'home' | 'swap' | 'futures' | 'cfd' | 'prop_firm' | 'robot' | 'events' | 'wallet' | 'profile' | 'staking' | 'wheel' | 'payment_sandbox';
+export type TradingMode = 'home' | 'swap' | 'futures' | 'cfd' | 'prop_firm' | 'robot' | 'wallet' | 'profile' | 'staking' | 'wheel' | 'payment_sandbox';
 
 export interface FuturesPosition {
   id: string;
@@ -76,9 +75,6 @@ export interface Transaction {
   created_at?: string;
 }
 
-// User status tiers based on portfolio value in USD
-export type UserStatus = 'No-Coiner' | 'Shrimp' | 'Crab' | 'Octopus' | 'Dolphin' | 'Shark' | 'Whale' | 'Humpback';
-
 function AppContent() {
   const { user, loading: authLoading, signOut } = useAuth();
   const { marketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
@@ -95,10 +91,6 @@ function AppContent() {
     fetchTransactions,
     userStakes,
     addUserStake,
-    eventOutcomes,
-    eventBets,
-    events,
-    addEventBet,
     newsItems,
     portfolioSnapshots,
     createPortfolioSnapshot,
@@ -359,21 +351,6 @@ const handleUpdatePassword = async (newPassword: string) => {
 
   return total;
 }, [balances, assets, getCurrentPrice, robotState?.allocated_balance]);
-
-  // Function to determine user status based on portfolio value in USD
-  const getUserStatus = useCallback((portfolioValue: number): UserStatus => {
-    if (portfolioValue < 250) return 'No-Coiner';
-    if (portfolioValue < 10000) return 'Shrimp';
-    if (portfolioValue < 25000) return 'Crab';
-    if (portfolioValue < 50000) return 'Octopus';
-    if (portfolioValue < 100000) return 'Dolphin';
-    if (portfolioValue < 500000) return 'Shark';
-    if (portfolioValue < 2000000) return 'Whale';
-    return 'Humpback';
-  }, []);
-
-  // Get user status
-  const userStatus = getUserStatus(totalPortfolioValue);
 
   // Calculate user's CFD tier based on portfolio value
   const userCfdTier = useMemo(() => {
@@ -955,7 +932,6 @@ const handleUpdatePassword = async (newPassword: string) => {
                     user={user}
                     signOut={signOut}
                     marketDataList={marketData}
-                    userStatus={userStatus}
                     isAdmin={isAdmin}
                   />
                   
@@ -1199,19 +1175,6 @@ const handleUpdatePassword = async (newPassword: string) => {
                       />
                     )}
                     
-                    {tradingMode === 'events' && (
-                      <EventBettingPage 
-                        events={events}
-                        eventOutcomes={eventOutcomes}
-                        eventBets={eventBets}
-                        usdtBalance={balances.usdt_balance}
-                        updateBalances={updateBalances}
-                        addEventBet={addEventBet}
-                        addTransaction={addTransaction}
-                        availableBalance={actualAvailableBalance}
-                      />
-                    )}
-                    
                     {tradingMode === 'wallet' && (
                       <WalletPage 
                         usdtBalance={balances.usdt_balance}
@@ -1243,7 +1206,6 @@ const handleUpdatePassword = async (newPassword: string) => {
                         createPortfolioSnapshot={createPortfolioSnapshot}
                         totalPortfolioValue={totalPortfolioValue}
                         totalPositionsPnl={unrealizedPnl}
-                        userStatus={userStatus}
                         onUpdatePassword={handleUpdatePassword}
                       />
                     )}

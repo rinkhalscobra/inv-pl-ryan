@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Package, X, AlertCircle, Clock, CheckCircle, TrendingUp, TrendingDown, Loader2, ChevronLeft, ChevronRight, DollarSign, Edit2 } from 'lucide-react';
+import { Package, X, AlertCircle, Clock, CheckCircle, TrendingUp, TrendingDown, Loader2, ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
 import { useFuturesTrading, PositionHistoryEntry } from '../hooks/useFuturesTrading';
 import { DatabaseFuturesPosition } from '../hooks/useDatabase';
 import { PropPositionHistoryEntry } from '../hooks/usePropFirmTrading';
@@ -10,8 +10,8 @@ import { TradingMode } from '../App';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { calculateDailySwapCost, getSwapConfigForSymbol } from '../constants/swapConfig';
-import { formatSwapCostDisplay } from '../utils/swapCalculations';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface FuturesMyOrdersProps {
   currentBtcPrice: number;
@@ -154,6 +154,7 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
   currentSelectedPairPrice
 }) => {
   const { t } = useTranslation();
+  const { formatFiat, formatFiatNumber, formatTradingPair } = useFiatCurrency();
   const { loadPositionHistory, positionHistory, loading, error } = useFuturesTrading();
   const { marketData, isConnected: cfdConnected, getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, isConnected: cryptoConnected, connectionState: cryptoConnectionState, getPriceDirection } = useBybitData();
@@ -315,6 +316,14 @@ const getPricePrecision = useCallback((symbol: string): number => {
     // Default fallback
     return 'other';
   }, [tradingMode]);
+
+  const formatDisplaySymbol = (symbol: string) => formatTradingPair(symbol);
+  const formatDisplayPrice = (symbol: string, price: number) => {
+    const precision = getPricePrecision(symbol);
+    return getInstrumentType(symbol) === 'forex'
+      ? price.toFixed(precision)
+      : `€${formatFiatNumber(price, precision)}`;
+  };
 
 
   // Filter positions based on selectedPair and tradingMode
@@ -734,7 +743,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
             <div className={`rounded-xl border border-slate-700/40 p-4 md:p-5 ${cardSurfaceClass}`}>
               <div className="mb-2 text-xs text-slate-400">{t('futures.overallBalance')}</div>
               <div className="break-words font-mono text-lg leading-tight text-white md:text-2xl">
-                ${totalMargin.toFixed(2)} USD
+                {formatFiat(totalMargin)}
               </div>
             </div>
 
@@ -742,13 +751,13 @@ const getPricePrecision = useCallback((symbol: string): number => {
               <div className={`rounded-xl border border-slate-700/40 p-3 md:p-4 ${cardSurfaceClass}`}>
                 <div className="mb-1 text-xs text-slate-400">{t('futures.available')}</div>
                 <div className="break-words font-mono text-sm leading-tight text-white md:text-base">
-                  {balances?.usdt_balance?.toFixed(2) || '0'} USDT
+                  {formatFiat(balances?.usdt_balance || 0)}
                 </div>
               </div>
               <div className={`rounded-xl border border-slate-700/40 p-3 md:p-4 ${cardSurfaceClass}`}>
                 <div className="mb-1 text-xs text-slate-400">{t('futures.unrealized')}</div>
                 <div className={`break-words font-mono text-sm leading-tight md:text-base ${totalUnrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {totalUnrealizedPnl.toFixed(2)}
+                  {formatFiat(totalUnrealizedPnl)}
                 </div>
               </div>
               <div className={`rounded-xl border border-slate-700/40 p-3 md:p-4 ${cardSurfaceClass}`}>
@@ -841,7 +850,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
                       return (
                         <tr key={position.id}>
-                          <td className={`${desktopCellClass} font-medium text-white`}>{position.symbol}</td>
+                          <td className={`${desktopCellClass} font-medium text-white`}>{formatDisplaySymbol(position.symbol)}</td>
                           <td className={`${desktopCellClass} text-right font-mono ${position.side === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
                             {(position.amount || 0).toFixed(4)}
                           </td>
@@ -853,7 +862,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                             </span>
                           </td>
                           <td className={`${desktopCellClass} text-right font-mono`}>
-                            {(position.entryPrice || 0).toFixed(getPricePrecision(position.symbol))}
+                            {formatDisplayPrice(position.symbol, position.entryPrice || 0)}
                           </td>
                           <td className={`${desktopCellClass} text-right`}>
                             <div className="flex items-center justify-end gap-2">
@@ -873,19 +882,19 @@ const getPricePrecision = useCallback((symbol: string): number => {
                                   ? 'text-emerald-300'
                                   : 'text-slate-300'
                               }`}>
-                                {(position.currentPrice || 0).toFixed(getPricePrecision(position.symbol))}
+                                {formatDisplayPrice(position.symbol, position.currentPrice || 0)}
                               </span>
                             </div>
                           </td>
                           <td className={`${desktopCellClass} text-right font-mono text-red-400`}>
-                            {(position.liquidationPrice || 0).toFixed(getPricePrecision(position.symbol))}
+                            {formatDisplayPrice(position.symbol, position.liquidationPrice || 0)}
                           </td>
                           <td className={`${desktopCellClass} text-right font-mono`}>
-                            {(position.margin || 0).toFixed(2)}
+                            {formatFiat(position.margin || 0)}
                           </td>
                           <td className={`${desktopCellClass} text-right`}>
                             <span className="font-mono text-orange-400">
-                              {formatSwapCostDisplay(position.accumulatedSwapCost || 0)}
+                              {formatFiat(position.accumulatedSwapCost || 0)}
                             </span>
                           </td>
                           <td className={desktopCellClass}>
@@ -896,7 +905,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                                   className="flex items-center gap-1 text-left text-emerald-400 transition-colors hover:text-emerald-300"
                                 >
                                   <span className="font-mono text-xs">
-                                    TP: {position.takeProfit.toFixed(getPricePrecision(position.symbol))}
+                                    TP: {formatDisplayPrice(position.symbol, position.takeProfit)}
                                   </span>
                                   <Edit2 size={12} />
                                 </button>
@@ -914,7 +923,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                                   className="flex items-center gap-1 text-left text-red-400 transition-colors hover:text-red-300"
                                 >
                                   <span className="font-mono text-xs">
-                                    SL: {position.stopLoss.toFixed(getPricePrecision(position.symbol))}
+                                    SL: {formatDisplayPrice(position.symbol, position.stopLoss)}
                                   </span>
                                   <Edit2 size={12} />
                                 </button>
@@ -930,7 +939,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                           </td>
                           <td className={`${desktopCellClass} text-right`}>
                             <div className={`font-mono ${(position.unrealizedPnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {(position.unrealizedPnl || 0).toFixed(2)}
+                              {formatFiat(position.unrealizedPnl || 0)}
                             </div>
                             <div className={`text-xs ${(position.roi || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {(position.roi || 0).toFixed(2)}%
@@ -960,7 +969,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                 {positionsWithLiveData.map((position) => (
                   <div key={position.id} className={mobileRowSurfaceClass}>
                     <div className="mb-2 w-1/2 sm:w-1/2 xl:mb-0 xl:w-auto">
-                      <span className="text-white font-medium text-sm md:text-base">{position.symbol}</span>
+                       <span className="text-white font-medium text-sm md:text-base">{formatDisplaySymbol(position.symbol)}</span>
                     </div>
                     <div className="mb-2 w-1/2 text-right sm:w-1/2 xl:mb-0 xl:w-auto xl:text-left">
                       <span className={`font-mono text-sm md:text-base ${position.side === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -976,7 +985,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                     </div>
                     <div className="mb-2 w-1/2 text-right sm:w-1/2 xl:mb-0 xl:w-auto xl:text-left">
                       <div className="text-xs text-slate-400 xl:hidden">{t('futures.entryPrice')}</div>
-                      <span className="text-slate-300 font-mono text-sm md:text-base">{(position.entryPrice || 0).toFixed(getPricePrecision(position.symbol))}</span>
+                       <span className="text-slate-300 font-mono text-sm md:text-base">{formatDisplayPrice(position.symbol, position.entryPrice || 0)}</span>
                     </div>
                     <div className="mb-2 w-1/2 sm:w-1/2 xl:mb-0 xl:w-auto">
                       <div className="text-xs text-slate-400 xl:hidden">{t('futures.currentPrice')}</div>
@@ -997,14 +1006,14 @@ const getPricePrecision = useCallback((symbol: string): number => {
                             ? 'text-emerald-300'
                             : 'text-slate-300'
                         }`}>
-                          {(position.currentPrice || 0).toFixed(getPricePrecision(position.symbol))}
+                          {formatDisplayPrice(position.symbol, position.currentPrice || 0)}
                         </span>
                       </div>
                     </div>
                     <div className="mb-2 w-1/2 sm:w-1/2 xl:hidden">
                       <div className="text-xs text-slate-400">{t('futures.pnl')}</div>
                       <div className={`font-mono text-sm md:text-base ${(position.unrealizedPnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {(position.unrealizedPnl || 0).toFixed(2)}
+                        {formatFiat(position.unrealizedPnl || 0)}
                       </div>
                     </div>
                     <div className="mb-2 w-1/2 text-right sm:w-1/2 xl:mb-0 xl:w-auto">
@@ -1068,7 +1077,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                             minute: '2-digit'
                           })}
                         </td>
-                        <td className={`${desktopCellClass} font-medium text-white`}>{order.symbol}</td>
+                         <td className={`${desktopCellClass} font-medium text-white`}>{formatDisplaySymbol(order.symbol)}</td>
                         <td className={`${desktopCellClass} capitalize`}>{order.type}</td>
                         <td className={desktopCellClass}>
                           <span className={`inline-flex rounded-lg px-2.5 py-1 text-xs font-bold ${
@@ -1078,7 +1087,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                           </span>
                         </td>
                         <td className={`${desktopCellClass} text-right font-mono`}>
-                          {order.price?.toFixed(getPricePrecision(order.symbol)) || 'Market'}
+                          {order.price ? formatDisplayPrice(order.symbol, order.price) : 'Market'}
                         </td>
                         <td className={`${desktopCellClass} text-right font-mono`}>
                           {(order.amount || 0).toFixed(4)}
@@ -1122,7 +1131,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                     </div>
                     
                     <div className="mb-2 w-1/2 sm:w-1/2 xl:mb-0 xl:w-auto">
-                      <span className="text-white font-medium text-sm md:text-base">{order.symbol}</span>
+                       <span className="text-white font-medium text-sm md:text-base">{formatDisplaySymbol(order.symbol)}</span>
                     </div>
                     
                     <div className="mb-2 w-1/2 text-right sm:w-1/2 xl:mb-0 xl:w-auto xl:text-left">
@@ -1140,7 +1149,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                     
                     <div className="mb-2 w-1/3 xl:mb-0 xl:w-auto">
                       <div className="text-xs text-slate-400 xl:hidden">{t('futures.price')}</div>
-                      <span className="text-slate-300 font-mono text-xs md:text-sm">{order.price?.toFixed(getPricePrecision(order.symbol)) || 'Market'}</span>
+                       <span className="text-slate-300 font-mono text-xs md:text-sm">{order.price ? formatDisplayPrice(order.symbol, order.price) : 'Market'}</span>
                     </div>
                     
                     <div className="mb-2 w-1/3 xl:mb-0 xl:w-auto">
@@ -1212,7 +1221,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                               })
                             : 'N/A'}
                         </td>
-                        <td className={`${desktopCellClass} font-medium text-white`}>{position.symbol}</td>
+                         <td className={`${desktopCellClass} font-medium text-white`}>{formatDisplaySymbol(position.symbol)}</td>
                         <td className={desktopCellClass}>
                           <span className={`inline-flex rounded-lg px-2.5 py-1 text-xs font-bold ${
                             position.side === 'long'
@@ -1223,10 +1232,10 @@ const getPricePrecision = useCallback((symbol: string): number => {
                           </span>
                         </td>
                         <td className={`${desktopCellClass} text-right font-mono`}>
-                          {position.entryPrice.toFixed(getPricePrecision(position.symbol))}
+                          {formatDisplayPrice(position.symbol, position.entryPrice)}
                         </td>
                         <td className={`${desktopCellClass} text-right font-mono`}>
-                          {position.exitPrice.toFixed(getPricePrecision(position.symbol))}
+                          {formatDisplayPrice(position.symbol, position.exitPrice)}
                         </td>
                         <td className={`${desktopCellClass} text-right font-mono`}>
                           {position.amount.toFixed(4)}
@@ -1236,7 +1245,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                         </td>
                         <td className={`${desktopCellClass} text-right`}>
                           <div className="font-mono text-xs text-orange-400">
-                            {formatSwapCostDisplay(position.accumulatedSwapCost || 0)}
+                            {formatFiat(position.accumulatedSwapCost || 0)}
                           </div>
                           {position.totalSwapDays && position.totalSwapDays > 0 && (
                             <div className="text-xs text-slate-500">
@@ -1254,7 +1263,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                             <span className={`font-mono ${
                               position.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'
                             }`}>
-                              {position.pnl.toFixed(2)}
+                              {formatFiat(position.pnl)}
                             </span>
                           </div>
                         </td>
@@ -1291,7 +1300,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
                     <div className="mb-2 w-1/2 sm:w-1/2 xl:mb-0 xl:w-auto">
                       <span className="text-white font-medium text-sm md:text-base">
-                        {position.symbol}
+                         {formatDisplaySymbol(position.symbol)}
                       </span>
                     </div>
 
@@ -1309,12 +1318,12 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
                     <div className="mb-2 w-1/3 xl:mb-0 xl:w-auto">
                       <span className="text-slate-300 font-mono text-xs md:text-sm">
-                        {position.entryPrice.toFixed(getPricePrecision(position.symbol))}
+                        {formatDisplayPrice(position.symbol, position.entryPrice)}
                       </span>
                     </div>
                     <div className="mb-2 w-1/3 xl:mb-0 xl:w-auto">
                       <span className="text-slate-300 font-mono text-xs md:text-sm">
-                        {position.exitPrice.toFixed(getPricePrecision(position.symbol))}
+                        {formatDisplayPrice(position.symbol, position.exitPrice)}
                       </span>
                     </div>
 
@@ -1344,7 +1353,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
                             position.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'
                           }`}
                         >
-                          {position.pnl.toFixed(2)}
+                          {formatFiat(position.pnl)}
                         </span>
                       </div>
                     </div>
@@ -1401,6 +1410,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
           amount={editTPSLModal.position.amount / getLotSize(editTPSLModal.position.symbol)}
           leverage={editTPSLModal.position.leverage}
           lotSize={getLotSize(editTPSLModal.position.symbol)}
+          priceIsUsd={getInstrumentType(editTPSLModal.position.symbol) !== 'forex'}
           variant="horizontal"
           onConfirm={(price) => {
             handleUpdateTPSL(editTPSLModal.position.id, editTPSLModal.type, price);

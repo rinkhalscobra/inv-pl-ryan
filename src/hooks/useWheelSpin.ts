@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabaseClient';
 interface EligibleDeposit {
   id: string;
   amount: number;
+  currency?: string;
+  exchange_rate?: number;
   created_at: string;
 }
 
@@ -32,7 +34,7 @@ export const useWheelSpin = (userId: string | undefined): WheelSpinResult => {
 
       const { data, error: fetchError } = await supabase
         .from('transactions')
-        .select('id, amount, created_at')
+        .select('id, amount, currency, exchange_rate, created_at')
         .eq('user_id', userId)
         .eq('type', 'deposit')
         .eq('status', 'completed')
@@ -59,6 +61,9 @@ export const useWheelSpin = (userId: string | undefined): WheelSpinResult => {
 
     try {
       const winningAmount = Number((eligibleDeposit.amount * percentage) / 100);
+      const winningLedgerAmount = eligibleDeposit.currency === 'EUR'
+        ? winningAmount * Number(eligibleDeposit.exchange_rate || 1.1)
+        : winningAmount;
 
       console.log('Processing wheel spin:', { userId, percentage, winningAmount, depositId: eligibleDeposit.id });
 
@@ -67,7 +72,7 @@ export const useWheelSpin = (userId: string | undefined): WheelSpinResult => {
         .update({
           wheel_spun: true,
           wheel_winning_percentage: percentage,
-          wheel_winning_amount: winningAmount,
+          wheel_winning_amount: winningLedgerAmount,
         })
         .eq('id', eligibleDeposit.id)
         .select();
@@ -82,7 +87,7 @@ export const useWheelSpin = (userId: string | undefined): WheelSpinResult => {
       if (percentage > 0) {
         const { data: balanceData, error: balanceError } = await supabase.rpc('update_user_balance', {
           p_user_id: userId,
-          p_amount: winningAmount,
+          p_amount: winningLedgerAmount,
           p_operation: 'add',
         });
 
@@ -96,8 +101,8 @@ export const useWheelSpin = (userId: string | undefined): WheelSpinResult => {
         const { data: txData, error: txError } = await supabase.from('transactions').insert({
           user_id: userId,
           type: 'wheel_bonus',
-          amount: winningAmount,
-          description: `Wheel spin bonus: ${percentage}% of deposit $${eligibleDeposit.amount}`,
+          amount: winningLedgerAmount,
+          description: `Wheel spin bonus: ${percentage}% of ${eligibleDeposit.currency === 'EUR' ? '€' : '$'}${eligibleDeposit.amount}`,
           status: 'completed',
         }).select();
 

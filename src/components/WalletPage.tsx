@@ -78,7 +78,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   const { userStakes, calculateCurrentEarnings, cancelUserStake, transactions } = useDatabase();
   const { marketData: contextMarketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice } = useBybitData();
-  const { convertUsdToEur, eurUsdRate, formatEur, formatFiat } = useFiatCurrency();
+  const { convertEurToUsd, convertUsdToEur, eurUsdRate, formatEur, formatFiat } = useFiatCurrency();
 
   // Helper function to format date safely
   const formatDate = (dateString: string | undefined) => {
@@ -221,6 +221,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
     beneficiaryName: string;
   }): Promise<boolean> => {
     try {
+      const ledgerAmount = convertEurToUsd(amount);
       // Create transaction with withdrawal details using direct Supabase insert
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
@@ -230,14 +231,15 @@ const WalletPage: React.FC<WalletPageProps> = ({
         .insert([{
           user_id: user.id,
           type: 'withdrawal',
-          amount: -amount,
-          description: `Bank withdrawal of ${amount} USDT to EUR via ${bankDetails.bankName} (Acc: ••••${bankDetails.accountNumber.slice(-4)})`,
+          amount: -ledgerAmount,
+          description: `Bank withdrawal of ${formatEur(amount)} via ${bankDetails.bankName} (Acc: ••••${bankDetails.accountNumber.slice(-4)})`,
           status: 'pending',
           withdrawal_details: {
-            currency: 'USDT',
-            amount: amount,
+            currency: 'EUR',
+            amount,
+            source_amount_usd: ledgerAmount,
             payout_currency: 'EUR',
-            estimated_payout_eur: convertUsdToEur(amount * 0.995),
+            estimated_payout_eur: amount * 0.995,
             eur_usd_rate: eurUsdRate || null,
             bank_name: bankDetails.bankName,
             account_number: bankDetails.accountNumber,
@@ -272,7 +274,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
       const withdrawalValueUSD = currency === 'USDT' ? amount : amount * actualBtcPrice;
 
       if (walletBreakdownData && withdrawalValueUSD > walletBreakdownData.availableBalance) {
-        throw new Error(`Insufficient available balance. Required: ${withdrawalValueUSD.toFixed(2)} USD, Available: ${walletBreakdownData.availableBalance.toFixed(2)} USD`);
+        throw new Error(`Insufficient available balance. Required: ${formatFiat(withdrawalValueUSD)}, Available: ${formatFiat(walletBreakdownData.availableBalance)}`);
       }
       
       // Create transaction with withdrawal details using direct Supabase insert
@@ -502,12 +504,12 @@ const WalletPage: React.FC<WalletPageProps> = ({
               <div className="app-surface-muted rounded-xl p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-bold text-white">$</span>
+                    <span className="text-xs font-bold text-white">€</span>
                   </div>
-                  <span className="text-slate-300 font-medium">USDT</span>
+                  <span className="text-slate-300 font-medium">EUR</span>
                 </div>
                 <div className="text-xl font-bold text-white">
-                  {showBalance ? formatCrypto(usdtBalance, 'USDT') : '••••••'}
+                  {showBalance ? formatFiat(usdtBalance) : '••••••'}
                 </div>
                 <div className="text-slate-400 text-sm">
                   {showBalance ? formatCurrency(usdtBalance) : '••••••'}
@@ -521,7 +523,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                     Deposit
                   </button>
                   <button 
-                    onClick={() => handleCryptoWithdrawalClick('USDT')}
+                    onClick={() => setShowBankWithdrawalModal(true)}
                     className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-300 shadow-lg shadow-red-500/25 flex items-center justify-center gap-1 md:gap-2">
                       <ArrowUpRight size={16} />
                       Withdraw

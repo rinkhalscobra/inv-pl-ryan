@@ -127,46 +127,6 @@ export interface DatabaseUserStake {
   updated_at: string;
 }
 
-export interface DatabaseEvent {
-  id: string;
-  user_id: string | null;
-  question: string;
-  description: string | null;
-  category: 'politics' | 'sports' | 'crypto' | 'economy' | 'tech' | 'general';
-  status: 'open' | 'closed' | 'resolved';
-  resolution_outcome_id: string | null;
-  end_date: string | null;
-  created_at: string;
-  updated_at: string;
-  polymarket_id: string | null;
-  volume: number;
-}
-
-export interface DatabaseEventOutcome {
-  id: string;
-  event_id: string;
-  outcome_name: string;
-  current_price: number;
-  total_volume: number;
-  created_at: string;
-  updated_at: string;
-  polymarket_id: string | null;
-}
-
-export interface DatabaseEventBet {
-  id: string;
-  user_id: string;
-  outcome_id: string;
-  amount: number;
-  side: 'buy' | 'sell';
-  price_at_bet: number;
-  shares: number;
-  status: 'pending' | 'completed' | 'cancelled';
-  created_at: string;
-  updated_at: string;
-  leverage: number;
-}
-
 export interface NewsItem {
   id: string;
   title: string;
@@ -217,9 +177,6 @@ export const useDatabase = () => {
   const [robotState, setRobotState] = useState<DatabaseRobotState | null>(null);
   const [transactions, setTransactions] = useState<DatabaseTransaction[]>([]);
   const [userStakes, setUserStakes] = useState<DatabaseUserStake[]>([]);
-  const [events, setEvents] = useState<DatabaseEvent[]>([]);
-  const [eventOutcomes, setEventOutcomes] = useState<DatabaseEventOutcome[]>([]);
-  const [eventBets, setEventBets] = useState<DatabaseEventBet[]>([]);
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [portfolioSnapshots, setPortfolioSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -345,62 +302,6 @@ export const useDatabase = () => {
     }
   }, [user]);
 
-  // Fetch events
-  const fetchEvents = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (data) {
-        setEvents(data);
-      }
-    } catch (error) {
-      console.error('Error fetching events:', error);
-    }
-  }, []);
-
-  // Fetch event outcomes
-  const fetchEventOutcomes = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('event_outcomes')
-        .select('*');
-
-      if (error) throw error;
-
-      if (data) {
-        setEventOutcomes(data);
-      }
-    } catch (error) {
-      console.error('Error fetching event outcomes:', error);
-    }
-  }, []);
-
-  // Fetch event bets
-  const fetchEventBets = useCallback(async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('event_bets')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (data) {
-        setEventBets(data);
-      }
-    } catch (error) {
-      console.error('Error fetching event bets:', error);
-    }
-  }, [user]);
-
   // Fetch news items
   const fetchNewsItems = useCallback(async () => {
     try {
@@ -505,9 +406,6 @@ export const useDatabase = () => {
             fetchRobotState(),
             fetchTransactions(),
             fetchUserStakes(),
-            fetchEvents(),
-            fetchEventOutcomes(),
-            fetchEventBets(),
             fetchNewsItems(),
             fetchUserProfile(),
             fetchReferredUsers()
@@ -531,9 +429,6 @@ export const useDatabase = () => {
     fetchRobotState,
     fetchTransactions,
     fetchUserStakes,
-    fetchEvents,
-    fetchEventOutcomes,
-    fetchEventBets,
     fetchNewsItems,
     fetchUserProfile,
     fetchReferredUsers
@@ -753,46 +648,6 @@ export const useDatabase = () => {
     }
   }, [user, fetchUserStakes, fetchBalances]);
 
-  // Add event bet
-  const addEventBet = useCallback(async (
-    outcomeId: string,
-    side: 'buy' | 'sell',
-    amount: number,
-    price: number,
-    shares: number,
-    leverage: number = 1
-  ) => {
-    if (!user) return false;
-
-    try {
-      const { data, error } = await supabase
-        .from('event_bets')
-        .insert([{
-          user_id: user.id,
-          outcome_id: outcomeId,
-          amount,
-          side,
-          price_at_bet: price,
-          shares,
-          status: 'completed',
-          leverage
-        }])
-        .select();
-
-      if (error) throw error;
-
-      // Update local state
-      if (data) {
-        setEventBets(prev => [data[0], ...prev]);
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error adding event bet:', error);
-      return false;
-    }
-  }, [user]);
-
   // Create portfolio snapshot
   const createPortfolioSnapshot = useCallback(async (
     totalValue: number,
@@ -870,9 +725,6 @@ export const useDatabase = () => {
     robotState,
     transactions,
     userStakes,
-    events,
-    eventOutcomes,
-    eventBets,
     newsItems,
     portfolioSnapshots,
     loading,
@@ -885,9 +737,6 @@ export const useDatabase = () => {
     fetchRobotState,
     fetchTransactions,
     fetchUserStakes,
-    fetchEvents,
-    fetchEventOutcomes,
-    fetchEventBets,
     fetchNewsItems,
     fetchPortfolioSnapshots,
     updateBalances,
@@ -897,7 +746,6 @@ export const useDatabase = () => {
     calculateCurrentEarnings,
     cancelUserStake,
     claimUserStake,
-    addEventBet,
     createPortfolioSnapshot,
     updateKycStatus
   };

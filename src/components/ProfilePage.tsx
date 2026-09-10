@@ -30,12 +30,10 @@ import LanguageSwitcher from './LanguageSwitcher';
 import PhoneInput from './PhoneInput';
 import ReferralTab from './ReferralTab';
 import GiveawaySection from './GiveawaySection';
-import AccountTierOverview from './AccountTierOverview';
 import AccountBalancesCard from './AccountBalancesCard';
 import { supabase } from '../lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { getUserCfdTier } from '../constants/tradingTiers';
-import { UserStatus } from '../App';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface ProfilePageProps {
@@ -50,7 +48,6 @@ interface ProfilePageProps {
   referredUsers: any[];
   totalPortfolioValue: number;
   totalPositionsPnl?: number;
-  userStatus: UserStatus;
   kycStatus: 'not_verified' | 'pending' | 'verified';
   updateKycStatus: (status: 'not_verified' | 'pending' | 'verified') => void;
   portfolioSnapshots?: any[];
@@ -69,14 +66,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   referredUsers,
   totalPortfolioValue,
   totalPositionsPnl = 0,
-  userStatus,
   kycStatus: propKycStatus,
   updateKycStatus: propUpdateKycStatus,
   portfolioSnapshots,
   createPortfolioSnapshot
 }) => {
   const { t } = useTranslation();
-  const { formatFiat, formatFiatCompact, formatFiatWhole } = useFiatCurrency();
+  const { formatFiat, formatFiatWhole } = useFiatCurrency();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'referrals' | 'giveaway' | 'support'>('profile');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -252,7 +248,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   <TrendingDown size={14} className="text-red-400" />
                 )}
                 <span className={`text-sm font-medium ${totalPositionsPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {totalPositionsPnl >= 0 ? '+' : ''}{totalPositionsPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
+                  {totalPositionsPnl >= 0 ? '+' : ''}{formatFiat(totalPositionsPnl)}
                 </span>
               </div>
             )}
@@ -460,77 +456,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   <LanguageSwitcher />
                 </div>
 
-                {/* Portfolio Status Tiers */}
-                <div className="app-surface-primary rounded-2xl p-6 xl:hidden">
-                  <div className="text-center mb-6">
-                    <h3 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                      Portfolio Status Tiers
-                    </h3>
-                    <p className="text-slate-400 text-sm">
-                      Your status is determined by your total portfolio value
-                    </p>
-                  </div>
-
-                  {/* Current Status Badge */}
-                  <div className="bg-gradient-to-r from-emerald-600/20 to-blue-600/20 border border-emerald-500/50 rounded-xl p-4 mb-6 text-center">
-                    <div className="text-slate-400 text-sm mb-1">Your Current Status</div>
-                    <div className="flex items-center justify-center gap-2">
-                      <Award size={24} className="text-emerald-400" />
-                      <span className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">
-                        {userStatus}
-                      </span>
-                    </div>
-                    <div className="text-slate-300 text-lg mt-2 font-semibold">
-                      {formatFiat(totalPortfolioValue)}
-                    </div>
-                  </div>
-
-                  {/* Status Tiers Grid */}
-                  <div className="space-y-3">
-                    {[
-                      { name: 'No-Coiner', threshold: `${formatFiatWhole(0)} - ${formatFiatWhole(249)}`, color: 'from-slate-500 to-slate-600', icon: '🪙', emoji: '💸' },
-                      { name: 'Shrimp', threshold: `${formatFiatWhole(250)}+`, color: 'from-red-500 to-orange-500', icon: '🦐', emoji: '🦐' },
-                      { name: 'Crab', threshold: `${formatFiatCompact(10000)}+`, color: 'from-orange-500 to-yellow-500', icon: '🦀', emoji: '🦀' },
-                      { name: 'Octopus', threshold: `${formatFiatCompact(25000)}+`, color: 'from-yellow-500 to-green-500', icon: '🐙', emoji: '🐙' },
-                      { name: 'Dolphin', threshold: `${formatFiatCompact(50000)}+`, color: 'from-green-500 to-cyan-500', icon: '🐬', emoji: '🐬' },
-                      { name: 'Shark', threshold: `${formatFiatCompact(100000)}+`, color: 'from-cyan-500 to-blue-500', icon: '🦈', emoji: '🦈' },
-                      { name: 'Whale', threshold: `${formatFiatCompact(500000)}+`, color: 'from-blue-500 to-purple-500', icon: '🐋', emoji: '🐋' },
-                      { name: 'Humpback', threshold: `${formatFiatCompact(2000000)}+`, color: 'from-purple-500 to-pink-500', icon: '🐳', emoji: '🐳' },
-                    ].map((tier) => (
-                      <div
-                        key={tier.name}
-                        className={`relative app-surface-muted rounded-xl p-4 border transition-all duration-300 ${
-                          tier.name === userStatus
-                            ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/20 ring-2 ring-emerald-500/30'
-                            : 'border-slate-700/50 hover:border-slate-600'
-                        }`}
-                      >
-                        {tier.name === userStatus && (
-                          <div className="absolute -top-2 -right-2 bg-emerald-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg">
-                            YOU
-                          </div>
-                        )}
-                        <div className="flex items-center gap-4">
-                          <div className="text-4xl">{tier.emoji}</div>
-                          <div className="flex-1">
-                            <div className={`font-bold text-lg bg-gradient-to-r ${tier.color} bg-clip-text text-transparent`}>
-                              {tier.name}
-                            </div>
-                            <div className="text-slate-400 text-sm">{tier.threshold} Portfolio Value</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Progress Info */}
-                  <div className="mt-6 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-xl p-4">
-                    <p className="text-slate-300 text-sm text-center">
-                      Keep growing your portfolio to reach higher status tiers and unlock exclusive benefits
-                    </p>
-                  </div>
-                </div>
-
                 {/* CFD Trading Tiers */}
                 <div className="app-surface-primary rounded-2xl p-6 xl:hidden">
                   <div className="text-center mb-6">
@@ -557,11 +482,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   {/* Tier Cards Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     {[
-                      { name: 'Starter', minEquity: '$0', maxForex: 100, maxCommodities: 30, maxStocks: 20, icon: '📊' },
-                      { name: 'Plus', minEquity: '$10K', maxForex: 200, maxCommodities: 50, maxStocks: 40, icon: '📈' },
-                      { name: 'Advanced', minEquity: '$50K', maxForex: 300, maxCommodities: 75, maxStocks: 60, icon: '💹' },
-                      { name: 'Pro', minEquity: '$100K', maxForex: 500, maxCommodities: 90, maxStocks: 80, icon: '🏆' },
-                      { name: 'Elite', minEquity: '$250K', maxForex: 1000, maxCommodities: 100, maxStocks: 100, icon: '👑' },
+                      { name: 'Starter', minEquity: formatFiatWhole(0), maxForex: 100, maxCommodities: 30, maxStocks: 20, icon: '📊' },
+                      { name: 'Plus', minEquity: formatFiatWhole(10000), maxForex: 200, maxCommodities: 50, maxStocks: 40, icon: '📈' },
+                      { name: 'Advanced', minEquity: formatFiatWhole(50000), maxForex: 300, maxCommodities: 75, maxStocks: 60, icon: '💹' },
+                      { name: 'Pro', minEquity: formatFiatWhole(100000), maxForex: 500, maxCommodities: 90, maxStocks: 80, icon: '🏆' },
+                      { name: 'Elite', minEquity: formatFiatWhole(250000), maxForex: 1000, maxCommodities: 100, maxStocks: 100, icon: '👑' },
                     ].map((tier) => (
                       <div
                         key={tier.name}
@@ -830,16 +755,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         
         {/* Right Column - Account Summary */}
         <div className="space-y-6 xl:col-span-5">
-          {activeTab === 'profile' && (
-            <div className="hidden xl:block">
-              <AccountTierOverview
-                userStatus={userStatus}
-                totalPortfolioValue={totalPortfolioValue}
-                userCfdTier={userCfdTier}
-              />
-            </div>
-          )}
-
           {/* Account Summary */}
           <div className="app-surface-primary rounded-2xl p-6">
             <h3 className="text-lg font-semibold text-white mb-4">{t('profile.accountSummary')}</h3>
@@ -890,14 +805,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center">
-                      <span className="text-green-400 font-bold">$</span>
+                      <span className="text-green-400 font-bold">€</span>
                     </div>
-                    <span className="text-white font-medium">USDT</span>
+                    <span className="text-white font-medium">EUR</span>
                   </div>
-                  <span className="text-white font-mono">{(usdtBalance || 0).toFixed(2)}</span>
+                  <span className="text-white font-mono">{formatFiat(usdtBalance || 0)}</span>
                 </div>
                 <div className="text-xs text-slate-400 text-right">
-                  ≈ {formatFiat(usdtBalance || 0)}
+                  Primary fiat balance
                 </div>
               </div>
               

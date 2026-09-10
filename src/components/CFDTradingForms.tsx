@@ -6,6 +6,7 @@ import { useMarketData } from '../contexts/MarketDataContext';
 import { getInstrumentTypeFromSymbol } from '../constants/tradingTiers';
 import { calculateSpreadCost, formatSpreadDisplay } from '../constants/spreadConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface CFDTradingFormsProps {
   usdtBalance: number;
@@ -58,6 +59,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   onCFDTrade
 }) => {
   const { t } = useTranslation();
+  const { convertUsdToEur, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getSnapshotPriceBySymbol, refreshSnapshot, lastSnapshotTime, isConnected: isLiveDataConnected, marketData } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isCfdSurface = surfaceVariant === 'cfd';
@@ -90,6 +92,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     : 'bg-slate-800/50';
 
   const instrumentType = getInstrumentTypeFromSymbol(selectedPair);
+  const priceIsUsd = instrumentType !== 'forex';
   const maxAllowedLeverage = instrumentType === 'forex' ? maxForexLeverage :
                               instrumentType === 'commodity' ? maxCommoditiesLeverage :
                               (instrumentType === 'index' || instrumentType === 'etf') ? maxStocksLeverage :
@@ -119,6 +122,9 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   }, [selectedPair, getSnapshotPriceBySymbol, currentPrice]);
 
   const livePairPrice = getCurrentPriceForCFD();
+  const displayCfdPrice = (price: number) => priceIsUsd
+    ? formatFiatPrice(price)
+    : price.toFixed(getPricePrecision());
   const selectedInstrument = CFD_INSTRUMENTS.find(item => item.symbol === selectedPair);
   const hasVerifiedPrice = Number.isFinite(livePairPrice) && livePairPrice > 0;
   const canTradeSelectedInstrument = selectedInstrument?.tradable !== false && hasVerifiedPrice;
@@ -669,7 +675,7 @@ const getLotSize = (symbol: string): number => {
             <div className="flex justify-between text-sm text-slate-400 mb-3">
               <span>{t('trading.availableMargin')}</span>
               <span className="flex items-center gap-2 text-emerald-400 font-mono">
-                {(availableBalance !== undefined ? availableBalance : usdtBalance).toFixed(4)} USD
+                {formatFiat(availableBalance !== undefined ? availableBalance : usdtBalance)}
                 <div className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></div>
               </span>
             </div>
@@ -678,10 +684,10 @@ const getLotSize = (symbol: string): number => {
           <div className="space-y-6">
             {/* Price Input */}
             <div className="mb-3">
-              <label className="block text-sm text-slate-400 mb-1 md:mb-3">{t('common.price')} (USD)</label>
+              <label className="block text-sm text-slate-400 mb-1 md:mb-3">{t('common.price')} ({priceIsUsd ? 'EUR' : 'Rate'})</label>
               <input
                 type="text"
-                value={livePairPrice.toFixed(getPricePrecision())}
+                value={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
                 className="w-full bg-transparent text-white px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono"
                 readOnly
               />
@@ -743,7 +749,7 @@ const getLotSize = (symbol: string): number => {
                   {t('trading.stopLoss')}
                   {longStopLoss && (
                     <>
-                      <span className="ml-2 font-mono">${longStopLoss.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{displayCfdPrice(longStopLoss.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -764,7 +770,7 @@ const getLotSize = (symbol: string): number => {
                   {t('trading.takeProfit')}
                   {longTakeProfit && (
                     <>
-                      <span className="ml-2 font-mono">${longTakeProfit.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{displayCfdPrice(longTakeProfit.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -782,12 +788,12 @@ const getLotSize = (symbol: string): number => {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm text-slate-400">
                   <span>{t('trading.requiredMargin')}</span>
-                  <span className="text-white font-mono">{formatRequiredMargin(calculateLongCost())} USD</span>
+                  <span className="text-white font-mono">{formatFiat(calculateLongCost())}</span>
                 </div>
                 {longSpreadInfo && (
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>Spread Cost ({longSpreadInfo.percentage})</span>
-                    <span className="text-orange-400 font-mono">{parseFloat(longSpreadInfo.cost).toFixed(4)} USD</span>
+                    <span className="text-orange-400 font-mono">{formatFiat(parseFloat(longSpreadInfo.cost))}</span>
                   </div>
                 )}
               </div>
@@ -808,7 +814,7 @@ const getLotSize = (symbol: string): number => {
             <div className="flex justify-between text-sm text-slate-400 mb-3">
               <span>{t('trading.availableMargin')}</span>
               <span className="flex items-center gap-2 text-red-400 font-mono">
-                {(availableBalance !== undefined ? availableBalance : usdtBalance).toFixed(4)} USD
+                {formatFiat(availableBalance !== undefined ? availableBalance : usdtBalance)}
                 <div className="w-1 h-1 bg-red-400 rounded-full animate-pulse"></div>
               </span>
             </div>
@@ -817,10 +823,10 @@ const getLotSize = (symbol: string): number => {
           <div className="space-y-6">
             {/* Price Input */}
             <div className="mb-3">
-              <label className="block text-sm text-slate-400 mb-1 md:mb-3">{t('common.price')} (USD)</label>
+              <label className="block text-sm text-slate-400 mb-1 md:mb-3">{t('common.price')} ({priceIsUsd ? 'EUR' : 'Rate'})</label>
               <input
                 type="text"
-                value={livePairPrice.toFixed(getPricePrecision())}
+                value={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
                 className="w-full bg-transparent text-white px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono"
                 readOnly
               />
@@ -882,7 +888,7 @@ const getLotSize = (symbol: string): number => {
                   {t('trading.stopLoss')}
                   {shortStopLoss && (
                     <>
-                      <span className="ml-2 font-mono">${shortStopLoss.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{displayCfdPrice(shortStopLoss.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -903,7 +909,7 @@ const getLotSize = (symbol: string): number => {
                   {t('trading.takeProfit')}
                   {shortTakeProfit && (
                     <>
-                      <span className="ml-2 font-mono">${shortTakeProfit.trigger_price.toFixed(2)}</span>
+                      <span className="ml-2 font-mono">{displayCfdPrice(shortTakeProfit.trigger_price)}</span>
                       <X
                         size={14}
                         className="inline ml-2"
@@ -921,12 +927,12 @@ const getLotSize = (symbol: string): number => {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm text-slate-400">
                   <span>{t('trading.requiredMargin')}</span>
-                  <span className="text-white font-mono">{formatRequiredMargin(calculateShortCost())} USD</span>
+                  <span className="text-white font-mono">{formatFiat(calculateShortCost())}</span>
                 </div>
                 {shortSpreadInfo && (
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>Spread Cost ({shortSpreadInfo.percentage})</span>
-                    <span className="text-orange-400 font-mono">{parseFloat(shortSpreadInfo.cost).toFixed(4)} USD</span>
+                    <span className="text-orange-400 font-mono">{formatFiat(parseFloat(shortSpreadInfo.cost))}</span>
                   </div>
                 )}
               </div>
@@ -952,6 +958,7 @@ const getLotSize = (symbol: string): number => {
         amount={parseFloat(longAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
         onConfirm={(price, type, execPrice) => {
           setLongStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice });
         }}
@@ -966,6 +973,7 @@ const getLotSize = (symbol: string): number => {
         amount={parseFloat(longAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
         onConfirm={(price, type, execPrice) => {
           setLongTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice });
         }}
@@ -980,6 +988,7 @@ const getLotSize = (symbol: string): number => {
         amount={parseFloat(shortAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
         onConfirm={(price, type, execPrice) => {
           setShortStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice });
         }}
@@ -994,6 +1003,7 @@ const getLotSize = (symbol: string): number => {
         amount={parseFloat(shortAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
         onConfirm={(price, type, execPrice) => {
           setShortTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice });
         }}

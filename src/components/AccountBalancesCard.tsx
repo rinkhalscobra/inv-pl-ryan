@@ -1,3 +1,5 @@
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
+
 interface AccountBalancesCardProps {
   title: string;
   usdtBalance: number;
@@ -11,6 +13,8 @@ export default function AccountBalancesCard({
   btcBalance,
   currentPrice,
 }: AccountBalancesCardProps) {
+  const { formatFiat } = useFiatCurrency();
+
   return (
     <div className="app-surface-primary rounded-2xl p-6">
       <h3 className="mb-4 text-lg font-semibold text-white">{title}</h3>
@@ -19,13 +23,13 @@ export default function AccountBalancesCard({
           <div className="mb-2 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                <span className="font-bold text-green-400">$</span>
+                <span className="font-bold text-green-400">€</span>
               </div>
-              <span className="font-medium text-white">USDT</span>
+              <span className="font-medium text-white">EUR</span>
             </div>
-            <span className="font-mono text-white">{usdtBalance.toFixed(2)}</span>
+            <span className="font-mono text-white">{formatFiat(usdtBalance)}</span>
           </div>
-          <div className="text-right text-xs text-slate-400">${usdtBalance.toFixed(2)} USD</div>
+          <div className="text-right text-xs text-slate-400">Available funds</div>
         </div>
 
         <div className="app-surface-muted rounded-lg p-4">
@@ -39,7 +43,7 @@ export default function AccountBalancesCard({
             <span className="font-mono text-white">{btcBalance.toFixed(8)}</span>
           </div>
           <div className="text-right text-xs text-slate-400">
-            ${(btcBalance * currentPrice).toFixed(2)} USD
+            {formatFiat(btcBalance * currentPrice)}
           </div>
         </div>
       </div>

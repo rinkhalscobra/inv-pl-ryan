@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMarketData } from '../contexts/MarketDataContext';
 
 const EUR_USD_CACHE_KEY = 'invest-platform:eur-usd-rate';
+const FALLBACK_EUR_USD_RATE = 1.1;
 
 const readCachedRate = () => {
   if (typeof window === 'undefined') return 0;
@@ -13,7 +14,7 @@ export const useFiatCurrency = () => {
   const { getPriceBySymbol, getSnapshotPriceBySymbol } = useMarketData();
   const liveRate = getPriceBySymbol('EUR/USD') || getSnapshotPriceBySymbol('EUR/USD');
   const [cachedRate, setCachedRate] = useState(readCachedRate);
-  const eurUsdRate = liveRate > 0 ? liveRate : cachedRate;
+  const eurUsdRate = liveRate > 0 ? liveRate : cachedRate || FALLBACK_EUR_USD_RATE;
 
   useEffect(() => {
     if (liveRate <= 0) return;
@@ -23,7 +24,12 @@ export const useFiatCurrency = () => {
 
   const convertUsdToEur = useCallback((amount: number) => {
     if (!Number.isFinite(amount)) return 0;
-    return eurUsdRate > 0 ? amount / eurUsdRate : amount;
+    return amount / eurUsdRate;
+  }, [eurUsdRate]);
+
+  const convertEurToUsd = useCallback((amount: number) => {
+    if (!Number.isFinite(amount)) return 0;
+    return amount * eurUsdRate;
   }, [eurUsdRate]);
 
   const formatter = useMemo(() => new Intl.NumberFormat('en-IE', {
@@ -62,14 +68,36 @@ export const useFiatCurrency = () => {
     wholeFormatter.format(convertUsdToEur(usdAmount))
   ), [convertUsdToEur, wholeFormatter]);
 
+  const formatFiatNumber = useCallback((usdAmount: number, digits = 2) => (
+    convertUsdToEur(usdAmount).toLocaleString('en-IE', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    })
+  ), [convertUsdToEur]);
+
+  const formatFiatPrice = useCallback((usdAmount: number, digits = 2) => (
+    `€${formatFiatNumber(usdAmount, digits)}`
+  ), [formatFiatNumber]);
+
+  const formatTradingPair = useCallback((marketSymbol: string) => {
+    if (marketSymbol.endsWith('USDT')) {
+      return `${marketSymbol.slice(0, -4)}/EUR`;
+    }
+    return marketSymbol;
+  }, []);
+
   return {
     code: 'EUR' as const,
     symbol: '€',
     eurUsdRate,
     convertUsdToEur,
+    convertEurToUsd,
     formatFiat,
     formatEur,
     formatFiatCompact,
     formatFiatWhole,
+    formatFiatNumber,
+    formatFiatPrice,
+    formatTradingPair,
   };
 };

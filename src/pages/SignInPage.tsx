@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, ChevronRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import BrandLogo from '../components/BrandLogo';
 import { useAuth } from '../hooks/useAuth';
 
 const SignInPage: React.FC = () => {
@@ -39,6 +40,7 @@ const SignInPage: React.FC = () => {
       <div className="relative z-20 max-w-md" style={{ width: 'calc(100vw - 2rem)' }}>
         <div className="mb-10 text-center">
           <div className="mb-4 flex justify-end"><LanguageSwitcher /></div>
+          <BrandLogo className="mx-auto mb-4 h-auto w-64 sm:w-72" />
           <h1 className="mb-2 bg-gradient-to-r from-blue-300 via-purple-300 to-violet-300 bg-clip-text text-4xl font-bold text-transparent">
             {t('auth.welcomeBack')}
           </h1>

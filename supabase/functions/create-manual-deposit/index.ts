@@ -35,8 +35,12 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     const amount = Number(body.amount);
+    const currency = String(body.currency || "EUR").toUpperCase();
+    if (currency !== "EUR") {
+      return jsonResponse({ success: false, error: "Only EUR fiat deposits are supported" }, 400);
+    }
     if (!Number.isFinite(amount) || amount < 10 || amount > 1_000_000) {
-      return jsonResponse({ success: false, error: "Deposit amount must be between $10 and $1,000,000" }, 400);
+      return jsonResponse({ success: false, error: "Deposit amount must be between €10 and €1,000,000" }, 400);
     }
 
     const { data: transaction, error: insertError } = await supabaseAdmin
@@ -45,10 +49,11 @@ Deno.serve(async (req: Request) => {
         user_id: user.id,
         type: "deposit",
         amount,
+        currency,
         status: "pending",
-        description: "Manual crypto deposit request - awaiting CRM review",
+        description: "Manual EUR bank deposit request - awaiting CRM review",
       })
-      .select("id, amount, status, created_at")
+      .select("id, amount, currency, status, created_at")
       .single();
 
     if (insertError) {
@@ -60,6 +65,7 @@ Deno.serve(async (req: Request) => {
       success: true,
       transaction_id: transaction.id,
       amount: transaction.amount,
+      currency: transaction.currency,
       status: transaction.status,
       created_at: transaction.created_at,
     });
@@ -68,4 +74,3 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ success: false, error: "Unable to submit the deposit request" }, 500);
   }
 });
-

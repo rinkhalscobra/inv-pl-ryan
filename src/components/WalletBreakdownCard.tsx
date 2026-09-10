@@ -1,5 +1,6 @@
 import React from 'react';
-import { Wallet, TrendingUp, TrendingDown, Lock, DollarSign, Info, Layers, Activity, Package } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Lock, Euro, Info, Layers, Activity, Package } from 'lucide-react';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface WalletBreakdownCardProps {
   totalBalance: number;
@@ -30,17 +31,7 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
   loading = false,
   showDetails = true
 }) => {
-  const formatCurrency = (amount: number) => {
-    if (isNaN(amount) || !isFinite(amount)) {
-      return '$0.00';
-    }
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
+  const { formatFiat: formatCurrency } = useFiatCurrency();
 
   if (loading) {
     return (
@@ -73,7 +64,7 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
         {/* Total Balance */}
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <DollarSign size={16} className="text-blue-400" />
+            <Euro size={16} className="text-blue-400" />
             <span className="text-slate-300">Total Balance</span>
           </div>
           <span className="text-white font-bold text-lg">{formatCurrency(totalBalance)}</span>

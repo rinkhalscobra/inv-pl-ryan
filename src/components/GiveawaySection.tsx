@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Ticket, Trophy, Calendar, Users, DollarSign, ChevronDown, ChevronUp } from 'lucide-react';
+import { Gift, Ticket, Trophy, Calendar, Users, Euro, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface GiveawayCampaign {
   id: string;
@@ -44,6 +45,7 @@ interface GiveawayWinner {
 }
 
 export default function GiveawaySection() {
+  const { formatFiatWhole: formatCurrency } = useFiatCurrency();
   const [activeCampaign, setActiveCampaign] = useState<GiveawayCampaign | null>(null);
   const [prizes, setPrizes] = useState<GiveawayPrize[]>([]);
   const [userTickets, setUserTickets] = useState<GiveawayTicket[]>([]);
@@ -250,15 +252,6 @@ export default function GiveawaySection() {
     });
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
   const getDaysRemaining = (endDate: string) => {
     const end = new Date(endDate);
     const now = new Date();
@@ -357,7 +350,7 @@ export default function GiveawaySection() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-slate-800/50 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-5 h-5 text-green-400" />
+                  <Euro className="w-5 h-5 text-green-400" />
                   <span className="text-sm text-gray-400">Total Prize Pool</span>
                 </div>
                 <p className="text-2xl font-bold text-white">{formatCurrency(activeCampaign.total_prize_pool)}</p>

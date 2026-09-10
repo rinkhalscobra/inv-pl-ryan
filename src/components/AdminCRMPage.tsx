@@ -43,7 +43,6 @@ interface AdminUser extends JsonRow {
   country?: string | null;
   phone_number?: string | null;
   kyc_status?: string;
-  is_demo?: boolean;
   is_admin?: boolean;
   created_at?: string;
   usdt_balance?: number;
@@ -281,7 +280,6 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       country: asText(profile.country),
       phone_number: asText(profile.phone_number),
       kyc_status: asText(profile.kyc_status || 'not_verified'),
-      is_demo: Boolean(profile.is_demo),
       is_admin: Boolean(profile.is_admin),
       document_id_url: asText(profile.document_id_url),
       document_selfie_url: asText(profile.document_selfie_url),
@@ -717,7 +715,6 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="truncate text-xl font-bold text-white">{displayName(profile)}</h2>
                         {profile.is_admin && <span className="rounded-full bg-purple-500/15 px-2 py-1 text-xs text-purple-300">Admin</span>}
-                        <span className={`rounded-full px-2 py-1 text-xs ${profile.is_demo ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{profile.is_demo ? 'Demo' : 'Live'}</span>
                       </div>
                       <p className="mt-1 truncate text-sm text-slate-400">{profile.email} · {profile.id}</p>
                     </div>
@@ -771,8 +768,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                           <label key={key} className="text-xs text-slate-400">{label}<input value={String(profileForm[key] || '')} onChange={event => setProfileForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         ))}
                         <label className="text-xs text-slate-400">KYC status<select value={String(profileForm.kyc_status)} onChange={event => setProfileForm(current => ({ ...current, kyc_status: event.target.value }))} className={`${fieldClass} mt-1.5`}><option value="not_verified">Not verified</option><option value="pending">Pending</option><option value="verified">Verified</option></select></label>
-                        <div className="flex items-end gap-5 rounded-xl border border-slate-700 p-3">
-                          <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.is_demo)} onChange={event => setProfileForm(current => ({ ...current, is_demo: event.target.checked }))} />Demo account</label>
+                        <div className="flex items-end rounded-xl border border-slate-700 p-3">
                           <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.is_admin)} onChange={event => setProfileForm(current => ({ ...current, is_admin: event.target.checked }))} />Administrator</label>
                         </div>
                       </div>

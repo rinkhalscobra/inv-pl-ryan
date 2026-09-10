@@ -69,6 +69,7 @@ export interface Transaction {
   id: string;
   type: 'deposit' | 'withdrawal' | 'trade' | 'robot_profit' | 'binary_trade' | 'stake' | 'staking_profit' | 'staking_return' | 'challenge_fee' | 'challenge_reward';
   amount: number;
+  currency?: string;
   description: string;
   status: 'completed' | 'pending' | 'failed';
   timestamp: string;
@@ -111,7 +112,6 @@ function AppContent() {
     fetchRobotState,
     calculateCurrentEarnings,
     cancelUserStake,
-    isDemoAccount,
     isAdmin
   } = useDatabase();
   const { assets, fetchAssets, updateAssetBalance } = useUserAssets();
@@ -824,21 +824,16 @@ const handleUpdatePassword = async (newPassword: string) => {
     if (type === 'deposit') {
       try {
         if (currency === 'USDT') {
-          console.log(`Processing USDT deposit of ${amount} for user ${user?.id} (demo: ${user?.user_metadata?.is_demo ? 'yes' : 'no'})`);
+          console.log(`Processing USDT deposit of ${amount} for user ${user?.id}`);
           await updateBalances({ usdt_balance: balances.usdt_balance + amount });
         } else {
           await updateBalances({ btc_balance: balances.btc_balance + amount });
         }
 
-        // Add transaction - this will trigger the demo account reset if user is a demo user
-        const description = user?.user_metadata?.is_demo
-          ? `Initial deposit to convert demo account to live account: ${amount} ${currency}`
-          : `Deposited ${amount} ${currency}`;
-
         const { data: txData, error: txError } = await addTransaction({
           type: 'deposit',
           amount,
-          description,
+          description: `Deposited ${amount} ${currency}`,
           status: 'completed'
         });
 
@@ -961,7 +956,6 @@ const handleUpdatePassword = async (newPassword: string) => {
                     signOut={signOut}
                     marketDataList={marketData}
                     userStatus={userStatus}
-                    isDemoAccount={isDemoAccount}
                     isAdmin={isAdmin}
                   />
                   

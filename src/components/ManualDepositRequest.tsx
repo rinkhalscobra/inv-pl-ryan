@@ -9,6 +9,7 @@ interface ManualDepositRequestProps {
 interface PendingRequest {
   id: string;
   amount: number;
+  currency: 'EUR';
   status: string;
   createdAt: string;
 }
@@ -51,7 +52,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
   const submitRequest = async () => {
     const numericAmount = Number(amount);
     if (!Number.isFinite(numericAmount) || numericAmount < 10) {
-      setError('The minimum deposit is $10');
+      setError('The minimum deposit is €10');
       return;
     }
 
@@ -59,7 +60,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
     setError(null);
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('create-manual-deposit', {
-        body: { amount: numericAmount },
+        body: { amount: numericAmount, currency: 'EUR' },
       });
       if (invokeError) {
         const context = (invokeError as { context?: Response }).context;
@@ -71,6 +72,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
       setRequest({
         id: String(data.transaction_id),
         amount: Number(data.amount),
+        currency: 'EUR',
         status: String(data.status),
         createdAt: String(data.created_at),
       });
@@ -91,7 +93,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
           <div>
             <label className="block text-sm text-slate-400 mb-2">Requested deposit amount</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">€</span>
               <input
                 type="number"
                 min="10"
@@ -102,7 +104,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
                 placeholder="Enter amount"
                 className="w-full app-input pl-8 pr-20 py-3 rounded-xl"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">USDT</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">EUR</span>
             </div>
           </div>
 
@@ -132,7 +134,9 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
               <Clock className="text-amber-400" size={22} />
             )}
             <div>
-              <p className="text-white font-semibold">{request.amount.toLocaleString()} USDT</p>
+              <p className="text-white font-semibold">
+                {new Intl.NumberFormat('en-IE', { style: 'currency', currency: request.currency }).format(request.amount)}
+              </p>
               <p className="text-sm text-slate-400 capitalize">Status: {request.status}</p>
             </div>
           </div>
@@ -158,7 +162,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
       )}
 
       <p className="text-xs text-slate-500 text-center">
-        This is a manual request. No real payment is processed and no balance is credited until CRM review.
+        Submit this after arranging your EUR bank transfer. Your balance is credited only after CRM review.
       </p>
     </div>
   );

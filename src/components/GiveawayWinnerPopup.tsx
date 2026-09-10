@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Trophy, X, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface GiveawayWinner {
   id: string;
@@ -17,6 +18,7 @@ interface GiveawayWinnerPopupProps {
 }
 
 export default function GiveawayWinnerPopup({ forceShow = false }: GiveawayWinnerPopupProps) {
+  const { formatFiatWhole: formatCurrency } = useFiatCurrency();
   const [winner, setWinner] = useState<GiveawayWinner | null>(null);
   const [showPopup, setShowPopup] = useState(false);
 
@@ -126,15 +128,6 @@ export default function GiveawayWinnerPopup({ forceShow = false }: GiveawayWinne
     };
 
     frame();
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
   };
 
   if (!showPopup || !winner) return null;

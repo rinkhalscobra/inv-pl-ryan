@@ -50,18 +50,17 @@ serve(async (req) => {
     const btcPrice = btcPriceData.price;
     console.log(`Current BTC price: ${btcPrice}`);
     
-    // Get all non-demo users
+    // Get all users
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('id')
-      .eq('is_demo', false);
+      .select('id');
       
     if (usersError) {
       console.error("Error fetching users:", usersError);
       throw new Error(`Failed to fetch users: ${usersError.message}`);
     }
     
-    console.log(`Found ${users.length} non-demo users`);
+    console.log(`Found ${users.length} users`);
     
     let successCount = 0;
     let errorCount = 0;

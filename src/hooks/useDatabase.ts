@@ -106,6 +106,7 @@ export interface DatabaseTransaction {
   user_id: string;
   type: 'deposit' | 'withdrawal' | 'trade' | 'robot_profit' | 'binary_trade' | 'stake' | 'staking_profit' | 'staking_return' | 'challenge_fee' | 'challenge_reward';
   amount: number;
+  currency?: string;
   description: string;
   status: 'completed' | 'pending' | 'failed';
   created_at: string;
@@ -227,7 +228,6 @@ export const useDatabase = () => {
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [referralCount, setReferralCount] = useState(0);
   const [referredUsers, setReferredUsers] = useState<any[]>([]);
-  const [isDemoAccount, setIsDemoAccount] = useState<boolean>(true);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   // Fetch user balances
@@ -448,7 +448,7 @@ export const useDatabase = () => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('kyc_status, referral_code, referral_count, is_demo, is_admin')
+        .select('kyc_status, referral_code, referral_count, is_admin')
         .eq('id', user.id)
         .single();
 
@@ -458,7 +458,6 @@ export const useDatabase = () => {
         setKycStatus(data.kyc_status || 'not_verified');
         setReferralCode(data.referral_code);
         setReferralCount(data.referral_count || 0);
-        setIsDemoAccount(data.is_demo || false);
         setIsAdmin(data.is_admin || false);
       }
     } catch (error) {
@@ -882,7 +881,6 @@ export const useDatabase = () => {
     referralCode,
     referralCount,
     referredUsers,
-    isDemoAccount,
     isAdmin,
     fetchRobotState,
     fetchTransactions,

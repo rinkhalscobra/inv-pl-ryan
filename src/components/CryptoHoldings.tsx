@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DollarSign, Bitcoin, Eye, EyeOff, TrendingUp, TrendingDown, Info, Search } from 'lucide-react';
+import { DollarSign, Bitcoin, Eye, EyeOff, TrendingUp, TrendingDown, Info, Search, Euro } from 'lucide-react';
 import { useDatabase, DatabaseUserAsset } from '../hooks/useDatabase';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface CryptoHoldingsProps {
   usdtBalance: number;
@@ -29,6 +30,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
   userAssets = []
 }) => {
   const { t } = useTranslation();
+  const { formatFiat } = useFiatCurrency();
   const { assets } = useDatabase();
   const { marketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice } = useBybitData();
@@ -200,7 +202,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
       <div className="app-surface-primary rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
-            <DollarSign size={20} className="text-green-400" />
+            <Euro size={20} className="text-green-400" />
             {t('wallet.totalPortfolioValue')}
           </h3>
           <button
@@ -212,7 +214,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
         </div>
         <div className="text-3xl font-bold text-white mb-2">
           {showBalances 
-            ? `$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+            ? formatFiat(totalValue)
             : '••••••'}
         </div>
         <div className={`text-sm flex items-center gap-1 ${totalChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -267,7 +269,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
                 </div>
                 <div className="flex items-center justify-end gap-1 text-sm">
                   <span className="text-slate-400">
-                    ${showBalances ? asset.usdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '••••••'}
+                    {showBalances ? formatFiat(asset.usdValue) : '••••••'}
                   </span>
                   {asset.change24h !== undefined && asset.change24h !== 0 && (
                     <span className={`flex items-center ${asset.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>

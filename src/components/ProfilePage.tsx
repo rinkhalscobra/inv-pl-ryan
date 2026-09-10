@@ -36,6 +36,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useTranslation } from 'react-i18next';
 import { getUserCfdTier } from '../constants/tradingTiers';
 import { UserStatus } from '../App';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface ProfilePageProps {
   user: UserType;
@@ -75,6 +76,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   createPortfolioSnapshot
 }) => {
   const { t } = useTranslation();
+  const { formatFiat, formatFiatCompact, formatFiatWhole } = useFiatCurrency();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'referrals' | 'giveaway' | 'support'>('profile');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -241,7 +243,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         <div className="flex items-center gap-4">
           <div className="app-surface-secondary px-6 py-3 rounded-xl">
             <div className="text-slate-400 text-sm">Portfolio Value</div>
-            <div className="text-white font-mono text-xl">${totalPortfolioValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="text-white font-mono text-xl">{formatFiat(totalPortfolioValue)}</div>
             {totalPositionsPnl !== 0 && (
               <div className="flex items-center gap-1 mt-1">
                 {totalPositionsPnl >= 0 ? (
@@ -479,21 +481,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       </span>
                     </div>
                     <div className="text-slate-300 text-lg mt-2 font-semibold">
-                      ${totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatFiat(totalPortfolioValue)}
                     </div>
                   </div>
 
                   {/* Status Tiers Grid */}
                   <div className="space-y-3">
                     {[
-                      { name: 'No-Coiner', threshold: '$0 - $249', color: 'from-slate-500 to-slate-600', icon: '🪙', emoji: '💸' },
-                      { name: 'Shrimp', threshold: '$250+', color: 'from-red-500 to-orange-500', icon: '🦐', emoji: '🦐' },
-                      { name: 'Crab', threshold: '$10K+', color: 'from-orange-500 to-yellow-500', icon: '🦀', emoji: '🦀' },
-                      { name: 'Octopus', threshold: '$25K+', color: 'from-yellow-500 to-green-500', icon: '🐙', emoji: '🐙' },
-                      { name: 'Dolphin', threshold: '$50K+', color: 'from-green-500 to-cyan-500', icon: '🐬', emoji: '🐬' },
-                      { name: 'Shark', threshold: '$100K+', color: 'from-cyan-500 to-blue-500', icon: '🦈', emoji: '🦈' },
-                      { name: 'Whale', threshold: '$500K+', color: 'from-blue-500 to-purple-500', icon: '🐋', emoji: '🐋' },
-                      { name: 'Humpback', threshold: '$2M+', color: 'from-purple-500 to-pink-500', icon: '🐳', emoji: '🐳' },
+                      { name: 'No-Coiner', threshold: `${formatFiatWhole(0)} - ${formatFiatWhole(249)}`, color: 'from-slate-500 to-slate-600', icon: '🪙', emoji: '💸' },
+                      { name: 'Shrimp', threshold: `${formatFiatWhole(250)}+`, color: 'from-red-500 to-orange-500', icon: '🦐', emoji: '🦐' },
+                      { name: 'Crab', threshold: `${formatFiatCompact(10000)}+`, color: 'from-orange-500 to-yellow-500', icon: '🦀', emoji: '🦀' },
+                      { name: 'Octopus', threshold: `${formatFiatCompact(25000)}+`, color: 'from-yellow-500 to-green-500', icon: '🐙', emoji: '🐙' },
+                      { name: 'Dolphin', threshold: `${formatFiatCompact(50000)}+`, color: 'from-green-500 to-cyan-500', icon: '🐬', emoji: '🐬' },
+                      { name: 'Shark', threshold: `${formatFiatCompact(100000)}+`, color: 'from-cyan-500 to-blue-500', icon: '🦈', emoji: '🦈' },
+                      { name: 'Whale', threshold: `${formatFiatCompact(500000)}+`, color: 'from-blue-500 to-purple-500', icon: '🐋', emoji: '🐋' },
+                      { name: 'Humpback', threshold: `${formatFiatCompact(2000000)}+`, color: 'from-purple-500 to-pink-500', icon: '🐳', emoji: '🐳' },
                     ].map((tier) => (
                       <div
                         key={tier.name}
@@ -895,7 +897,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   <span className="text-white font-mono">{(usdtBalance || 0).toFixed(2)}</span>
                 </div>
                 <div className="text-xs text-slate-400 text-right">
-                  ${(usdtBalance || 0).toFixed(2)} USD
+                  ≈ {formatFiat(usdtBalance || 0)}
                 </div>
               </div>
               
@@ -910,7 +912,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   <span className="text-white font-mono">{(btcBalance || 0).toFixed(8)}</span>
                 </div>
                 <div className="text-xs text-slate-400 text-right">
-                  ${((btcBalance || 0) * (currentPrice || 0)).toFixed(2)} USD
+                  ≈ {formatFiat((btcBalance || 0) * (currentPrice || 0))}
                 </div>
               </div>
             </div>

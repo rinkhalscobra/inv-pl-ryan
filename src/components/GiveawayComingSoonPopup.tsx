@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Gift, X, Calendar, DollarSign, Ticket, Clock } from 'lucide-react';
+import { Gift, X, Calendar, Euro, Ticket, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface GiveawayCampaign {
   id: string;
@@ -18,6 +19,7 @@ interface GiveawayComingSoonPopupProps {
 }
 
 export default function GiveawayComingSoonPopup({ forceShow = false }: GiveawayComingSoonPopupProps) {
+  const { formatFiatWhole: formatCurrency } = useFiatCurrency();
   const [campaign, setCampaign] = useState<GiveawayCampaign | null>(null);
   const [showPopup, setShowPopup] = useState(false);
   const [timeUntilStart, setTimeUntilStart] = useState('');
@@ -145,15 +147,6 @@ export default function GiveawayComingSoonPopup({ forceShow = false }: GiveawayC
     });
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
   if (!showPopup || !campaign) return null;
 
   return (
@@ -227,7 +220,7 @@ export default function GiveawayComingSoonPopup({ forceShow = false }: GiveawayC
             </div>
 
             <div className="flex items-center gap-3 bg-slate-700/50 rounded-xl p-3">
-              <DollarSign className="w-5 h-5 text-green-400 flex-shrink-0" />
+              <Euro className="w-5 h-5 text-green-400 flex-shrink-0" />
               <div className="text-left flex-1">
                 <p className="text-xs text-slate-400">Winner Selection</p>
                 <p className="text-sm text-white font-medium">

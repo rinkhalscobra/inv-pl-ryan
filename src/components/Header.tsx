@@ -38,30 +38,7 @@ import { User as UserType } from '@supabase/supabase-js';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constants/tradingPairs';
-
-
-
-const convertBalance = (balance: number, targetCurrency: string): number => {
-  if (targetCurrency === 'USD') return balance; // base case
-
-  // market_data stores prices like EUR/USD, GBP/USD, BTC/USDT etc.
-
-
-
-  const conversionSymbol = targetCurrency === 'BTC' || targetCurrency === 'ETH'
-    ? `${targetCurrency}USDT`
-    : `USD/${targetCurrency}`;
-
-  const rate = getPriceBySymbol(conversionSymbol);
-
-  if (!rate || rate <= 0) return balance; // fallback: no conversion
-  // If we stored USD/XXX → multiply, if XXX/USD → divide
-  if (conversionSymbol.startsWith('USD/')) {
-    return balance * rate; // 1 USD = X target currency
-  } else {
-    return balance / rate; // target in USD, so invert
-  }
-};
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 
 interface HeaderProps {
@@ -78,7 +55,6 @@ interface HeaderProps {
   signOut: () => void;
   marketDataList: MarketData[];
   userStatus: UserStatus;
-  isDemoAccount: boolean;
   isAdmin: boolean;
 }
 
@@ -96,11 +72,11 @@ const Header: React.FC<HeaderProps> = ({
   signOut,
   marketDataList,
   userStatus,
-  isDemoAccount,
   isAdmin
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { formatFiat } = useFiatCurrency();
   const { marketData: cfdMarketData, isConnected: cfdConnected, getPriceBySymbol: getCfdPrice } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, isConnected: cryptoConnected } = useBybitData();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -109,16 +85,6 @@ const Header: React.FC<HeaderProps> = ({
     if (tradingMode === 'futures') {
       return getCryptoPrice(symbol);
     }
-    return getCfdPrice(symbol);
-  };
-
-  // Smart price lookup that uses the correct data source regardless of trading mode
-  const getConversionRate = (symbol: string): number => {
-    // For crypto pairs (BTCUSDT, ETHUSDT, etc.), always use Bybit
-    if (symbol.includes('USDT') && !symbol.includes('/')) {
-      return getCryptoPrice(symbol);
-    }
-    // For forex pairs (USD/EUR, EUR/USD, etc.), always use CFD
     return getCfdPrice(symbol);
   };
 
@@ -136,70 +102,6 @@ const Header: React.FC<HeaderProps> = ({
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // --- Currency Dropdown State ---
-  const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
-  const [selectedDisplayCurrency, setSelectedDisplayCurrency] = useState('USD');
-  const currencyRef = useRef<HTMLDivElement>(null);
-
-  // Available currencies
-  const currencyOptions = [
-    { code: 'USD', symbol: '$', name: 'US Dollar' },
-    { code: 'EUR', symbol: '€', name: 'Euro' },
-    { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
-    { code: 'GBP', symbol: '£', name: 'British Pound' },
-    { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
-    { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
-    { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
-    { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
-    { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
-    { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
-    { code: 'NOK', symbol: 'kr', name: 'Norwegian Krone' },
-    { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
-    { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
-    { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
-    { code: 'MXN', symbol: '$', name: 'Mexican Peso' },
-    { code: 'BTC', symbol: '₿', name: 'Bitcoin' },
-    { code: 'ETH', symbol: 'Ξ', name: 'Ethereum' },
-  ];
-
-  // Get symbol for currently selected currency
-  const selectedCurrencySymbol = React.useMemo(() => {
-    const option = currencyOptions.find(opt => opt.code === selectedDisplayCurrency);
-    return option ? option.symbol : '$';
-  }, [selectedDisplayCurrency]);
-
-  const convertBalance = (balance: number, targetCurrency: string): number => {
-    if (targetCurrency === 'USD') return balance;
-
-    // For crypto, use direct USDT pairs from Bybit
-    if (targetCurrency === 'BTC' || targetCurrency === 'ETH') {
-      const cryptoSymbol = `${targetCurrency}USDT`;
-      const rate = getConversionRate(cryptoSymbol);
-      if (rate && rate > 0) {
-        return balance / rate; // Convert USD to crypto (e.g., $100 / $60000 = 0.00166 BTC)
-      }
-      return balance; // Fallback
-    }
-
-    // For fiat currencies, try both USD/XXX and XXX/USD formats from CFD
-    const directSymbol = `USD/${targetCurrency}`; // e.g., USD/EUR
-    const invertedSymbol = `${targetCurrency}/USD`; // e.g., EUR/USD
-
-    // Try direct symbol first
-    let rate = getConversionRate(directSymbol);
-    if (rate && rate > 0) {
-      return balance * rate; // If USD/EUR = 0.93, then $100 = €93
-    }
-
-    // Try inverted symbol
-    rate = getConversionRate(invertedSymbol);
-    if (rate && rate > 0) {
-      return balance / rate; // If EUR/USD = 1.08, then $100 = €92.59 (100/1.08)
-    }
-
-    // Fallback: no conversion available
-    return balance;
-  };
   // Refs for dropdown handling
   const notificationsRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -506,7 +408,7 @@ const Header: React.FC<HeaderProps> = ({
 
           {/* Right Section - Portfolio + User Status + Menu */}
           <div className="flex min-w-0 items-center gap-2 sm:gap-2.5 lg:gap-3 2xl:gap-5">
-            {/* Portfolio Value + Currency Dropdown */}
+            {/* Portfolio value in the platform fiat currency */}
             <div className={`hidden min-w-0 items-center gap-2 2xl:gap-4 ${desktopHeaderBreakpoint}`}>
               <div className={`flex min-w-0 max-w-[220px] items-center justify-between rounded-xl ${headerPanelBackgroundClass} px-3 py-2.5 text-white xl:max-w-none xl:px-3.5 2xl:px-4 2xl:py-3`}>
                 <div className="flex min-w-0 items-center gap-2 xl:gap-2.5 2xl:gap-3">
@@ -519,63 +421,16 @@ const Header: React.FC<HeaderProps> = ({
                   <div className="min-w-0">
                     <div className="text-xs text-slate-400 2xl:text-[13px]">{t('header.portfolioValue')}</div>
                     <div className="truncate text-[13px] font-mono text-white 2xl:text-sm">
-                      {showBalances
-                        ? `${selectedCurrencySymbol}${convertBalance(
-                          totalPortfolioValue,
-                          selectedDisplayCurrency
-                        ).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}`
-                        : '••••••'}
+                      {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
                     </div>
                   </div>
                 </div>
 
-                {/* Currency Dropdown */}
-                <div className="relative ml-2 xl:ml-2.5" ref={currencyRef}>
-                  <button
-                    onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
-                    className={`flex items-center gap-1 rounded-lg ${headerSurfaceBackgroundClass} px-2 py-1 text-xs text-white 2xl:gap-1.5 2xl:px-2.5 2xl:py-1.5 2xl:text-sm`}
-                  >
-                    {selectedCurrencySymbol} <ChevronDown size={14} />
-                  </button>
-                  {isCurrencyDropdownOpen && (
-                    <div className={`absolute right-0 mt-2 w-44 ${headerDropdownBackgroundClass} border border-slate-700 rounded-lg shadow-2xl shadow-black/50 z-50 max-h-80 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden`}>
-                      {currencyOptions.map((option) => (
-                        <button
-                          key={option.code}
-                          onClick={() => {
-                            setSelectedDisplayCurrency(option.code);
-                            setIsCurrencyDropdownOpen(false);
-                          }}
-                          className={`flex w-full items-center px-3 py-2 text-xs ${headerSurfaceHoverBackgroundClass} ${selectedDisplayCurrency === option.code
-                            ? 'bg-gradient-to-r from-purple-500 to-violet-500 text-white'
-                            : 'text-white'
-                            }`}
-                        >
-                          {option.symbol} {option.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <span className={`ml-2 rounded-lg ${headerSurfaceBackgroundClass} px-2 py-1 text-xs text-white xl:ml-2.5 2xl:px-2.5 2xl:py-1.5 2xl:text-sm`}>
+                  EUR
+                </span>
               </div>
 
-              {/* Account Type Indicator */}
-              <div className={`hidden rounded-xl border px-2.5 py-1.5 md:block 2xl:px-3.5 2xl:py-2.5 ${isDemoAccount
-                ? 'bg-purple-500/10 border-purple-500/30'
-                : 'bg-gradient-to-r from-purple-500/20 to-violet-500/10 border-purple-500/30'
-                }`}>
-                <div className="flex items-center gap-2">
-                  <div className={`h-2 w-2 rounded-full 2xl:h-2.5 2xl:w-2.5 ${isDemoAccount ? 'bg-purple-400' : 'bg-white'
-                    }`} />
-                  <span className={`text-xs font-semibold 2xl:text-sm ${isDemoAccount ? 'text-purple-400' : 'text-white'
-                    }`}>
-                    {isDemoAccount ? 'DEMO' : 'LIVE'}
-                  </span>
-                </div>
-              </div>
             </div>
 
             {/* User Status Badge */}
@@ -696,12 +551,7 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="min-w-0">
                   <div className="text-slate-400 text-xs">{t('header.portfolioValue')}</div>
                   <div className="truncate text-base font-mono text-white">
-                    {showBalances
-                      ? `$${totalPortfolioValue.toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}`
-                      : '••••••'}
+                    {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2 sm:justify-end">
@@ -718,22 +568,6 @@ const Header: React.FC<HeaderProps> = ({
                 </div>
               </div>
 
-              {/* Account Type Indicator - Mobile */}
-              <div className="flex items-center justify-center">
-                <div className={`rounded-lg border px-3 py-1.5 ${isDemoAccount
-                  ? 'bg-purple-500/10 border-purple-500/30'
-                  : 'bg-gradient-to-r from-purple-500/20 to-violet-500/10 border-purple-500/30'
-                  }`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${isDemoAccount ? 'bg-purple-400' : 'bg-white'
-                      }`} />
-                    <span className={`text-xs font-semibold ${isDemoAccount ? 'text-purple-400' : 'text-white'
-                      }`}>
-                      {isDemoAccount ? 'DEMO ACCOUNT' : 'LIVE ACCOUNT'}
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Mobile Navigation */}

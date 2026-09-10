@@ -1,6 +1,7 @@
 import { Award, BarChart3, CheckCircle, TrendingUp } from 'lucide-react';
 import { CFD_TIERS, CfdTier } from '../constants/tradingTiers';
 import { UserStatus } from '../App';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface AccountTierOverviewProps {
   userStatus: UserStatus;
@@ -8,28 +9,24 @@ interface AccountTierOverviewProps {
   userCfdTier: CfdTier;
 }
 
-const portfolioTiers: Array<{ name: UserStatus; threshold: string }> = [
-  { name: 'No-Coiner', threshold: '$0' },
-  { name: 'Shrimp', threshold: '$250' },
-  { name: 'Crab', threshold: '$10K' },
-  { name: 'Octopus', threshold: '$25K' },
-  { name: 'Dolphin', threshold: '$50K' },
-  { name: 'Shark', threshold: '$100K' },
-  { name: 'Whale', threshold: '$500K' },
-  { name: 'Humpback', threshold: '$2M' },
+const portfolioTiers: Array<{ name: UserStatus; threshold: number }> = [
+  { name: 'No-Coiner', threshold: 0 },
+  { name: 'Shrimp', threshold: 250 },
+  { name: 'Crab', threshold: 10_000 },
+  { name: 'Octopus', threshold: 25_000 },
+  { name: 'Dolphin', threshold: 50_000 },
+  { name: 'Shark', threshold: 100_000 },
+  { name: 'Whale', threshold: 500_000 },
+  { name: 'Humpback', threshold: 2_000_000 },
 ];
-
-const formatMinimum = (value: number) => {
-  if (value >= 1_000_000) return `$${value / 1_000_000}M`;
-  if (value >= 1_000) return `$${value / 1_000}K`;
-  return `$${value}`;
-};
 
 export default function AccountTierOverview({
   userStatus,
   totalPortfolioValue,
   userCfdTier,
 }: AccountTierOverviewProps) {
+  const { formatFiatCompact, formatFiatWhole } = useFiatCurrency();
+
   return (
     <div className="space-y-6">
       <div className="app-surface-primary rounded-2xl p-6">
@@ -50,7 +47,7 @@ export default function AccountTierOverview({
             </div>
             <div className="text-lg font-bold text-emerald-400">{userStatus}</div>
             <div className="mt-1 text-xs text-slate-400">
-              ${totalPortfolioValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              {formatFiatWhole(totalPortfolioValue)}
             </div>
           </div>
 
@@ -88,7 +85,7 @@ export default function AccountTierOverview({
                   </span>
                   {isCurrent && <CheckCircle size={14} className="shrink-0 text-emerald-400" />}
                 </div>
-                <div className="mt-1 text-xs text-slate-400">From {tier.threshold}</div>
+                <div className="mt-1 text-xs text-slate-400">From {formatFiatCompact(tier.threshold)}</div>
               </div>
             );
           })}
@@ -123,7 +120,7 @@ export default function AccountTierOverview({
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-400">From {formatMinimum(tier.minEquity)}</div>
+                    <div className="mt-0.5 text-xs text-slate-400">From {formatFiatCompact(tier.minEquity)}</div>
                   </div>
                   <div className="grid shrink-0 grid-cols-3 gap-3 text-center">
                     <div><div className="text-sm font-bold text-emerald-400">{tier.maxForex}x</div><div className="text-[10px] text-slate-500">FX</div></div>

@@ -38,6 +38,7 @@ import { TOP_CRYPTO_PAIRS } from '../constants/tradingPairs';
 import GiveawayCampaignPopup from '../components/GiveawayCampaignPopup';
 import GiveawayWinnerPopup from '../components/GiveawayWinnerPopup';
 import GiveawayComingSoonPopup from '../components/GiveawayComingSoonPopup';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
@@ -81,6 +82,7 @@ const HomePage: React.FC<HomePageProps> = ({
   userAssets = []
 }) => {
   const { t } = useTranslation();
+  const { formatFiat, formatFiatCompact } = useFiatCurrency();
   const { fetchPortfolioSnapshots, portfolioSnapshots, createPortfolioSnapshot, coingeckoMarketCapData } = useDatabase();
   const { marketData, isConnected: isRealtimeConnected, getPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol } = useBybitData();
@@ -429,7 +431,7 @@ const HomePage: React.FC<HomePageProps> = ({
         displayColors: false,
         callbacks: {
           label: function(context: any) {
-            return `$${context.raw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return formatFiat(Number(context.raw));
           }
         }
       }
@@ -466,7 +468,7 @@ const HomePage: React.FC<HomePageProps> = ({
         ticks: {
           color: 'rgba(148, 163, 184, 1)',
           callback: function(value: any) {
-            return `$${value.toLocaleString('en-US', { notation: 'compact', compactDisplay: 'short' })}`;
+            return formatFiatCompact(Number(value));
           }
         }
       }
@@ -576,7 +578,7 @@ const HomePage: React.FC<HomePageProps> = ({
                     <span className="text-sm text-white sm:text-base">Loading...</span>
                   </div>
                 ) : (
-                  `$${actualPortfolioValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  formatFiat(actualPortfolioValue)
                 )}
               </div>
             </div>
@@ -618,7 +620,7 @@ const HomePage: React.FC<HomePageProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-[13px] text-purple-100">BTC Price</div>
-              <div className="text-lg font-bold text-white sm:text-xl" translate="no">${currentBtcPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="text-lg font-bold text-white sm:text-xl" translate="no">{formatFiat(currentBtcPrice)}</div>
             </div>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
@@ -637,7 +639,7 @@ const HomePage: React.FC<HomePageProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-[13px] text-purple-100">Trading Volume</div>
-              <div className="text-lg font-bold text-white sm:text-xl" translate="no">$125,430.50</div>
+              <div className="text-lg font-bold text-white sm:text-xl" translate="no">{formatFiat(125430.50)}</div>
             </div>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
@@ -676,16 +678,16 @@ const HomePage: React.FC<HomePageProps> = ({
           <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
             <div>
               <div className="text-slate-400">High ({getPeriodLabel()})</div>
-              <div className="font-semibold text-white" translate="no">${high.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="font-semibold text-white" translate="no">{formatFiat(high)}</div>
             </div>
             <div>
               <div className="text-slate-400">Low ({getPeriodLabel()})</div>
-              <div className="font-semibold text-white" translate="no">${low.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="font-semibold text-white" translate="no">{formatFiat(low)}</div>
             </div>
             <div>
               <div className="text-slate-400">Change ({getPeriodLabel()})</div>
               <div className={`font-semibold ${change >= 0 ? 'text-purple-400' : 'text-red-400'}`} translate="no">
-                {change >= 0 ? '+' : ''}${change.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {change >= 0 ? '+' : ''}{formatFiat(change)}
               </div>
             </div>
           </div>
@@ -717,7 +719,7 @@ const HomePage: React.FC<HomePageProps> = ({
                     </div>
                     <div className="min-w-0">
                       <div className="truncate text-white font-medium">{data.symbol.replace('USDT', '')}</div>
-                      <div className="text-sm text-slate-400" translate="no">${data.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div className="text-sm text-slate-400" translate="no">{formatFiat(data.price)}</div>
                     </div>
                   </div>
                   <div className={`shrink-0 text-sm font-medium ${change24h >= 0 ? 'text-emerald-400' : 'text-red-400'}`} translate="no">

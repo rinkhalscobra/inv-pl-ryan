@@ -54,7 +54,7 @@ export default function PaymentSandbox() {
 
   const [initiateForm, setInitiateForm] = useState({
     amount: 5000,
-    currency: 'USD',
+    currency: 'EUR',
     referenceNo: `ORD-${Date.now()}`,
     returnUrl: 'https://example.com/payment/callback',
     email: 'customer@example.com',
@@ -77,7 +77,7 @@ export default function PaymentSandbox() {
     referenceNo: `REF-${Date.now()}`,
     returnUrl: 'https://example.com/return',
     amount: 5000,
-    currency: 'USD',
+    currency: 'EUR',
     email: 'customer@example.com',
     ip: '192.0.2.1',
     billingFirstName: 'John',

@@ -21,7 +21,8 @@ import {
   CreditCard as Card,
   ArrowRight,
   Landmark,
-  BarChart3
+  BarChart3,
+  Euro
 } from 'lucide-react';
 import NowPaymentsDeposit from './NowPaymentsDeposit';
 import BankWithdrawalModal from './BankWithdrawalModal';
@@ -35,6 +36,8 @@ import { supabase } from '../lib/supabaseClient';
 import WalletBreakdownCard from './WalletBreakdownCard';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import ManualDepositRequest from './ManualDepositRequest';
 
 interface WalletBreakdown {
   totalBalance: number;
@@ -75,6 +78,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   const { userStakes, calculateCurrentEarnings, cancelUserStake, transactions } = useDatabase();
   const { marketData: contextMarketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice } = useBybitData();
+  const { convertUsdToEur, eurUsdRate, formatEur, formatFiat } = useFiatCurrency();
 
   // Helper function to format date safely
   const formatDate = (dateString: string | undefined) => {
@@ -227,11 +231,14 @@ const WalletPage: React.FC<WalletPageProps> = ({
           user_id: user.id,
           type: 'withdrawal',
           amount: -amount,
-          description: `Bank withdrawal of ${amount} USDT to ${bankDetails.bankName} (Acc: ••••${bankDetails.accountNumber.slice(-4)})`,
+          description: `Bank withdrawal of ${amount} USDT to EUR via ${bankDetails.bankName} (Acc: ••••${bankDetails.accountNumber.slice(-4)})`,
           status: 'pending',
           withdrawal_details: {
             currency: 'USDT',
             amount: amount,
+            payout_currency: 'EUR',
+            estimated_payout_eur: convertUsdToEur(amount * 0.995),
+            eur_usd_rate: eurUsdRate || null,
             bank_name: bankDetails.bankName,
             account_number: bankDetails.accountNumber,
             routing_number: bankDetails.routingNumber,
@@ -336,13 +343,13 @@ const WalletPage: React.FC<WalletPageProps> = ({
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount);
+  const formatCurrency = formatFiat;
+
+  const formatTransactionAmount = (transaction: { amount: number; currency?: string }) => {
+    const transactionAmount = Number(transaction.amount);
+    return transaction.currency?.toUpperCase() === 'EUR'
+      ? formatEur(transactionAmount)
+      : formatFiat(transactionAmount);
   };
 
   const formatCrypto = (amount: number, symbol: string) => {
@@ -681,7 +688,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                           : 'text-white'
                       }`}>
                         {isPositiveTransaction(transaction.type) ? '+' : ''}
-                        {formatCurrency(parseFloat(transaction.amount.toString()))}
+                        {formatTransactionAmount(transaction)}
                       </div>
                       <div className="flex items-center gap-1">
                         {getStatusIcon(transaction.status)}
@@ -752,12 +759,21 @@ const WalletPage: React.FC<WalletPageProps> = ({
 
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-slate-400 text-sm mb-3">Select Currency</label>
+                    <label className="block text-slate-400 text-sm mb-3">
+                      {depositMethod === 'bank_transfer' ? 'Fiat Currency' : 'Select Currency'}
+                    </label>
                     <div className="flex gap-3">
+                      {depositMethod === 'bank_transfer' ? (
+                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-white">
+                          <Euro size={18} className="text-emerald-400" />
+                          <span className="font-medium">Euro (EUR)</span>
+                        </div>
+                      ) : (
+                        <>
                       <button
                         onClick={() => setSelectedCurrency('USDT')}
                         className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                          selectedCurrency === 'USDT' && depositMethod === 'bank_transfer'
+                          selectedCurrency === 'USDT'
                             ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/25 transform scale-105'
                             : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white border border-slate-600/30'
                         }`}
@@ -770,7 +786,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                       <button
                         onClick={() => setSelectedCurrency('BTC')}
                         className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                          selectedCurrency === 'BTC' && depositMethod === 'bank_transfer'
+                          selectedCurrency === 'BTC'
                             ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 transform scale-105'
                             : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white border border-slate-600/30'
                         }`}
@@ -778,13 +794,15 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         <Bitcoin size={18} className="text-orange-400" />
                         BTC
                       </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <div>
+                  {depositMethod !== 'bank_transfer' && <div>
                     <div className="flex justify-between text-sm text-slate-400 mb-2">
                       <span>Amount</span>
-                      <span>Min: $10</span>
+                      <span>Min: 10 {selectedCurrency}</span>
                     </div>
                     <div className="relative">
                       <input
@@ -798,7 +816,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         {selectedCurrency}
                       </div>
                     </div>
-                  </div>
+                  </div>}
 
                   {/* Deposit Method Selector */}
                   <div className="mb-6">
@@ -905,6 +923,14 @@ const WalletPage: React.FC<WalletPageProps> = ({
                               <div className="text-sm text-slate-400">Beneficiary Name</div>
                               <div className="text-white font-medium">{bankDetails.beneficiary_name || 'Not Yet Available'}</div>
                             </div>
+                            <div>
+                              <div className="text-sm text-slate-400">IBAN</div>
+                              <div className="break-all text-white font-medium">{bankDetails.iban || 'Not Yet Available'}</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-slate-400">Currency</div>
+                              <div className="text-white font-medium">EUR</div>
+                            </div>
                           </div>
                         ) : (
                           <div className="text-center py-8 text-slate-500">
@@ -915,12 +941,12 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         )}
                       </div>
 
-                      <button
-                        disabled={true}
-                        className="w-full bg-slate-600/50 text-slate-400 py-3 rounded-xl font-medium cursor-not-allowed"
-                      >
-                        Deposit via Bank Transfer (Not Yet Available)
-                      </button>
+                      <ManualDepositRequest
+                        onSubmitted={() => setMessage({
+                          type: 'success',
+                          text: 'EUR bank deposit request submitted for CRM review.',
+                        })}
+                      />
                     </div>
                   )}
                 </div>
@@ -990,7 +1016,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         : 'text-white'
                     }`}>
                       {isPositiveTransaction(transaction.type) ? '+' : ''}
-                      {formatCurrency(parseFloat(transaction.amount.toString()))}
+                      {formatTransactionAmount(transaction)}
                     </div>
                     <div className="flex items-center gap-1">
                       {getStatusIcon(transaction.status)}

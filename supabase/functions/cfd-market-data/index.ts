@@ -21,9 +21,9 @@ const corsHeaders = {
 };
 const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), {
   status,
-  headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "private, max-age=60" },
+  headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "private, max-age=5" },
 });
-const CACHE_MS = 15 * 60 * 1000;
+const CACHE_MS = 10 * 1000;
 const MAX_INSTRUMENTS = 220;
 const YAHOO_BATCH_SIZE = 35;
 let warmCacheUntil = 0;
@@ -46,6 +46,16 @@ const yahooOverrides: Record<string, string> = {
   "STOXX50": "^STOXX50E",
   "KOSPI": "^KS11",
   "SAMSUNG": "005930.KS",
+};
+
+const toYahooSymbol = (instrument: RequestedInstrument): string => {
+  const overridden = yahooOverrides[instrument.symbol];
+  if (overridden) return overridden;
+  if (instrument.type === "forex" && /^[A-Z]{3}\/[A-Z]{3}$/.test(instrument.symbol)) {
+    const [base, quote] = instrument.symbol.split("/");
+    return base === "USD" ? `${quote}=X` : `${base}${quote}=X`;
+  }
+  return instrument.symbol;
 };
 
 const validInstrument = (value: unknown): value is RequestedInstrument => {
@@ -80,49 +90,12 @@ const refreshPrices = async (
   const now = new Date().toISOString();
   const rows: MarketRow[] = [];
   const sources: string[] = [];
-  const forex = instruments.filter((item) => item.type === "forex" && /^[A-Z]{3}\/[A-Z]{3}$/.test(item.symbol));
-  // Frankfurter exposes mainland CNY rather than the offshore CNH code. Using
-  // CNY as the low-frequency reference keeps USD/CNH populated without adding
-  // another provider call.
-  const providerCurrency = (code: string) => code === "CNH" ? "CNY" : code;
-  const quotedCurrencies = Array.from(new Set(
-    forex.flatMap((item) => item.symbol.split("/").map(providerCurrency)),
-  )).filter((code) => code !== "USD");
-
-  if (quotedCurrencies.length > 0) {
-    try {
-      const result = await fetchJson(`https://api.frankfurter.dev/v2/rates?base=USD&quotes=${encodeURIComponent(quotedCurrencies.join(","))}`) as Array<{ quote: string; rate: number }>;
-      const usdRates: Record<string, number> = { USD: 1 };
-      for (const item of result) if (item.quote && Number(item.rate) > 0) usdRates[item.quote] = Number(item.rate);
-      for (const item of forex) {
-        const [rawBase, rawQuote] = item.symbol.split("/");
-        const base = providerCurrency(rawBase);
-        const quote = providerCurrency(rawQuote);
-        if (!usdRates[base] || !usdRates[quote]) continue;
-        rows.push({
-          symbol: item.symbol,
-          price: usdRates[quote] / usdRates[base],
-          change_24h: 0,
-          high_price_24h: 0,
-          low_price_24h: 0,
-          volume_24h: 0,
-          timestamp: now,
-          updated_at: now,
-        });
-      }
-      sources.push("Frankfurter");
-    } catch (error) {
-      console.warn("Frankfurter refresh failed", error);
-    }
-  }
-
-  const marketInstruments = instruments.filter((item) => item.type !== "forex");
   const providerToInstrument = new Map<string, RequestedInstrument>();
-  for (const item of marketInstruments) providerToInstrument.set(yahooOverrides[item.symbol] || item.symbol, item);
+  for (const item of instruments) providerToInstrument.set(toYahooSymbol(item), item);
 
   const batches = chunk(Array.from(providerToInstrument.keys()), YAHOO_BATCH_SIZE);
   const batchResults = await Promise.allSettled(batches.map(async (symbols) => {
-    const url = `https://query2.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(symbols.join(","))}&range=5d&interval=1d`;
+    const url = `https://query2.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(symbols.join(","))}&range=1d&interval=1m`;
     return fetchJson(url) as Promise<{
       spark?: { result?: Array<{ symbol: string; response?: Array<{
         meta?: Record<string, unknown>;
@@ -134,7 +107,7 @@ const refreshPrices = async (
 
   for (const result of batchResults) {
     if (result.status === "rejected") {
-      console.warn("Delayed quote batch failed", result.reason);
+      console.warn("Market quote batch failed", result.reason);
       continue;
     }
     for (const quote of result.value.spark?.result || []) {
@@ -158,7 +131,7 @@ const refreshPrices = async (
       });
     }
   }
-  if (batchResults.some((result) => result.status === "fulfilled")) sources.push("delayed market quotes");
+  if (batchResults.some((result) => result.status === "fulfilled")) sources.push("one-minute market quotes");
 
   for (const batch of chunk(rows, 100)) {
     const { error } = await admin.from("market_data").upsert(batch, { onConflict: "symbol", ignoreDuplicates: false });

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMarketData } from '../contexts/MarketDataContext';
 
 const EUR_USD_CACHE_KEY = 'invest-platform:eur-usd-rate';
-const FALLBACK_EUR_USD_RATE = 1.1;
-
 const readCachedRate = () => {
   if (typeof window === 'undefined') return 0;
   const cachedRate = Number(window.localStorage.getItem(EUR_USD_CACHE_KEY));
@@ -14,7 +12,8 @@ export const useFiatCurrency = () => {
   const { getPriceBySymbol, getSnapshotPriceBySymbol } = useMarketData();
   const liveRate = getPriceBySymbol('EUR/USD') || getSnapshotPriceBySymbol('EUR/USD');
   const [cachedRate, setCachedRate] = useState(readCachedRate);
-  const eurUsdRate = liveRate > 0 ? liveRate : cachedRate || FALLBACK_EUR_USD_RATE;
+  // A previously observed market rate may bridge a reconnect, but never invent a rate.
+  const eurUsdRate = liveRate > 0 ? liveRate : cachedRate;
 
   useEffect(() => {
     if (liveRate <= 0) return;
@@ -23,7 +22,7 @@ export const useFiatCurrency = () => {
   }, [liveRate]);
 
   const convertUsdToEur = useCallback((amount: number) => {
-    if (!Number.isFinite(amount)) return 0;
+    if (!Number.isFinite(amount) || eurUsdRate <= 0) return 0;
     return amount / eurUsdRate;
   }, [eurUsdRate]);
 

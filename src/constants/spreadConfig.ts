@@ -106,6 +106,17 @@ export function calculateSpreadCost(
   return boundedSpread;
 }
 
+export function calculateSpreadCostFromNotional(symbol: string, notionalUsd: number): number {
+  const spreadConfig = getSpreadForSymbol(symbol);
+  if (!Number.isFinite(notionalUsd) || notionalUsd <= 0) return 0;
+  if (!spreadConfig) return notionalUsd * 0.0001;
+
+  return Math.max(
+    spreadConfig.minSpread,
+    Math.min(notionalUsd * spreadConfig.spreadPercentage, spreadConfig.maxSpread)
+  );
+}
+
 export function formatSpreadDisplay(
   symbol: string,
   entryPrice: number,

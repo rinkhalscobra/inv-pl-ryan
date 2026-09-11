@@ -1,4 +1,3 @@
-import { useWalletBreakdown } from '../hooks/useWalletBreakdown';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -27,58 +26,47 @@ import {
 import NowPaymentsDeposit from './NowPaymentsDeposit';
 import BankWithdrawalModal from './BankWithdrawalModal';
 import CryptoWithdrawalModal from './CryptoWithdrawalModal';
-import { Transaction } from '../App';
 import CryptoHoldings from './CryptoHoldings';
 import PnlStatement from './PnlStatement';
-import { MarketData, DatabaseUserAsset } from '../hooks/useDatabase';
-import { useDatabase } from '../hooks/useDatabase';
+import { MarketData, DatabaseTransaction, DatabaseUserAsset, DatabaseUserStake } from '../hooks/useDatabase';
 import { supabase } from '../lib/supabaseClient';
 import WalletBreakdownCard from './WalletBreakdownCard';
+import { WalletBreakdown } from '../hooks/useWalletBreakdown';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 import ManualDepositRequest from './ManualDepositRequest';
 
-interface WalletBreakdown {
-  totalBalance: number;
-  usedMargin: number;
-  unrealizedPnl: number;
-  availableBalance: number;
-  reserved: number;
-}
-
 interface WalletPageProps {
   usdtBalance: number;
   btcBalance: number;
-  transactions: Transaction[];
+  transactions: DatabaseTransaction[];
   kycStatus: 'not_verified' | 'pending' | 'verified';
   setTradingMode?: (mode: string) => void;
   marketData: MarketData[];
   userAssets?: DatabaseUserAsset[];
-  onWalletOperation?: (type: string, currency: string, amount: number) => Promise<void>;
-  totalPortfolioValue: number;
-  updateBalances?: (balances: any) => Promise<void>;
-  addTransaction?: (transaction: any) => Promise<void>;
-  setShowWithdrawalModal?: (show: boolean) => void;
-  showWithdrawalModal?: boolean;
-  walletBreakdown?: WalletBreakdown;
-  currentBtcPrice?: number;
+  userStakes: DatabaseUserStake[];
+  calculateCurrentEarnings: (stake: DatabaseUserStake) => number;
+  walletBreakdown: WalletBreakdown & { refreshBreakdown: () => Promise<void> };
 }
 
 const WalletPage: React.FC<WalletPageProps> = ({
   usdtBalance,
   btcBalance,
+  transactions,
+  kycStatus,
   setTradingMode,
   marketData,
   userAssets = [],
-  currentBtcPrice,
+  userStakes,
+  calculateCurrentEarnings,
+  walletBreakdown: walletBreakdownData,
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { userStakes, calculateCurrentEarnings, cancelUserStake, transactions } = useDatabase();
   const { marketData: contextMarketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice } = useBybitData();
-  const { convertEurToUsd, convertUsdToEur, eurUsdRate, formatEur, formatFiat } = useFiatCurrency();
+  const { convertUsdToEur, formatEur, formatFiat } = useFiatCurrency();
 
   // Helper function to format date safely
   const formatDate = (dateString: string | undefined) => {
@@ -94,13 +82,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
   // State for wallet operations
   const [activeTab, setActiveTab] = useState('overview');
   const [depositMethod, setDepositMethod] = useState<'bank_transfer' | 'nowpayments' | 'btc_direct'>('bank_transfer');
-  const [depositAmount, setDepositAmount] = useState('');
-  const [selectedCurrency, setSelectedCurrency] = useState<'USDT' | 'BTC'>('USDT');
   const [showBalance, setShowBalance] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [showBankWithdrawalModal, setShowBankWithdrawalModal] = useState(false);
   const [showCryptoWithdrawalModal, setShowCryptoWithdrawalModal] = useState(false);
-  const [selectedCryptoForWithdrawal, setSelectedCryptoForWithdrawal] = useState<'USDT' | 'BTC'>('USDT');
   
   // Get the actual BTC price to use (moved here so it can be used in hooks)
   const actualBtcPrice = useMemo(() => {
@@ -134,13 +119,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
       return propMarketDataItem.price;
     }
 
-    // Strategy 6: Use prop as final fallback
-    if (currentBtcPrice && currentBtcPrice > 0) {
-      return currentBtcPrice;
-    }
-
     return 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, contextMarketData, snapshotData, marketData, currentBtcPrice]);
+  }, [getBybitPrice, getSnapshotPriceBySymbol, contextMarketData, snapshotData, marketData]);
 
   const wsGetPrice = useCallback((symbol: string): number => {
     const bybitPrice = getBybitPrice(symbol);
@@ -151,13 +131,6 @@ const WalletPage: React.FC<WalletPageProps> = ({
     return md?.price || 0;
   }, [getBybitPrice, getSnapshotPriceBySymbol, contextMarketData]);
 
-  const walletBreakdownData = useWalletBreakdown(
-    usdtBalance,
-    btcBalance,
-    actualBtcPrice,
-    wsGetPrice
-  );
-  
   // State for bank transfer details
   const [bankDetails, setBankDetails] = useState<any>(null);
   const [loadingBankDetails, setLoadingBankDetails] = useState(false);
@@ -176,6 +149,12 @@ const WalletPage: React.FC<WalletPageProps> = ({
     
     fetchUserId();
   }, []);
+
+  useEffect(() => {
+    if (!message) return;
+    const timeout = window.setTimeout(() => setMessage(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
 
   // Fetch bank details when bank transfer tab is active
   const fetchBankDetails = useCallback(async () => {
@@ -207,151 +186,90 @@ const WalletPage: React.FC<WalletPageProps> = ({
     }
   }, [activeTab, depositMethod, fetchBankDetails]);
 
-  // Handle crypto withdrawal button click
-  const handleCryptoWithdrawalClick = (currency: 'USDT' | 'BTC') => {
-    setSelectedCryptoForWithdrawal(currency);
-    setShowCryptoWithdrawalModal(true);
-  };
-
-  // Handle withdrawal submission
+  // Reserve funds and create the request together in the database.
   const handleBankWithdrawalSubmit = async (amount: number, bankDetails: {
     bankName: string;
     accountNumber: string;
     routingNumber: string;
     beneficiaryName: string;
-  }): Promise<boolean> => {
+  }): Promise<string> => {
     try {
-      const ledgerAmount = convertEurToUsd(amount);
-      // Create transaction with withdrawal details using direct Supabase insert
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
-
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert([{
-          user_id: user.id,
-          type: 'withdrawal',
-          amount: -ledgerAmount,
-          description: `Bank withdrawal of ${formatEur(amount)} via ${bankDetails.bankName} (Acc: ••••${bankDetails.accountNumber.slice(-4)})`,
-          status: 'pending',
-          withdrawal_details: {
-            currency: 'EUR',
-            amount,
-            source_amount_usd: ledgerAmount,
-            payout_currency: 'EUR',
-            estimated_payout_eur: amount * 0.995,
-            eur_usd_rate: eurUsdRate || null,
-            bank_name: bankDetails.bankName,
-            account_number: bankDetails.accountNumber,
-            routing_number: bankDetails.routingNumber,
-            beneficiary_name: bankDetails.beneficiaryName,
-            withdrawal_type: 'bank',
-            created_at: new Date().toISOString()
-          }
-        }]);
-
-      if (transactionError) {
-        throw new Error(`Failed to create withdrawal transaction: ${transactionError.message}`);
-      }
-      
-      // Set success message
+      if (kycStatus !== 'verified') throw new Error('Identity verification is required before withdrawing funds.');
+      const { data, error: rpcError } = await supabase.rpc('request_bank_withdrawal', {
+        p_amount_eur: amount,
+        p_bank_name: bankDetails.bankName,
+        p_account_number: bankDetails.accountNumber,
+        p_routing_number: bankDetails.routingNumber,
+        p_beneficiary_name: bankDetails.beneficiaryName,
+      });
+      if (rpcError) throw rpcError;
+      const transactionId = typeof data === 'string' ? data : data?.transaction_id;
+      if (!transactionId) throw new Error('The withdrawal request did not return a transaction reference.');
+      await walletBreakdownData.refreshBreakdown();
       setMessage({ type: 'success', text: 'Bank withdrawal initiated successfully' });
-      
-      // Close modal after successful withdrawal
       setShowBankWithdrawalModal(false);
-      return true;
-    } catch (error) {
+      return transactionId;
+    } catch (error: any) {
       console.error('Error processing bank withdrawal:', error);
-      setMessage({ type: 'error', text: 'Withdrawal failed. Please try again.' });
-      return false;
+      const reason = error?.message || 'Withdrawal failed. Please try again.';
+      setMessage({ type: 'error', text: reason });
+      throw new Error(reason);
     }
   };
 
-  // Handle crypto withdrawal
-  const handleCryptoWithdrawal = async (currency: 'USDT' | 'BTC', amount: number, address: string, network: string): Promise<boolean> => {
+  const handleCryptoWithdrawal = async (amount: number, address: string, network: string): Promise<string> => {
     try {
-      // Check available balance for withdrawal
-      const withdrawalValueUSD = currency === 'USDT' ? amount : amount * actualBtcPrice;
-
-      if (walletBreakdownData && withdrawalValueUSD > walletBreakdownData.availableBalance) {
-        throw new Error(`Insufficient available balance. Required: ${formatFiat(withdrawalValueUSD)}, Available: ${formatFiat(walletBreakdownData.availableBalance)}`);
-      }
-      
-      // Create transaction with withdrawal details using direct Supabase insert
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
-
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert([{
-          user_id: user.id,
-          type: 'withdrawal',
-          amount: -amount,
-          description: `${currency} withdrawal of ${amount} ${currency} to ${address.substring(0, 8)}...${address.substring(address.length - 8)}`,
-          status: 'pending',
-          withdrawal_details: {
-            currency: currency,
-            amount: amount,
-            recipient_address: address,
-            network: network,
-            withdrawal_type: 'crypto',
-            created_at: new Date().toISOString()
-          }
-        }]);
-
-      if (transactionError) {
-        throw new Error(`Failed to create withdrawal transaction: ${transactionError.message}`);
-      }
-      
-      // Set success message
-      setMessage({ type: 'success', text: 'Crypto withdrawal initiated successfully' });
-      
-      // Close modal after successful withdrawal
+      if (kycStatus !== 'verified') throw new Error('Identity verification is required before withdrawing funds.');
+      const { data, error: rpcError } = await supabase.rpc('request_btc_withdrawal', {
+        p_amount_btc: amount,
+        p_address: address,
+        p_network: network,
+      });
+      if (rpcError) throw rpcError;
+      const transactionId = typeof data === 'string' ? data : data?.transaction_id;
+      if (!transactionId) throw new Error('The withdrawal request did not return a transaction reference.');
+      await walletBreakdownData.refreshBreakdown();
+      setMessage({ type: 'success', text: 'BTC withdrawal initiated successfully' });
       setShowCryptoWithdrawalModal(false);
-      return true;
-    } catch (error) {
+      return transactionId;
+    } catch (error: any) {
       console.error('Error processing crypto withdrawal:', error);
-      setMessage({ type: 'error', text: 'Withdrawal failed. Please try again.' });
-      return false;
+      const reason = error?.message || 'Withdrawal failed. Please try again.';
+      setMessage({ type: 'error', text: reason });
+      throw new Error(reason);
     }
   };
 
   const totalStakedValue = userStakes.reduce((total, stake) => {
     if (stake.status !== 'active') return total;
     
-    const stakedValue = stake.asset_symbol === 'USDT' 
-      ? parseFloat(stake.staked_amount.toString())
-      : parseFloat(stake.staked_amount.toString()) * (marketData.find(m => m.symbol === 'BTCUSDT')?.price || 0);
+    const symbol = stake.asset_symbol.toUpperCase();
+    const price = symbol === 'USDT' ? 1 : wsGetPrice(`${symbol}USDT`);
+    const stakedValue = parseFloat(stake.staked_amount.toString()) * price;
     
     return total + stakedValue;
   }, 0);
 
   // Calculate total earnings from staking
   const totalStakingEarnings = userStakes.reduce((total, stake) => {
-    const earnings = calculateCurrentEarnings(stake);
-    return total + earnings;
+    const symbol = stake.asset_symbol.toUpperCase();
+    const price = symbol === 'USDT' ? 1 : wsGetPrice(`${symbol}USDT`);
+    return total + calculateCurrentEarnings(stake) * price;
   }, 0);
 
   // Calculate 24h change
   const btc24hChange = marketData.find(m => m.symbol === 'BTCUSDT')?.change_24h || 0;
   const portfolioChange24h = (btcBalance * actualBtcPrice * (btc24hChange / 100));
   
-  // Handle stake cancellation
-  const handleCancelStake = async (stakeId: string) => {
-    try {
-      await cancelUserStake(stakeId);
-    } catch (error) {
-      console.error('Error cancelling stake:', error);
-    }
-  };
-
   const formatCurrency = formatFiat;
 
-  const formatTransactionAmount = (transaction: { amount: number; currency?: string }) => {
+  const formatTransactionAmount = (transaction: { amount: number; currency?: string; description?: string }) => {
     const transactionAmount = Number(transaction.amount);
-    return transaction.currency?.toUpperCase() === 'EUR'
-      ? formatEur(transactionAmount)
-      : formatFiat(transactionAmount);
+    const currency = transaction.currency?.toUpperCase() ||
+      (transaction.description?.startsWith('CRM BTC balance adjustment:') ? 'BTC' : '');
+    if (currency === 'EUR') return formatEur(transactionAmount);
+    if (currency === 'BTC') return `${transactionAmount.toFixed(8)} BTC`;
+    return formatFiat(transactionAmount);
   };
 
   const formatCrypto = (amount: number, symbol: string) => {
@@ -436,9 +354,16 @@ const WalletPage: React.FC<WalletPageProps> = ({
         </div>
       )}
 
+      {walletBreakdownData.error && (
+        <div className="mx-4 mt-4 flex items-center justify-between gap-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300 sm:mx-6 lg:mx-8">
+          <span>{walletBreakdownData.error}. Values are not estimated.</span>
+          <button onClick={() => void walletBreakdownData.refreshBreakdown()} className="shrink-0 font-medium text-amber-200 hover:text-white">Retry</button>
+        </div>
+      )}
+
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="mb-8 flex flex-col items-stretch gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25">
               <Wallet size={24} className="text-white" />
@@ -453,10 +378,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 md:shrink-0">
             <button
               onClick={() => navigate('/trading-fees')}
-              className="flex items-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 px-4 py-2 rounded-xl transition-colors border border-blue-500/30 text-blue-400 hover:text-blue-300"
+              className="flex flex-1 items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 px-4 py-2 rounded-xl transition-colors border border-blue-500/30 text-blue-400 hover:text-blue-300 md:flex-none"
             >
               <Info size={18} />
               <span className="text-sm">Trading Fees</span>
@@ -464,7 +389,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
 
             <button
               onClick={() => setShowBalance(!showBalance)}
-              className="flex items-center gap-2 bg-slate-800/50 hover:bg-slate-700/50 px-4 py-2 rounded-xl transition-colors border border-slate-700/50"
+              className="flex flex-1 items-center justify-center gap-2 bg-slate-800/50 hover:bg-slate-700/50 px-4 py-2 rounded-xl transition-colors border border-slate-700/50 md:flex-none"
             >
               {showBalance ? <Eye size={18} /> : <EyeOff size={18} />}
               <span className="text-sm">{showBalance ? 'Hide' : 'Show'} Balance</span>
@@ -512,7 +437,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                   {showBalance ? formatFiat(usdtBalance) : '••••••'}
                 </div>
                 <div className="text-slate-400 text-sm">
-                  {showBalance ? formatCurrency(usdtBalance) : '••••••'}
+                  {showBalance ? `Spendable cash: ${formatCurrency(walletBreakdownData.fiatAvailableBalance)}` : '••••••'}
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mt-4">
                   <button
@@ -551,7 +476,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                     Deposit
                   </button>
                   <button 
-                    onClick={() => handleCryptoWithdrawalClick('BTC')}
+                    onClick={() => setShowCryptoWithdrawalModal(true)}
                     className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-300 shadow-lg shadow-red-500/25 flex items-center justify-center gap-1 md:gap-2">
                       <ArrowUpRight size={16} />
                       Withdraw
@@ -758,65 +683,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 </div>
 
                 <div className="space-y-6">
-                  <div>
-                    <label className="block text-slate-400 text-sm mb-3">
-                      {depositMethod === 'bank_transfer' ? 'Fiat Currency' : 'Select Currency'}
-                    </label>
-                    <div className="flex gap-3">
-                      {depositMethod === 'bank_transfer' ? (
-                        <div className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-white">
-                          <Euro size={18} className="text-emerald-400" />
-                          <span className="font-medium">Euro (EUR)</span>
-                        </div>
-                      ) : (
-                        <>
-                      <button
-                        onClick={() => setSelectedCurrency('USDT')}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                          selectedCurrency === 'USDT'
-                            ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/25 transform scale-105'
-                            : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white border border-slate-600/30'
-                        }`}
-                      >
-                        <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-                          <span className="text-xs font-bold text-white">$</span>
-                        </div>
-                        USDT
-                      </button>
-                      <button
-                        onClick={() => setSelectedCurrency('BTC')}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                          selectedCurrency === 'BTC'
-                            ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 transform scale-105'
-                            : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white border border-slate-600/30'
-                        }`}
-                      >
-                        <Bitcoin size={18} className="text-orange-400" />
-                        BTC
-                      </button>
-                        </>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-white">
+                    <Euro size={18} className="text-emerald-400" />
+                    <span className="font-medium">Deposit value is entered in Euro (EUR)</span>
                   </div>
-
-                  {depositMethod !== 'bank_transfer' && <div>
-                    <div className="flex justify-between text-sm text-slate-400 mb-2">
-                      <span>Amount</span>
-                      <span>Min: 10 {selectedCurrency}</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={depositAmount}
-                        onChange={(e) => setDepositAmount(e.target.value)}
-                        placeholder={`Enter ${selectedCurrency} amount`}
-                        className="w-full app-input text-white px-4 py-3 rounded-xl transition-all"
-                      />
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-slate-600/50 px-2 py-1 rounded text-sm text-slate-300">
-                        {selectedCurrency}
-                      </div>
-                    </div>
-                  </div>}
 
                   {/* Deposit Method Selector */}
                   <div className="mb-6">
@@ -831,7 +701,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         }`}
                       >
                         <Bitcoin size={18} className={depositMethod === 'btc_direct' ? 'text-white' : 'text-orange-400'} />
-                        BTC Direct
+                        Pay with BTC
                       </button>
                       <button
                         onClick={() => setDepositMethod('nowpayments')}
@@ -862,11 +732,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
                     userId ? (
                       <NowPaymentsDeposit
                         userId={userId}
-                        initialAmount={depositAmount}
                         fixedPayCurrency="BTC"
                         buttonLabel="Get BTC Deposit Address"
                         onSuccess={() => {
-                          setMessage({ type: 'success', text: 'BTC deposit credited to your account!' });
+                          setMessage({ type: 'success', text: 'Crypto payment credited to your EUR balance.' });
                         }}
                       />
                     ) : (
@@ -1062,10 +931,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
                             <Bitcoin size={20} className="text-orange-400" />
                           ) : (
                             <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-                              <span className="text-xs font-bold text-white">$</span>
+                              <Euro size={13} className="text-white" />
                             </div>
                           )}
-                          <span className="text-white font-medium">{stake.asset_symbol}</span>
+                          <span className="text-white font-medium">{stake.asset_symbol === 'USDT' ? 'EUR' : stake.asset_symbol}</span>
                         </div>
                         <span className="text-green-400 font-bold text-sm">
                           {stake.apy_rate}% APY
@@ -1076,13 +945,13 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         <div>
                           <div className="text-slate-400 text-xs">Staked Amount</div>
                           <div className="text-white font-medium">
-                            {formatCrypto(parseFloat(stake.staked_amount.toString()), stake.asset_symbol)}
+                            {stake.asset_symbol === 'USDT' ? formatFiat(Number(stake.staked_amount)) : formatCrypto(Number(stake.staked_amount), stake.asset_symbol)}
                           </div>
                         </div>
                         <div>
                           <div className="text-slate-400 text-xs">Current Earnings</div>
                           <div className="text-green-400 font-medium">
-                            +{formatCrypto(currentEarnings, stake.asset_symbol)}
+                            +{stake.asset_symbol === 'USDT' ? formatFiat(currentEarnings) : formatCrypto(currentEarnings, stake.asset_symbol)}
                           </div>
                         </div>
                       </div>
@@ -1102,12 +971,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                       
                       <div className="flex justify-between items-center text-xs text-slate-400">
                         <span>End Date: {new Date(stake.end_date).toLocaleDateString()}</span>
-                        <button
-                          onClick={() => handleCancelStake(stake.id)}
-                          className="text-red-400 hover:text-red-300 font-medium"
-                        >
-                          Cancel
-                        </button>
+                        <span className="font-medium text-slate-500">Locked until maturity</span>
                       </div>
                     </div>
                   );
@@ -1178,7 +1042,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
       <BankWithdrawalModal 
         isOpen={showBankWithdrawalModal}
         onClose={() => setShowBankWithdrawalModal(false)}
-        usdtBalance={walletBreakdownData?.availableBalance || 0}
+        availableEur={convertUsdToEur(walletBreakdownData.fiatAvailableBalance)}
         onWithdraw={handleBankWithdrawalSubmit} 
       />
 
@@ -1186,10 +1050,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
       <CryptoWithdrawalModal
         isOpen={showCryptoWithdrawalModal}
         onClose={() => setShowCryptoWithdrawalModal(false)}
-        usdtBalance={walletBreakdownData?.availableBalance || 0}
-        btcBalance={btcBalance}
+        btcBalance={walletBreakdownData.btcAvailableBalance}
         currentBtcPrice={actualBtcPrice}
-        initialCurrency={selectedCryptoForWithdrawal}
         onWithdraw={handleCryptoWithdrawal}
       />
     </div>

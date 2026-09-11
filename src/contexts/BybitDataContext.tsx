@@ -393,7 +393,7 @@ export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const now = Date.now();
       const timeSinceLastMessage = now - lastWsMessageRef.current;
 
-      if (timeSinceLastMessage > STALE_CHECK_INTERVAL && lastWsMessageRef.current > 0) {
+      if (lastWsMessageRef.current === 0 || timeSinceLastMessage > STALE_CHECK_INTERVAL) {
         const snapshot = await fetchBybitTickers();
         applyTickerSnapshot(snapshot);
 
@@ -413,52 +413,17 @@ export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [applyTickerSnapshot]);
 
   const syncCryptoPricesToDatabase = useCallback(async () => {
-    if (prices.size === 0) return;
-
     try {
-      const timestamp = new Date().toISOString();
-      const pricesToSync: Array<{
-        symbol: string;
-        price: number;
-        change_24h: number;
-        high_price_24h: number;
-        low_price_24h: number;
-        volume_24h: number;
-        bid_price: number;
-        ask_price: number;
-        timestamp: string;
-        updated_at: string;
-      }> = [];
-
-      prices.forEach((price, symbol) => {
-        if (price <= 0) return;
-        const ticker = tickerDataRef.current.get(symbol);
-        pricesToSync.push({
-          symbol,
-          price,
-          change_24h: ticker?.change_24h ?? 0,
-          high_price_24h: ticker?.high_price_24h ?? 0,
-          low_price_24h: ticker?.low_price_24h ?? 0,
-          volume_24h: ticker?.volume_24h ?? 0,
-          bid_price: ticker?.bid_price ?? 0,
-          ask_price: ticker?.ask_price ?? 0,
-          timestamp,
-          updated_at: timestamp,
-        });
-      });
-
-      if (pricesToSync.length === 0) return;
-
-      await supabase.from('market_data').upsert(pricesToSync, {
-        onConflict: 'symbol',
-        ignoreDuplicates: false,
-      });
+      // The server fetches its own Bybit snapshot so client-supplied prices
+      // can never become the shared settlement source.
+      await supabase.functions.invoke('sync-bybit-market-data');
     } catch {
-      // Silent fail
+      // Live WebSocket/REST prices remain available if persistence is offline.
     }
-  }, [prices]);
+  }, []);
 
   useEffect(() => {
+    void syncCryptoPricesToDatabase();
     const syncInterval = setInterval(syncCryptoPricesToDatabase, DB_SYNC_INTERVAL);
     return () => clearInterval(syncInterval);
   }, [syncCryptoPricesToDatabase]);

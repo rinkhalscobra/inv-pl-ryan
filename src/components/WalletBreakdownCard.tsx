@@ -161,7 +161,7 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
           <Info size={14} className="text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="text-xs text-blue-400">
             <p className="font-medium mb-1">Available Balance</p>
-            <p>This is the amount you can withdraw, stake, or use for trading. Used margin, reserved funds (robot), and staked assets are deducted from your total balance.</p>
+            <p>This is your liquid portfolio after trading margin. Robot allocations and staked assets remain part of total value but are not currently spendable.</p>
           </div>
         </div>
       </div>

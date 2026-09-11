@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
     const amount = Number(body.amount);
     const payCurrency = String(body.pay_currency ?? body.crypto_symbol ?? "").toLowerCase();
     if (!Number.isFinite(amount) || amount < 10) {
-      return jsonResponse({ success: false, error: "The minimum deposit is $10" }, 400);
+      return jsonResponse({ success: false, error: "The minimum deposit is €10" }, 400);
     }
     if (!supportedCurrencies.has(payCurrency)) {
       return jsonResponse({ success: false, error: "Unsupported payment currency" }, 400);
@@ -60,7 +60,7 @@ Deno.serve(async (req: Request) => {
       headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
         price_amount: amount,
-        price_currency: "usd",
+        price_currency: "eur",
         pay_currency: payCurrency,
         order_id: orderId,
         order_description: `Atlas Market deposit for ${user.id}`,
@@ -85,7 +85,7 @@ Deno.serve(async (req: Request) => {
       provider_payment_id: String(providerData.payment_id),
       order_id: orderId,
       price_amount: amount,
-      price_currency: "usd",
+      price_currency: "eur",
       pay_currency: String(providerData.pay_currency || payCurrency).toLowerCase(),
       pay_amount: providerData.pay_amount ?? null,
       actually_paid: providerData.actually_paid ?? null,

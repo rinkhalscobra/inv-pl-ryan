@@ -75,7 +75,7 @@ export interface Transaction {
 
 function AppContent() {
   const { user, loading: authLoading, signOut } = useAuth();
-  const { marketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
+  const { marketData, getSnapshotPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice } = useBybitData();
   const {
     balances,
@@ -101,10 +101,9 @@ function AppContent() {
     fetchUserStakes,
     fetchRobotState,
     calculateCurrentEarnings,
-    cancelUserStake,
     isAdmin
   } = useDatabase();
-  const { assets, fetchAssets, updateAssetBalance } = useUserAssets();
+  const { assets, fetchAssets } = useUserAssets();
   const { 
     activePositions, 
     openOrders, 
@@ -116,27 +115,6 @@ function AppContent() {
     cancelAllOpenOrders,
     calculateLiquidationPrice
   } = useFuturesTrading();
-  
-  // Wallet breakdown for margin tracking
-  const {
-    totalBalance,
-    usedMargin,
-    unrealizedPnl,
-    availableBalance,
-    reserved,
-    refreshBreakdown,
-    futuresUsedMargin,
-    futuresOrdersReserved
-  } = useWalletBreakdown(undefined, undefined, undefined, getBybitPrice);
-
-  // Calculate actual available balance for trading (portfolio-wide)
-  const actualAvailableBalance = useMemo(() => {
-    return Math.max(0, availableBalance);
-  }, [availableBalance]);
-
-  const usdtAvailableMargin = useMemo(() => {
-    return Math.max(0, balances.usdt_balance - (futuresUsedMargin || 0) - (futuresOrdersReserved || 0));
-  }, [balances.usdt_balance, futuresUsedMargin, futuresOrdersReserved]);
   
   const [tradingMode, setTradingMode] = useState<TradingMode>('home');
   const [selectedPair, setSelectedPair] = useState('BTCUSDT');
@@ -294,6 +272,26 @@ const handleUpdatePassword = async (newPassword: string) => {
   // Get current BTC price from combined data using the same strategy
   const currentBtcPrice = getCurrentPrice('BTCUSDT');
 
+  // Wallet values update from live prices without re-querying Supabase on every tick.
+  const walletBreakdown = useWalletBreakdown(
+    balances.usdt_balance,
+    balances.btc_balance,
+    currentBtcPrice,
+    getCurrentPrice
+  );
+  const {
+    unrealizedPnl,
+    availableBalance,
+    refreshBreakdown,
+    futuresUsedMargin,
+    futuresOrdersReserved
+  } = walletBreakdown;
+
+  const actualAvailableBalance = useMemo(() => Math.max(0, availableBalance), [availableBalance]);
+  const usdtAvailableMargin = useMemo(() => (
+    Math.max(0, balances.usdt_balance - futuresUsedMargin - futuresOrdersReserved)
+  ), [balances.usdt_balance, futuresOrdersReserved, futuresUsedMargin]);
+
   // Get current price for selected pair
   // Calculate total portfolio value
  const totalPortfolioValue = useMemo(() => {
@@ -426,7 +424,10 @@ const handleUpdatePassword = async (newPassword: string) => {
   ) => {
     try {
       // Use the price parameter directly from the frontend
-      const currentPrice = price || 111445.9000; // Use the displayed price as fallback
+      const currentPrice = Number(price);
+      if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+        throw new Error(`No verified market price is available for ${symbol || selectedPair}`);
+      }
       await fetchBalances();
       
       // Use the openPosition function from useFuturesTrading hook
@@ -536,330 +537,40 @@ const handleUpdatePassword = async (newPassword: string) => {
     }
   }, [currentSelectedPairPrice, balances, updateBalances, addTransaction]);
 
-  // Handle swap between cryptocurrencies
-  const handleSwap = useCallback(async (fromSymbol: string, toSymbol: string, fromAmount: number, toAmountReceived?: number) => {
-    try {
-      // Wait for balances to be fully loaded
-      if (dbLoading) {
-        throw new Error('Please wait, loading account data...');
-      }
-      
-      // Check available balance for swap
-      const swapValueUSD = fromAmount * (fromSymbol === 'USDT' ? 1 : 
-                                        fromSymbol === 'BTC' ? currentSelectedPairPrice :
-                                        marketData.find(data => data.symbol === `${fromSymbol}USDT`)?.price || 0);
-      
-      if (swapValueUSD > availableBalance) {
-        throw new Error(`Insufficient available balance. Required: ${swapValueUSD.toFixed(2)} USD, Available: ${availableBalance.toFixed(2)} USD`);
-      }
-      
-      // Validate input parameters
-      if (!fromSymbol || !toSymbol || isNaN(fromAmount) || fromAmount <= 0) {
-        throw new Error('Invalid swap parameters');
-      }
-
-      // Additional security validations
-      const MIN_SWAP_AMOUNT = 0.0001;
-      const MAX_SWAP_AMOUNT_USD = 1000000;
-      const MAX_SLIPPAGE = 0.05; // 5% maximum slippage
-      const SWAP_FEE_RATE = 0.001; // 0.1% fee
-
-      // Prevent swapping to the same currency
-      if (fromSymbol === toSymbol) {
-        throw new Error('Cannot swap to the same currency');
-      }
-
-      // Check minimum amount
-      if (fromAmount < MIN_SWAP_AMOUNT) {
-        throw new Error(`Minimum swap amount is ${MIN_SWAP_AMOUNT}`);
-      }
-
-      // Helper to get price for any symbol with multiple fallback strategies
-      const getPriceForSymbol = (symbol: string): number => {
-        // Stablecoins always return 1
-        if (symbol === 'USDT' || symbol === 'USDC') {
-          return 1;
-        }
-
-        const tradingPair = `${symbol}USDT`;
-
-        // Strategy 1: Try websocket data first (most real-time)
-        const bybitPrice = getBybitPrice(tradingPair);
-        if (bybitPrice > 0) {
-          console.log(`App swap: Got price for ${symbol} from websocket: ${bybitPrice}`);
-          return bybitPrice;
-        }
-
-        // Strategy 2: Try snapshot data (stable fallback)
-        const snapshotPrice = getSnapshotPriceBySymbol(tradingPair);
-        if (snapshotPrice > 0) {
-          console.log(`App swap: Got price for ${symbol} from snapshot: ${snapshotPrice}`);
-          return snapshotPrice;
-        }
-
-        // Strategy 3: Try direct marketData lookup
-        const marketDataItem = marketData.find(item => item.symbol === tradingPair);
-        if (marketDataItem && marketDataItem.price > 0) {
-          console.log(`App swap: Got price for ${symbol} from marketData: ${marketDataItem.price}`);
-          return marketDataItem.price;
-        }
-
-        // Strategy 4: Try snapshotData direct lookup
-        const snapshotItem = snapshotData.find(item => item.symbol === tradingPair);
-        if (snapshotItem && snapshotItem.price > 0) {
-          console.log(`App swap: Got price for ${symbol} from snapshotData: ${snapshotItem.price}`);
-          return snapshotItem.price;
-        }
-
-        console.warn(`App swap: No price found for ${symbol}`);
-        return 0;
-      };
-
-      // Get current prices
-      const fromPrice = getPriceForSymbol(fromSymbol);
-      const toPrice = getPriceForSymbol(toSymbol);
-
-      // Validate prices are available and reasonable
-      if (!fromPrice || !toPrice || fromPrice <= 0 || toPrice <= 0) {
-        throw new Error('Unable to get current prices for swap');
-      }
-
-      // Check maximum USD value
-      const fromUsdValue = fromAmount * fromPrice;
-      if (fromUsdValue > MAX_SWAP_AMOUNT_USD) {
-        throw new Error(`Maximum swap amount is $${MAX_SWAP_AMOUNT_USD.toLocaleString()}`);
-      }
-      
-      // If toAmountReceived is not provided, calculate it
-      let calculatedToAmount = toAmountReceived;
-      if (!calculatedToAmount || isNaN(calculatedToAmount)) {
-        const exchangeRate = fromPrice / toPrice;
-        calculatedToAmount = fromAmount * exchangeRate * (1 - SWAP_FEE_RATE);
-      } else {
-        // If toAmountReceived is provided, validate it against expected calculation
-        const expectedExchangeRate = fromPrice / toPrice;
-        const expectedToAmount = fromAmount * expectedExchangeRate * (1 - SWAP_FEE_RATE);
-        
-        // Prevent division by zero or extremely small numbers
-        if (expectedToAmount <= 0.00000001) {
-          throw new Error('Calculated output amount is too small. Please increase the input amount.');
-        }
-        
-        const slippage = Math.abs(calculatedToAmount - expectedToAmount) / expectedToAmount;
-        
-        // Additional sanity check: if slippage is unreasonably high, it's likely a calculation error
-        if (slippage > 1.0) { // More than 100% slippage indicates a serious error
-          throw new Error('Price calculation error detected. Please refresh the page and try again.');
-        }
-        
-        if (slippage > MAX_SLIPPAGE) {
-          throw new Error(`Price has changed too much (${(slippage * 100).toFixed(2)}% slippage). Please try again.`);
-        }
-      }
-      
-      // Validate calculated amount
-      if (!calculatedToAmount || isNaN(calculatedToAmount) || calculatedToAmount <= 0) {
-        throw new Error('Invalid amount to receive');
-      }
-      
-      // Additional sanity check: ensure the swap ratio is reasonable
-
-      const feeAmount = fromAmount * SWAP_FEE_RATE;
-
-      // Helper to get current balance of any asset
-      const getAssetBalance = (symbol: string): number => {
-        if (symbol === 'USDT') return balances.usdt_balance;
-        if (symbol === 'BTC') return balances.btc_balance;
-        const asset = assets.find(a => a.asset_symbol === symbol);
-        return asset ? asset.balance : 0;
-      };
-
-      const currentFromBalance = getAssetBalance(fromSymbol);
-      
-      // Final balance check with buffer for fees
-      if (fromAmount > currentFromBalance) {
-        throw new Error(`Insufficient ${fromSymbol} balance`);
-      }
-
-      // Ensure we're not trying to give out more than what's reasonable
-      // Instead of checking numeric ratios, check USD values for reasonableness
-      const toUsdValue = calculatedToAmount * toPrice;
-      const valueRatio = toUsdValue / fromUsdValue;
-      
-      // The output USD value should be close to input USD value (accounting for fees)
-      // Allow up to 10% difference to account for fees and minor price movements
-      if (valueRatio > 1.1 || valueRatio < 0.8) {
-        console.error('Swap validation failed:', {
-          fromAmount,
-          calculatedToAmount,
-          fromPrice,
-          toPrice,
-          fromUsdValue,
-          toUsdValue,
-          valueRatio,
-          expectedRatio: 'should be between 0.8 and 1.1'
-        });
-        throw new Error(`Swap calculation error: USD value mismatch (ratio: ${valueRatio.toFixed(3)}). Please refresh and try again.`);
-      }
-
-      // Log the swap for debugging purposes
-      console.log('Executing swap:', {
-        fromSymbol,
-        toSymbol,
-        fromAmount,
-        calculatedToAmount,
-        fromPrice,
-        toPrice,
-        exchangeRate: fromPrice / toPrice,
-        feeAmount,
-        fromBalance: currentFromBalance
-      });
-
-      // Deduct from fromSymbol balance
-      if (fromSymbol === 'USDT') {
-        await updateBalances({ usdt_balance: balances.usdt_balance - fromAmount });
-      } else if (fromSymbol === 'BTC') {
-        await updateBalances({ btc_balance: balances.btc_balance - fromAmount });
-      } else {
-        await updateAssetBalance(fromSymbol, currentFromBalance - fromAmount);
-      }
-
-      // Add to toSymbol balance
-      if (toSymbol === 'USDT') {
-        await updateBalances({ usdt_balance: balances.usdt_balance + calculatedToAmount });
-      } else if (toSymbol === 'BTC') {
-        await updateBalances({
-          btc_balance: balances.btc_balance + calculatedToAmount
-        });
-      } else {
-        const toAsset = assets.find(a => a.asset_symbol === toSymbol);
-        if (toAsset) {
-          await updateAssetBalance(toSymbol, toAsset.balance + calculatedToAmount);
-        } else {
-          // If the target asset doesn't exist for the user, create it
-          // This will insert a new row in user_assets table
-          // The updateAssetBalance function already handles this logic
-          await updateAssetBalance(toSymbol, calculatedToAmount);
-        }
-      }
-      
-      // Add transaction record for swap
-      await addTransaction({
-        type: 'trade',
-        amount: -fromAmount * getPriceForSymbol(fromSymbol), // Negative amount for the source currency
-        description: `Swapped ${fromAmount} ${fromSymbol} to ${calculatedToAmount.toFixed(6)} ${toSymbol} (including 0.1% fee)`,
-        status: 'completed'
-      });
-      
-      // Refresh wallet breakdown
-      refreshBreakdown();
-
-      console.log('Swap completed successfully');
-      return true;
-    } catch (error: any) {
-      console.error('Swap error details:', {
-        error,
-        message: error?.message,
-        stack: error?.stack
-      });
-      throw error;
+  // Execute swaps atomically in Supabase so both wallet sides settle together.
+  const handleSwap = useCallback(async (
+    fromSymbol: string,
+    toSymbol: string,
+    fromAmount: number,
+    toAmountReceived?: number
+  ) => {
+    if (dbLoading) {
+      throw new Error('Please wait, loading account data...');
     }
-  }, [currentSelectedPairPrice, balances, updateBalances, addTransaction, assets, updateAssetBalance, marketData, dbLoading, availableBalance, refreshBreakdown]);
-
-  // Handle wallet operations (deposit/withdrawal)
-  const handleWalletOperation = useCallback(async (type: 'deposit' | 'withdrawal', currency: 'USDT' | 'BTC', amount: number) => {
-    if (type === 'deposit') {
-      try {
-        if (currency === 'USDT') {
-          console.log(`Processing USDT deposit of ${amount} for user ${user?.id}`);
-          await updateBalances({ usdt_balance: balances.usdt_balance + amount });
-        } else {
-          await updateBalances({ btc_balance: balances.btc_balance + amount });
-        }
-
-        const { data: txData, error: txError } = await addTransaction({
-          type: 'deposit',
-          amount,
-          description: `Deposited ${amount} ${currency}`,
-          status: 'completed'
-        });
-
-        if (txError) {
-          console.error('Error processing deposit transaction:', txError);
-          throw new Error(`Failed to process deposit: ${txError.message}`);
-        }
-
-        if (currency === 'USDT' && user?.id && txData) {
-          try {
-            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-giveaway-tickets`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-              },
-              body: JSON.stringify({
-                userId: user.id,
-                depositAmount: amount,
-                transactionId: txData.id || '',
-              }),
-            });
-
-            if (response.ok) {
-              const result = await response.json();
-              if (result.success && result.ticketsEarned > 0) {
-                console.log(`Earned ${result.ticketsEarned} giveaway tickets!`);
-                alert(`Deposit successful! You earned ${result.ticketsEarned} giveaway ticket${result.ticketsEarned > 1 ? 's' : ''}!`);
-              }
-            }
-          } catch (giveawayError) {
-            console.error('Error processing giveaway tickets:', giveawayError);
-          }
-        }
-      } catch (error) {
-        console.error('Error processing deposit:', error);
-        alert('Failed to process deposit. Please try again.');
-      }
-    } else {
-      // Check available balance for withdrawal
-      const withdrawalValueUSD = currency === 'USDT' ? amount : amount * currentSelectedPairPrice;
-      
-      if (withdrawalValueUSD > availableBalance) {
-        alert(`Insufficient available balance. Required: ${withdrawalValueUSD.toFixed(2)} USD, Available: ${availableBalance.toFixed(2)} USD`);
-        return;
-      }
-      
-      // Check balance
-      if (currency === 'USDT' && amount > balances.usdt_balance) {
-        alert('Insufficient USDT balance');
-        return;
-      } else if (currency === 'BTC' && amount > balances.btc_balance) {
-        alert('Insufficient BTC balance');
-        return;
-      }
-      
-      if (currency === 'USDT') {
-        await updateBalances({ usdt_balance: balances.usdt_balance - amount });
-      } else {
-        await updateBalances({ btc_balance: balances.btc_balance - amount });
-      }
-      
-      // Add transaction
-      await addTransaction({
-        type: 'withdrawal',
-        amount: -amount,
-        description: `Withdrawn ${amount} ${currency}`,
-        status: 'completed'
-      });
-      
-      // Refresh data after withdrawal
-      await fetchBalances();
-      await fetchAssets();
-      await fetchTransactions();
+    if (!fromSymbol || !toSymbol || !Number.isFinite(fromAmount) || fromAmount <= 0) {
+      throw new Error('Invalid swap parameters');
     }
-    
-    // Refresh wallet breakdown
-    refreshBreakdown();
-  }, [balances, updateBalances, addTransaction, fetchBalances, fetchAssets, fetchTransactions, availableBalance, currentSelectedPairPrice, refreshBreakdown]);
+
+    const { data, error } = await supabase.rpc('execute_asset_swap', {
+      p_from_symbol: fromSymbol,
+      p_to_symbol: toSymbol,
+      p_from_amount: fromAmount,
+      p_expected_to_amount: toAmountReceived ?? null
+    });
+
+    if (error) throw error;
+    if (!data || !(data as { success?: boolean }).success) {
+      throw new Error('The swap could not be completed');
+    }
+
+    await Promise.all([
+      fetchBalances(),
+      fetchAssets(),
+      fetchTransactions()
+    ]);
+    await refreshBreakdown();
+    return true;
+  }, [dbLoading, fetchBalances, fetchAssets, fetchTransactions, refreshBreakdown]);
 
   // Calculate time remaining for a stake
   // Set default pair when changing trading mode
@@ -1096,17 +807,14 @@ const handleUpdatePassword = async (newPassword: string) => {
                       <WalletPage 
                         usdtBalance={balances.usdt_balance}
                         btcBalance={balances.btc_balance}
-                        currentBtcPrice={currentSelectedPairPrice}
-                        onWalletOperation={handleWalletOperation}
+                        kycStatus={kycStatus}
                         transactions={transactions}
-                        totalPortfolioValue={totalPortfolioValue}
+                        userStakes={userStakes}
+                        calculateCurrentEarnings={calculateCurrentEarnings}
                         userAssets={assets}
                         marketData={marketData}
-                        totalBalance={totalBalance}
-                        usedMargin={usedMargin}
-                        unrealizedPnl={unrealizedPnl}
-                        availableBalance={availableBalance}
-                        reserved={reserved}
+                        walletBreakdown={walletBreakdown}
+                        setTradingMode={mode => setTradingMode(mode as TradingMode)}
                       />
                     )}
                     

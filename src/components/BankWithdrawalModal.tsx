@@ -5,22 +5,22 @@ import { useFiatCurrency } from '../hooks/useFiatCurrency';
 interface BankWithdrawalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  usdtBalance: number;
+  availableEur: number;
   onWithdraw: (amount: number, bankDetails: {
     bankName: string;
     accountNumber: string;
     routingNumber: string;
     beneficiaryName: string;
-  }) => Promise<boolean>;
+  }) => Promise<string>;
 }
 
 const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
   isOpen,
   onClose,
-  usdtBalance,
+  availableEur,
   onWithdraw
 }) => {
-  const { convertUsdToEur, formatEur } = useFiatCurrency();
+  const { formatEur } = useFiatCurrency();
   const [amount, setAmount] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -65,7 +65,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
 
   // Handle max button click
   const handleMaxClick = () => {
-    setAmount(convertUsdToEur(usdtBalance).toFixed(2));
+    setAmount(availableEur.toFixed(2));
   };
 
   // Handle form submission
@@ -74,12 +74,12 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
     
     // Validate input
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      setError('Please enter a valid amount');
+    if (isNaN(parsedAmount) || parsedAmount < 100) {
+      setError('Minimum bank withdrawal is €100.00');
       return;
     }
     
-    if (parsedAmount > convertUsdToEur(usdtBalance)) {
+    if (parsedAmount > availableEur) {
       setError('Insufficient EUR balance');
       return;
     }
@@ -100,21 +100,16 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
     setError(null);
     
     try {
-      const success = await onWithdraw(parseFloat(amount), {
+      const newTransactionId = await onWithdraw(parseFloat(amount), {
         bankName,
         accountNumber,
         routingNumber,
         beneficiaryName
       });
       
-      if (success) {
-        setSuccess(`Bank withdrawal of ${formatEur(parseFloat(amount))} initiated successfully`);
-        setStep('success');
-        // Generate a fake transaction ID
-        setTransactionId(`tx_${Math.random().toString(36).substring(2, 15)}`);
-      } else {
-        throw new Error('Withdrawal failed. Please try again.');
-      }
+      setSuccess(`Bank withdrawal of ${formatEur(parseFloat(amount))} initiated successfully`);
+      setTransactionId(newTransactionId);
+      setStep('success');
     } catch (err: any) {
       setError(err.message || 'An error occurred during withdrawal');
       setStep('form');
@@ -183,14 +178,18 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
               <div className="flex justify-between items-center mb-1 sm:mb-2">
                 <label className="text-xs sm:text-sm text-slate-400">Amount (EUR)</label>
                 <span className="text-xs text-slate-400 text-right">
-                  Available: {formatEur(convertUsdToEur(usdtBalance))}
+                  Available: {formatEur(availableEur)}
                 </span>
               </div>
               <div className="relative">
                 <input
                   type="text"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (/^\d*(\.\d{0,2})?$/.test(next)) setAmount(next);
+                  }}
+                  inputMode="decimal"
                   placeholder="Enter amount"
                   className="w-full app-input py-2 pl-4 pr-24 sm:py-3 sm:pl-4 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-sm sm:text-base"
                 />

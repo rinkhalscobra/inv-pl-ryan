@@ -32,7 +32,7 @@ interface FuturesTradingFormsProps {
     takeProfit?: { trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number },
     orderType?: 'market' | 'limit',
     price?: number
-  ) => void;
+  ) => boolean | Promise<boolean>;
 }
 
 const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
@@ -60,6 +60,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   const [shortPercentage, setShortPercentage] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [priceFlash, setPriceFlash] = useState<'up' | 'down' | null>(null);
 
   const livePairPrice = useMemo(() => {
@@ -230,13 +231,13 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     leverage: number
   ): number => {
     if (side === 'long') {
-      return (triggerPrice - entryPrice) * amount * leverage;
+      return (triggerPrice - entryPrice) * amount;
     } else {
-      return (entryPrice - triggerPrice) * amount * leverage;
+      return (entryPrice - triggerPrice) * amount;
     }
   };
 
-  const handleLong = () => {
+  const handleLong = async () => {
     const amount = parseFloat(longAmount);
     
     if (!amount || amount <= 0) {
@@ -244,6 +245,10 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
       return;
     }
 
+    if (!Number.isFinite(livePairPrice) || livePairPrice <= 0) {
+      setErrorMessage('A verified live price is required before placing an order');
+      return;
+    }
     const notionalValue = amount * livePairPrice;
     const requiredMargin = notionalValue / leverage;
     
@@ -253,15 +258,23 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     }
 
     // Always pass the live price to ensure the parent component has it
-    onFuturesTrade(selectedPair, 'long', amount, leverage, marginType, longStopLoss || undefined, longTakeProfit || undefined, orderType, livePairPrice);
-    setSuccessMessage(`Long position opened successfully for ${amount} ${selectedPair.replace('USDT', '')}`);
-    setLongAmount('');
-    setLongPercentage(0);
-    setLongStopLoss(null);
-    setLongTakeProfit(null);
+    setIsSubmitting(true);
+    try {
+      const opened = await Promise.resolve(onFuturesTrade(selectedPair, 'long', amount, leverage, marginType, longStopLoss || undefined, longTakeProfit || undefined, orderType, livePairPrice));
+      if (!opened) throw new Error('The position was not accepted');
+      setSuccessMessage(`Long position opened successfully for ${amount} ${selectedPair.replace('USDT', '')}`);
+      setLongAmount('');
+      setLongPercentage(0);
+      setLongStopLoss(null);
+      setLongTakeProfit(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to open position');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleShort = () => {
+  const handleShort = async () => {
     const amount = parseFloat(shortAmount);
     
     if (!amount || amount <= 0) {
@@ -269,6 +282,10 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
       return;
     }
 
+    if (!Number.isFinite(livePairPrice) || livePairPrice <= 0) {
+      setErrorMessage('A verified live price is required before placing an order');
+      return;
+    }
     const notionalValue = amount * livePairPrice;
     const requiredMargin = notionalValue / leverage;
     
@@ -278,12 +295,20 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     }
 
     // Always pass the live price to ensure the parent component has it
-    onFuturesTrade(selectedPair, 'short', amount, leverage, marginType, shortStopLoss || undefined, shortTakeProfit || undefined, orderType, livePairPrice);
-    setSuccessMessage(`Short position opened successfully for ${amount} ${selectedPair.replace('USDT', '')}`);
-    setShortAmount('');
-    setShortPercentage(0);
-    setShortStopLoss(null);
-    setShortTakeProfit(null);
+    setIsSubmitting(true);
+    try {
+      const opened = await Promise.resolve(onFuturesTrade(selectedPair, 'short', amount, leverage, marginType, shortStopLoss || undefined, shortTakeProfit || undefined, orderType, livePairPrice));
+      if (!opened) throw new Error('The position was not accepted');
+      setSuccessMessage(`Short position opened successfully for ${amount} ${selectedPair.replace('USDT', '')}`);
+      setShortAmount('');
+      setShortPercentage(0);
+      setShortStopLoss(null);
+      setShortTakeProfit(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to open position');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleLongPercentage = (percentage: number) => {
@@ -559,6 +584,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
             <button 
               onClick={handleLong}
+              disabled={isSubmitting || livePairPrice <= 0}
               className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white py-4 rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-emerald-500/25 transform hover:scale-105"
             >
               {t('futures.buyLong')}
@@ -705,6 +731,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
             <button
               onClick={handleShort}
+              disabled={isSubmitting || livePairPrice <= 0}
               className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white py-4 rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-red-500/25 transform hover:scale-105"
             >
               {t('futures.sellShort')}

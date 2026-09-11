@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { getInstrumentTypeFromSymbol } from '../constants/tradingTiers';
-import { calculateSpreadCost, formatSpreadDisplay } from '../constants/spreadConfig';
+import { calculateSpreadCostFromNotional, getSpreadForSymbol } from '../constants/spreadConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { calculateDerivativeNotionalUsd, calculateDerivativePnlUsd } from '../utils/derivativeCalculations';
 
 interface CFDTradingFormsProps {
   usdtBalance: number;
@@ -39,7 +40,7 @@ interface CFDTradingFormsProps {
     takeProfit?: { trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number },
     orderType?: 'market' | 'limit',
     price?: number
-  ) => void;
+  ) => boolean | Promise<boolean>;
 }
 
 const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
@@ -60,7 +61,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { convertUsdToEur, formatFiat, formatFiatPrice } = useFiatCurrency();
-  const { getSnapshotPriceBySymbol, refreshSnapshot, lastSnapshotTime, isConnected: isLiveDataConnected, marketData } = useMarketData();
+  const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isCfdSurface = surfaceVariant === 'cfd';
   const panelSurfaceClass = isCfdSurface
@@ -113,31 +114,34 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   const [shortPercentage, setShortPercentage] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get current price for the selected CFD instrument using snapshot
   const getCurrentPriceForCFD = useCallback(() => {
-    // Use snapshot price for stable trading experience
+    const livePrice = getPriceBySymbol(selectedPair);
+    if (livePrice > 0) return livePrice;
     const snapshotPrice = getSnapshotPriceBySymbol(selectedPair);
     return snapshotPrice > 0 ? snapshotPrice : currentPrice;
-  }, [selectedPair, getSnapshotPriceBySymbol, currentPrice]);
+  }, [selectedPair, getPriceBySymbol, getSnapshotPriceBySymbol, currentPrice]);
 
   const livePairPrice = getCurrentPriceForCFD();
   const displayCfdPrice = (price: number) => priceIsUsd
     ? formatFiatPrice(price)
     : price.toFixed(getPricePrecision());
   const selectedInstrument = CFD_INSTRUMENTS.find(item => item.symbol === selectedPair);
-  const hasVerifiedPrice = Number.isFinite(livePairPrice) && livePairPrice > 0;
+  const selectedQuote = getMarketDataBySymbol(selectedPair);
+  const quoteTimestamp = Date.parse(selectedQuote?.updated_at || selectedQuote?.timestamp || '');
+  const hasVerifiedPrice = Number.isFinite(livePairPrice)
+    && livePairPrice > 0
+    && Number.isFinite(quoteTimestamp)
+    && Date.now() - quoteTimestamp < 2 * 60 * 1000;
   const canTradeSelectedInstrument = selectedInstrument?.tradable !== false && hasVerifiedPrice;
 
 const getLotSize = (symbol: string): number => {
   const instrument = CFD_INSTRUMENTS.find(item => item.symbol === symbol);
 
   if (instrument && instrument.type === 'forex') {
-    // Special handling for JPY pairs
-    if (symbol.endsWith("JPY")) {
-      return 1000; // Use 10,000 units for JPY pairs
-    }
-    return 100000; // Default standard forex lot size
+    return 100000;
   } else if (instrument && instrument.type === 'commodity') {
     switch (symbol) {
       case 'XAG/USD': return 5000;
@@ -172,14 +176,16 @@ const getLotSize = (symbol: string): number => {
     const lotSize = getLotSize(selectedPair);
     const balanceToUse = availableBalance !== undefined ? availableBalance : usdtBalance;
     const targetMargin = balanceToUse * (percentage / 100);
-    const amount = (targetMargin * leverage) / (priceToUse * lotSize);
+    const notionalPerLot = calculateDerivativeNotionalUsd(selectedPair, lotSize, priceToUse, getPriceBySymbol);
+    if (notionalPerLot <= 0) return '';
+    const amount = (targetMargin * leverage) / notionalPerLot;
 
     // Ensure amount meets minimum trade size
     const minTradeSize = getMinTradeSize();
     const adjustedAmount = Math.max(amount, minTradeSize);
 
     return adjustedAmount.toFixed(getInstrumentType() === 'Stock' ? 0 : 5);
-  }, [availableBalance, usdtBalance, leverage, livePairPrice, selectedPair]);
+  }, [availableBalance, usdtBalance, leverage, livePairPrice, selectedPair, getPriceBySymbol]);
 
   // Calculate amount from percentage for short positions
   const calculateShortAmountFromPercentage = useCallback((percentage: number) => {
@@ -190,14 +196,16 @@ const getLotSize = (symbol: string): number => {
     const lotSize = getLotSize(selectedPair);
     const balanceToUse = availableBalance !== undefined ? availableBalance : usdtBalance;
     const targetMargin = balanceToUse * (percentage / 100);
-    const amount = (targetMargin * leverage) / (priceToUse * lotSize);
+    const notionalPerLot = calculateDerivativeNotionalUsd(selectedPair, lotSize, priceToUse, getPriceBySymbol);
+    if (notionalPerLot <= 0) return '';
+    const amount = (targetMargin * leverage) / notionalPerLot;
 
     // Ensure amount meets minimum trade size
     const minTradeSize = getMinTradeSize();
     const adjustedAmount = Math.max(amount, minTradeSize);
 
     return adjustedAmount.toFixed(getInstrumentType() === 'Stock' ? 0 : 5);
-  }, [availableBalance, usdtBalance, leverage, livePairPrice, selectedPair]);
+  }, [availableBalance, usdtBalance, leverage, livePairPrice, selectedPair, getPriceBySymbol]);
 
   // Stop Loss / Take Profit states
   const [longStopLoss, setLongStopLoss] = useState<{ trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number } | null>(null);
@@ -363,12 +371,18 @@ const getLotSize = (symbol: string): number => {
 
   const getSpreadCost = (amount: number = 1) => {
     const lotSize = getLotSize(selectedPair);
-    return calculateSpreadCost(selectedPair, livePairPrice, amount, lotSize);
+    const notionalUsd = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, livePairPrice, getPriceBySymbol);
+    return calculateSpreadCostFromNotional(selectedPair, notionalUsd);
   };
 
   const getSpreadDisplay = (amount: number = 1) => {
-    const lotSize = getLotSize(selectedPair);
-    return formatSpreadDisplay(selectedPair, livePairPrice, amount, lotSize);
+    const spreadConfig = getSpreadForSymbol(selectedPair);
+    const spreadCost = getSpreadCost(amount);
+    return {
+      cost: spreadCost.toFixed(8),
+      percentage: `${((spreadConfig?.spreadPercentage || 0.0001) * 100).toFixed(4)}%`,
+      description: spreadConfig?.description || 'Standard spread'
+    };
   };
 
   // Calculate estimated PnL for stop loss and take profit
@@ -380,17 +394,17 @@ const getLotSize = (symbol: string): number => {
     leverage: number
   ): number => {
     const lotSize = getLotSize(selectedPair);
-    
-    if (side === 'long') {
-      // For long positions: (triggerPrice - entryPrice) * amount * lotSize
-      return (triggerPrice - entryPrice) * amount * lotSize;
-    } else {
-      // For short positions: (entryPrice - triggerPrice) * amount * lotSize
-      return (entryPrice - triggerPrice) * amount * lotSize;
-    }
+    return calculateDerivativePnlUsd(
+      selectedPair,
+      side,
+      entryPrice,
+      triggerPrice,
+      amount * lotSize,
+      getPriceBySymbol
+    );
   };
 
-  const handleLong = () => {
+  const handleLong = async () => {
     if (selectedInstrument?.tradable === false) {
       setErrorMessage('This market is listed for reference and is not currently tradable.');
       return;
@@ -407,7 +421,7 @@ const getLotSize = (symbol: string): number => {
 
     const priceToUse = livePairPrice;
     const lotSize = getLotSize(selectedPair);
-    const notionalValue = amount * priceToUse * lotSize;
+    const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
     
     if (requiredMargin > (availableBalance !== undefined ? availableBalance : usdtBalance)) {
@@ -415,15 +429,23 @@ const getLotSize = (symbol: string): number => {
       return;
     }
 
-    onCFDTrade(selectedPair, 'long', amount * lotSize, leverage, marginType, longStopLoss || undefined, longTakeProfit || undefined, orderType, priceToUse);
-    setSuccessMessage(`Long position opened successfully for ${amount} lots`);
-    setLongAmount('');
-    setLongPercentage(0);
-    setLongStopLoss(null);
-    setLongTakeProfit(null);
+    setIsSubmitting(true);
+    try {
+      const opened = await Promise.resolve(onCFDTrade(selectedPair, 'long', amount * lotSize, leverage, marginType, longStopLoss || undefined, longTakeProfit || undefined, orderType, priceToUse));
+      if (!opened) throw new Error('The position was not accepted');
+      setSuccessMessage(`Long position opened successfully for ${amount} lots`);
+      setLongAmount('');
+      setLongPercentage(0);
+      setLongStopLoss(null);
+      setLongTakeProfit(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to open position');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleShort = () => {
+  const handleShort = async () => {
     if (selectedInstrument?.tradable === false) {
       setErrorMessage('This market is listed for reference and is not currently tradable.');
       return;
@@ -440,7 +462,7 @@ const getLotSize = (symbol: string): number => {
 
     const priceToUse = livePairPrice;
     const lotSize = getLotSize(selectedPair);
-    const notionalValue = amount * priceToUse * lotSize;
+    const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
     
     if (requiredMargin > (availableBalance !== undefined ? availableBalance : usdtBalance)) {
@@ -448,12 +470,20 @@ const getLotSize = (symbol: string): number => {
       return;
     }
 
-    onCFDTrade(selectedPair, 'short', amount * lotSize, leverage, marginType, shortStopLoss || undefined, shortTakeProfit || undefined, orderType, priceToUse);
-    setSuccessMessage(`Short position opened successfully for ${amount} lots`);
-    setShortAmount('');
-    setShortPercentage(0);
-    setShortStopLoss(null);
-    setShortTakeProfit(null);
+    setIsSubmitting(true);
+    try {
+      const opened = await Promise.resolve(onCFDTrade(selectedPair, 'short', amount * lotSize, leverage, marginType, shortStopLoss || undefined, shortTakeProfit || undefined, orderType, priceToUse));
+      if (!opened) throw new Error('The position was not accepted');
+      setSuccessMessage(`Short position opened successfully for ${amount} lots`);
+      setShortAmount('');
+      setShortPercentage(0);
+      setShortStopLoss(null);
+      setShortTakeProfit(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to open position');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleLongPercentage = (percentage: number) => {
@@ -472,7 +502,7 @@ const getLotSize = (symbol: string): number => {
     const amount = parseFloat(longAmount) || 0;
     const priceToUse = livePairPrice;
     const lotSize = getLotSize(selectedPair);
-    const notionalValue = amount * priceToUse * lotSize;
+    const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
     const spreadCost = amount > 0 ? getSpreadCost(amount) : 0;
     return requiredMargin + spreadCost;
@@ -482,7 +512,7 @@ const getLotSize = (symbol: string): number => {
     const amount = parseFloat(shortAmount) || 0;
     const priceToUse = livePairPrice;
     const lotSize = getLotSize(selectedPair);
-    const notionalValue = amount * priceToUse * lotSize;
+    const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
     const spreadCost = amount > 0 ? getSpreadCost(amount) : 0;
     return requiredMargin + spreadCost;
@@ -799,7 +829,7 @@ const getLotSize = (symbol: string): number => {
               </div>
               <button
                 onClick={handleLong}
-                disabled={!canTradeSelectedInstrument}
+                disabled={!canTradeSelectedInstrument || isSubmitting}
                 className="w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
               >
                 {t('trading.long')} {selectedPair}
@@ -938,7 +968,7 @@ const getLotSize = (symbol: string): number => {
               </div>
               <button
                 onClick={handleShort}
-                disabled={!canTradeSelectedInstrument}
+                disabled={!canTradeSelectedInstrument || isSubmitting}
                 className="w-full bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg shadow-red-500/25 hover:shadow-red-500/40 transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
               >
                 {t('trading.short')} {selectedPair}

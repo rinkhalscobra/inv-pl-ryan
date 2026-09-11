@@ -11,11 +11,16 @@ import { useBybitData } from '../contexts/BybitDataContext';
 import { calculateDailySwapCost, getSwapConfigForSymbol } from '../constants/swapConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import {
+  calculateDerivativeNotionalUsd,
+  calculateDerivativePnlUsd,
+  calculateLiveSwapCost
+} from '../utils/derivativeCalculations';
 
 interface FuturesMyOrdersProps {
   currentBtcPrice: number;
   futuresPositions: any[];
-  onClosePosition: (positionId: string, livePrice?: number) => void;
+  onClosePosition: (positionId: string, livePrice?: number) => boolean | Promise<boolean> | void;
   updateBalances?: (updates: { usdt_balance?: number }) => Promise<void>;
   openOrders?: any[];
   onCancelOrder?: (orderId: string) => Promise<boolean>;
@@ -162,6 +167,16 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
 
   const [flashingPrices, setFlashingPrices] = useState<Map<string, 'up' | 'down'>>(new Map());
   const previousPricesRef = useRef<Map<string, number>>(new Map());
+  const [calculationTime, setCalculationTime] = useState(() => Date.now());
+  const livePositionsRef = useRef<any[]>([]);
+  const priceLookupRef = useRef(getPriceBySymbol);
+
+  priceLookupRef.current = getPriceBySymbol;
+
+  useEffect(() => {
+    const clock = window.setInterval(() => setCalculationTime(Date.now()), 1000);
+    return () => window.clearInterval(clock);
+  }, []);
 
   const [activeTab, setActiveTab] = useState('positions');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -374,20 +389,25 @@ const getPricePrecision = useCallback((symbol: string): number => {
     const liquidationPrice = position.liquidationPrice || position.liquidation_price || 0;
     const accumulatedSwapCost = position.accumulated_swap_cost || position.accumulatedSwapCost || 0;
 
-    // Calculate daily swap cost for this position
-    const positionSize = amount * entryPrice;
+    const positionSize = calculateDerivativeNotionalUsd(symbol, amount, livePrice || entryPrice, getPriceBySymbol);
     const dailySwapCost = calculateDailySwapCost(symbol, positionSize, leverage);
-
-    // Calculate unrealized PnL based on live price (WITHOUT leverage multiplier)
-    let unrealizedPnl = 0;
-    if (side === 'long') {
-      unrealizedPnl = (livePrice - entryPrice) * amount;
-    } else {
-      unrealizedPnl = (entryPrice - livePrice) * amount;
-    }
-
-    // Subtract accumulated swap costs from PnL
-    const netUnrealizedPnl = unrealizedPnl - accumulatedSwapCost;
+    const liveSwapCost = calculateLiveSwapCost(
+      dailySwapCost,
+      accumulatedSwapCost,
+      position.createdAt || position.created_at,
+      position.lastSwapChargeDate || position.last_swap_charge_date,
+      position.swapAccruedAt || position.swap_accrued_at,
+      calculationTime
+    );
+    const unrealizedPnl = calculateDerivativePnlUsd(
+      symbol,
+      side,
+      entryPrice,
+      livePrice,
+      amount,
+      getPriceBySymbol
+    );
+    const netUnrealizedPnl = unrealizedPnl - liveSwapCost;
 
     // Calculate ROI based on net PnL
     const roi = margin > 0 ? (netUnrealizedPnl / margin) * 100 : 0;
@@ -403,13 +423,37 @@ const getPricePrecision = useCallback((symbol: string): number => {
       liquidationPrice,
       unrealizedPnl: netUnrealizedPnl,
       grossUnrealizedPnl: unrealizedPnl,
-      accumulatedSwapCost,
+      accumulatedSwapCost: liveSwapCost,
+      bookedSwapCost: accumulatedSwapCost,
       dailySwapCost,
       roi,
       takeProfit: position.takeProfit || position.tp_price || null,
       stopLoss: position.stopLoss || position.sl_price || null
     };
   });
+
+  livePositionsRef.current = positionsWithLiveData;
+
+  // Keep persisted PnL synchronized for wallet/CRM views without writing on
+  // every WebSocket tick. The RPC is scoped to the authenticated user's rows.
+  useEffect(() => {
+    const lastSyncedPrices = new Map<string, number>();
+    const syncPrices = async () => {
+      for (const position of livePositionsRef.current) {
+        const price = priceLookupRef.current(position.symbol);
+        if (!Number.isFinite(price) || price <= 0 || lastSyncedPrices.get(position.id) === price) continue;
+        const { error: syncError } = await supabase.rpc('update_position_current_price', {
+          p_symbol: position.symbol,
+          p_current_price: price
+        });
+        if (!syncError) lastSyncedPrices.set(position.id, price);
+      }
+    };
+
+    void syncPrices();
+    const interval = window.setInterval(() => void syncPrices(), 5000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const totalUnrealizedPnl = positionsWithLiveData.reduce((sum, pos) => sum + (pos.unrealizedPnl || 0), 0);
   const totalMargin = positionsWithLiveData.reduce((sum, pos) => sum + (pos.margin || 0), 0);
@@ -562,10 +606,8 @@ const getPricePrecision = useCallback((symbol: string): number => {
       const livePrice = symbol ? getPriceBySymbol(symbol) : 0;
       console.log(`Closing position ${positionId} (${symbol}) with live price: ${livePrice}`);
 
-      const result = onClosePosition(positionId, livePrice > 0 ? livePrice : undefined);
-      if (result && typeof (result as any).then === 'function') {
-        await result;
-      }
+      const result = await Promise.resolve(onClosePosition(positionId, livePrice > 0 ? livePrice : undefined));
+      if (result === false) throw new Error('Position could not be closed');
       setSuccessMessage('Position closed successfully');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to close position');
@@ -738,7 +780,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
             </button>
             <button 
               onClick={handleCancelAllOrders}
-              disabled={isProcessingAll || filteredOpenOrders.length === 0 || loading || (!onCancelAllOrders && !onCancelAllPropOrders)}
+              disabled={isProcessingAll || filteredOpenOrders.length === 0 || loading || !onCancelAllOrders}
               className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 disabled:from-slate-700 disabled:to-slate-800 text-white py-2 md:py-3 rounded-lg md:rounded-xl text-sm md:text-base font-medium md:font-semibold transition-all duration-300 shadow-lg shadow-red-500/25 flex items-center justify-center gap-1 md:gap-2"
             >
               {isProcessingAll ? (

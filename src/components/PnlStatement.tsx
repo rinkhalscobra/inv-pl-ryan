@@ -16,6 +16,7 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
 import { generateTradePdf } from '../utils/generateTradePdf';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 type TradeType = 'all' | 'futures' | 'cfd';
 
@@ -57,11 +58,8 @@ function isCfdSymbol(symbol: string): boolean {
 }
 
 function getCurrencyForSymbol(symbol: string): string {
-  if (symbol.includes('/')) {
-    const parts = symbol.split('/');
-    return parts[0];
-  }
-  return 'USD';
+  void symbol;
+  return 'EUR';
 }
 
 function formatDateTime(dateStr: string): string {
@@ -198,6 +196,7 @@ function buildHtmlDocument(
 
 const PnlStatement: React.FC = () => {
   const { t } = useTranslation();
+  const { convertUsdToEur, formatFiat } = useFiatCurrency();
   const [tradeType, setTradeType] = useState<TradeType>('all');
   const [loading, setLoading] = useState(true);
   const [allHistory, setAllHistory] = useState<PositionHistoryRow[]>([]);
@@ -236,7 +235,24 @@ const PnlStatement: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchHistory();
+    void fetchHistory();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let disposed = false;
+
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user || disposed) return;
+      channel = supabase
+        .channel(`wallet-pnl-${user.id}-${crypto.randomUUID()}`)
+        .on('postgres_changes', {
+          event: '*', schema: 'public', table: 'futures_position_history', filter: `user_id=eq.${user.id}`
+        }, () => void fetchHistory())
+        .subscribe();
+    });
+
+    return () => {
+      disposed = true;
+      if (channel) void supabase.removeChannel(channel);
+    };
   }, [fetchHistory]);
 
   const filteredHistory = useMemo(() => {
@@ -274,6 +290,15 @@ const PnlStatement: React.FC = () => {
     return filteredHistory.reduce((sum, r) => sum + (r.spread_cost || 0), 0);
   }, [filteredHistory]);
 
+  const eurHistory = useMemo(() => filteredHistory.map(row => ({
+    ...row,
+    margin: convertUsdToEur(row.margin),
+    pnl: convertUsdToEur(row.pnl),
+    accumulated_swap_cost: convertUsdToEur(row.accumulated_swap_cost || 0),
+    spread_cost: convertUsdToEur(row.spread_cost || 0),
+  })), [convertUsdToEur, filteredHistory]);
+  const totalProfitEur = convertUsdToEur(totalProfit);
+
   const totalPages = Math.max(1, Math.ceil(filteredHistory.length / ROWS_PER_PAGE));
   const paginatedRows = filteredHistory.slice(
     (currentPage - 1) * ROWS_PER_PAGE,
@@ -285,8 +310,8 @@ const PnlStatement: React.FC = () => {
   }, [tradeType, dateFrom, dateTo]);
 
   const getHtmlContent = useCallback(() => {
-    return buildHtmlDocument(filteredHistory, totalProfit, tradeType, dateFrom, dateTo, columns);
-  }, [filteredHistory, totalProfit, tradeType, dateFrom, dateTo, columns]);
+    return buildHtmlDocument(eurHistory, totalProfitEur, tradeType, dateFrom, dateTo, columns);
+  }, [eurHistory, totalProfitEur, tradeType, dateFrom, dateTo, columns]);
 
   const handleDownloadHtml = () => {
     const html = getHtmlContent();
@@ -303,7 +328,7 @@ const PnlStatement: React.FC = () => {
   };
 
   const handleDownloadPdf = async () => {
-    await generateTradePdf(filteredHistory, totalProfit, tradeType, dateFrom, dateTo, columns);
+    await generateTradePdf(eurHistory, totalProfitEur, tradeType, dateFrom, dateTo, columns);
   };
 
   const handleDownloadCsv = () => {
@@ -319,7 +344,7 @@ const PnlStatement: React.FC = () => {
 
     const csvRows = [headers.join(',')];
 
-    for (const row of filteredHistory) {
+    for (const row of eurHistory) {
       const cells: string[] = [
         row.id.slice(0, 8),
         row.symbol,
@@ -342,7 +367,7 @@ const PnlStatement: React.FC = () => {
 
     csvRows.push('');
     const emptyCount = headers.length - 2;
-    csvRows.push(`Total Profit:${','.repeat(emptyCount)}${totalProfit.toFixed(2)}`);
+    csvRows.push(`Total Profit:${','.repeat(emptyCount)}${totalProfitEur.toFixed(2)}`);
 
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -485,16 +510,16 @@ const PnlStatement: React.FC = () => {
             <div className="text-slate-400 text-xs mb-1">Total Profit</div>
             <div className={`text-xl font-bold flex items-center gap-1 ${totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {totalProfit >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-              {totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)}
+              {totalProfit >= 0 ? '+' : ''}{formatFiat(totalProfit)}
             </div>
           </div>
           <div className="app-surface-muted rounded-xl p-4">
             <div className="text-slate-400 text-xs mb-1">Total Swap</div>
-            <div className="text-xl font-bold text-amber-400">{totalSwap.toFixed(2)}</div>
+            <div className="text-xl font-bold text-amber-400">{formatFiat(totalSwap)}</div>
           </div>
           <div className="app-surface-muted rounded-xl p-4">
             <div className="text-slate-400 text-xs mb-1">Total Commission</div>
-            <div className="text-xl font-bold text-slate-300">{totalSpread.toFixed(2)}</div>
+            <div className="text-xl font-bold text-slate-300">{formatFiat(totalSpread)}</div>
           </div>
         </div>
 
@@ -551,18 +576,18 @@ const PnlStatement: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-2.5 px-2 text-right text-slate-300">{row.amount.toFixed(4)}</td>
-                      <td className="py-2.5 px-2 text-right text-slate-300">{row.margin.toFixed(2)}</td>
-                      <td className="py-2.5 px-2 text-slate-300">{getCurrencyForSymbol(row.symbol)}</td>
+                      <td className="py-2.5 px-2 text-right text-slate-300">{formatFiat(row.margin)}</td>
+                      <td className="py-2.5 px-2 text-slate-300">EUR</td>
                       <td className="py-2.5 px-2 text-right text-slate-300 font-mono text-xs">{formatPrice(row.entry_price, row.symbol)}</td>
                       <td className="py-2.5 px-2 text-slate-400 text-xs whitespace-nowrap">{formatDateTime(row.open_time)}</td>
                       <td className="py-2.5 px-2 text-right text-slate-300 font-mono text-xs">{formatPrice(row.exit_price, row.symbol)}</td>
                       <td className="py-2.5 px-2 text-slate-400 text-xs whitespace-nowrap">{formatDateTime(row.close_time)}</td>
                       {columns.sl && <td className="py-2.5 px-2 text-right text-slate-500">--</td>}
                       {columns.tp && <td className="py-2.5 px-2 text-right text-slate-500">--</td>}
-                      {columns.swap && <td className="py-2.5 px-2 text-right text-amber-400">{(row.accumulated_swap_cost || 0).toFixed(2)}</td>}
-                      {columns.commission && <td className="py-2.5 px-2 text-right text-slate-300">{(row.spread_cost || 0).toFixed(2)}</td>}
+                      {columns.swap && <td className="py-2.5 px-2 text-right text-amber-400">{formatFiat(row.accumulated_swap_cost || 0)}</td>}
+                      {columns.commission && <td className="py-2.5 px-2 text-right text-slate-300">{formatFiat(row.spread_cost || 0)}</td>}
                       <td className={`py-2.5 px-2 text-right font-bold ${row.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {row.pnl >= 0 ? '+' : ''}{row.pnl.toFixed(2)}
+                        {row.pnl >= 0 ? '+' : ''}{formatFiat(row.pnl)}
                       </td>
                     </tr>
                   ))}

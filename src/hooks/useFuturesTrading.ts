@@ -2,7 +2,9 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useDatabase } from './useDatabase';
 import { useAuth } from './useAuth';
-import { calculateSpreadCost, getSpreadForSymbol } from '../constants/spreadConfig';
+import { calculateSpreadCost, calculateSpreadCostFromNotional, getSpreadForSymbol } from '../constants/spreadConfig';
+import { useMarketData } from '../contexts/MarketDataContext';
+import { calculateDerivativeNotionalUsd } from '../utils/derivativeCalculations';
 
 export interface FuturesOrderParams {
   symbol: string;
@@ -35,6 +37,7 @@ export interface FuturesPosition {
   createdAt: string;
   accumulatedSwapCost?: number;
   lastSwapChargeDate?: string | null;
+  swapAccruedAt?: string | null;
 }
 
 export interface FuturesOrder {
@@ -75,6 +78,7 @@ export interface PositionHistoryEntry {
 export const useFuturesTrading = () => {
   const { balances, updateBalances } = useDatabase();
   const { user } = useAuth();
+  const { getPriceBySymbol: getCfdPrice } = useMarketData();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [positionHistory, setPositionHistory] = useState<PositionHistoryEntry[]>([]);
@@ -180,7 +184,8 @@ export const useFuturesTrading = () => {
         takeProfit: pos.tp_price ? parseFloat(pos.tp_price) : undefined,
         createdAt: pos.created_at,
         accumulatedSwapCost: pos.accumulated_swap_cost ? parseFloat(pos.accumulated_swap_cost) : 0,
-        lastSwapChargeDate: pos.last_swap_charge_date
+        lastSwapChargeDate: pos.last_swap_charge_date,
+        swapAccruedAt: pos.swap_accrued_at || null
       }));
       
       setActivePositions(formattedPositions);
@@ -250,33 +255,6 @@ export const useFuturesTrading = () => {
     setError(null);
     
     try {
-      // First, update current prices for all open positions using latest market data
-      const { data: openPositions, error: positionsError } = await supabase
-        .from('futures_positions')
-        .select('id, symbol')
-        .eq('user_id', user.id)
-        .eq('is_open', true);
-        
-      if (!positionsError && openPositions && openPositions.length > 0) {
-        // Get latest prices for all position symbols
-        const symbols = openPositions.map(p => p.symbol);
-        const { data: latestPrices } = await supabase
-          .from('market_data')
-          .select('symbol, price')
-          .in('symbol', symbols)
-          .order('timestamp', { ascending: false });
-          
-        // Update current prices for positions (this will trigger PnL recalculation)
-        if (latestPrices && latestPrices.length > 0) {
-          for (const priceData of latestPrices) {
-            await supabase.rpc('update_position_current_price', {
-              p_symbol: priceData.symbol,
-              p_current_price: priceData.price
-            });
-          }
-        }
-      }
-      
       const { symbol, side, amount, leverage, marginType, orderType, price, stopLoss, takeProfit, contractSize = 1 } = params; // price is now mandatory
       
       // Calculate effective amount early so it's available in all code paths
@@ -313,12 +291,13 @@ export const useFuturesTrading = () => {
         console.log(`CFD instrument detected (${symbol}), creating new position without merging`);
         
         // Create new CFD position directly
-        const positionSize = effectiveAmount * entryPrice;
+        const positionSize = calculateDerivativeNotionalUsd(symbol, effectiveAmount, entryPrice, getCfdPrice);
+        if (positionSize <= 0) throw new Error(`Unable to value ${symbol} in USD`);
         const requiredMargin = positionSize / leverage;
 
         // Calculate spread cost for this position
         const spreadConfig = getSpreadForSymbol(symbol);
-        const spreadCost = calculateSpreadCost(symbol, entryPrice, effectiveAmount, contractSize);
+        const spreadCost = calculateSpreadCostFromNotional(symbol, positionSize);
         const spreadPercentage = spreadConfig?.spreadPercentage || 0.0001;
 
         // Calculate liquidation price based on margin type
@@ -407,7 +386,10 @@ export const useFuturesTrading = () => {
       } else { // Market orders - handle position logic
         
         // If there's an existing position AND it's not a CFD instrument, handle merging/closing logic
-        if (existingPosition && !isCFDInstrument) {
+        // Keep each market execution as its own position. The old client-side
+        // netting path silently discarded PnL on partial closes.
+        const shouldNetClientSide = false;
+        if (shouldNetClientSide && existingPosition && !isCFDInstrument) {
           const existingSide = existingPosition.side;
           const existingAmount = parseFloat(existingPosition.amount);
           const existingEntryPrice = parseFloat(existingPosition.entry_price);
@@ -712,7 +694,7 @@ export const useFuturesTrading = () => {
     } finally {
       setLoading(false);
     }
-  }, [balances, updateBalances, calculateLiquidationPrice, fetchActivePositions, fetchOpenOrders]);
+  }, [balances, updateBalances, calculateLiquidationPrice, fetchActivePositions, fetchOpenOrders, getCfdPrice]);
 
   // Close a futures position
   // liveExitPrice: optional live price from WebSocket to use instead of database price
@@ -746,11 +728,11 @@ export const useFuturesTrading = () => {
         throw new Error(`Invalid exit price for ${position.symbol}: ${exitPrice}`);
       }
 
-      // Round exit price to 4 decimal places to prevent numeric overflow
-      const roundedExitPrice = Math.round(exitPrice * 10000) / 10000;
-
-      // Clamp exit price to database column limits (NUMERIC(10,4): -999999.9999 to 999999.9999)
-      const clampedExitPrice = Math.max(-999999.9999, Math.min(999999.9999, roundedExitPrice));
+      // Position prices are NUMERIC(20,8); keep FX and low-price crypto precision.
+      const clampedExitPrice = Math.max(
+        0.00000001,
+        Math.min(Number.MAX_SAFE_INTEGER, Math.round(exitPrice * 1e8) / 1e8)
+      );
 
       console.log(`Closing position ${positionId} for ${position.symbol} at price ${clampedExitPrice}`);
 

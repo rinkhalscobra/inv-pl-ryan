@@ -4,7 +4,7 @@ import {
   ArrowDown,
   RefreshCw,
   Info,
-  DollarSign,
+  Euro,
   Search,
   ChevronDown,
   X,
@@ -21,16 +21,16 @@ import {
   DollarSign as Dollar,
   Lock
 } from 'lucide-react';
-import { useDatabase } from '../hooks/useDatabase';
+import { useDatabase, DatabaseUserAsset } from '../hooks/useDatabase';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface SwapCryptoPageProps {
   usdtBalance: number;
   btcBalance: number;
   currentBtcPrice: number;
   onSwap: (fromCurrency: string, toCurrency: string, amount: number, toAmountReceived?: number) => Promise<boolean>;
-  availableBalance?: number;
   userAssets?: DatabaseUserAsset[];
   fetchTransactions?: () => Promise<void>;
 }
@@ -47,7 +47,6 @@ interface CryptoCurrency {
 const CRYPTO_ICON_URLS: Record<string, string> = {
   BTC: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
   ETH: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png',
-  USDT: 'https://assets.coingecko.com/coins/images/325/large/Tether.png',
   USDC: 'https://assets.coingecko.com/coins/images/6319/large/USD_Coin_icon.png',
   BNB: 'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
   SOL: 'https://assets.coingecko.com/coins/images/4128/large/solana.png',
@@ -69,9 +68,9 @@ const CRYPTO_ICON_URLS: Record<string, string> = {
 
 // Define the allowed swap symbols
 const ALLOWED_SWAP_SYMBOLS = [
+  { symbol: 'EUR', name: 'Euro' },
   { symbol: 'BTC', name: 'Bitcoin' },
   { symbol: 'ETH', name: 'Ethereum' },
-  { symbol: 'USDT', name: 'Tether' },
   { symbol: 'USDC', name: 'USD Coin' },
   { symbol: 'BNB', name: 'BNB' },
   { symbol: 'SOL', name: 'Solana' },
@@ -96,12 +95,12 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   btcBalance,
   currentBtcPrice,
   onSwap,
-  availableBalance,
   userAssets = [],
   fetchTransactions
 }) => {
   const { t } = useTranslation();
   const { transactions } = useDatabase();
+  const { convertUsdToEur, eurUsdRate, formatFiat, formatEur } = useFiatCurrency();
   const { marketData, snapshotData, isConnected: isLiveDataConnected, getSnapshotPriceBySymbol, refreshSnapshot, lastSnapshotTime } = useMarketData();
   const { getPriceBySymbol: getBybitPrice, isConnected: isBybitConnected } = useBybitData();
 
@@ -114,7 +113,10 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
 
   // Helper function to get price for any symbol with multiple fallback strategies
   const getPriceForSymbol = useCallback((symbol: string): number => {
-    if (symbol === 'USDT' || symbol === 'USDC') {
+    if (symbol === 'EUR') {
+      return eurUsdRate;
+    }
+    if (symbol === 'USDC') {
       return 1;
     }
 
@@ -151,7 +153,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     }
 
     return 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, marketData, snapshotData, currentBtcPrice]);
+  }, [getBybitPrice, getSnapshotPriceBySymbol, marketData, snapshotData, currentBtcPrice, eurUsdRate]);
   
   // State for swap form
   const [fromAmount, setFromAmount] = useState('');
@@ -159,11 +161,11 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   const [calculatedToAmountFullPrecision, setCalculatedToAmountFullPrecision] = useState<number | null>(null);
   const [calculatedFromAmountFullPrecision, setCalculatedFromAmountFullPrecision] = useState<number | null>(null);
   const [fromCurrency, setFromCurrency] = useState<CryptoCurrency>(() => ({
-    symbol: 'USDT',
-    name: 'Tether',
-    iconUrl: 'https://assets.coingecko.com/coins/images/325/large/Tether.png',
-    balance: usdtBalance,
-    price: 1
+    symbol: 'EUR',
+    name: 'Euro',
+    iconUrl: '',
+    balance: convertUsdToEur(usdtBalance),
+    price: eurUsdRate
   }));
   const [toCurrency, setToCurrency] = useState<CryptoCurrency>(() => ({
     symbol: 'BTC',
@@ -234,7 +236,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       price = getPriceForSymbol(symbol);
     }
 
-    if (symbol === 'USDT' || symbol === 'USDC') return price;
+    if (symbol === 'EUR' || symbol === 'USDC') return price;
 
     if (price > 0) {
       const tracked = lastValidatedPricesRef.current[symbol];
@@ -270,7 +272,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   // Track price confidence - builds trust in prices over consecutive similar readings
   useEffect(() => {
     const trackSymbol = (symbol: string) => {
-      if (symbol === 'USDT' || symbol === 'USDC') return;
+      if (symbol === 'EUR' || symbol === 'USDC') return;
       const price = getPriceForSymbol(symbol);
       if (price <= 0) return;
       const tracked = lastValidatedPricesRef.current[symbol];
@@ -312,7 +314,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
         const calculated = numValue * exchangeRate * (1 - SWAP_FEE_RATE);
         if (!isNaN(calculated) && isFinite(calculated)) {
           setCalculatedToAmountFullPrecision(calculated);
-          setToAmount(calculated.toFixed(8));
+          setToAmount(calculated.toFixed(getInputDecimals(toCurrency.symbol)));
         }
       }
     }
@@ -335,6 +337,12 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     };
   }, [refreshSnapshot]);
 
+  const getCurrencyBalance = useCallback((symbol: string): number => {
+    if (symbol === 'EUR') return convertUsdToEur(usdtBalance);
+    if (symbol === 'BTC') return btcBalance;
+    return userAssets.find(asset => asset.asset_symbol === symbol)?.balance || 0;
+  }, [btcBalance, convertUsdToEur, userAssets, usdtBalance]);
+
   // Update currency balances and prices when market data changes (but not if prices are locked)
   useEffect(() => {
     // Don't update prices while they're locked
@@ -345,46 +353,28 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     console.log('SwapPage: Updating currency prices...');
 
     setFromCurrency(prev => {
-      const userAsset = userAssets.find(asset => asset.asset_symbol === prev.symbol);
-      const balance = userAsset ? userAsset.balance :
-                     prev.symbol === 'USDT' ? usdtBalance :
-                     prev.symbol === 'BTC' ? btcBalance :
-                     prev.balance;
-
       const price = getPriceForSymbol(prev.symbol);
       console.log(`SwapPage: Updated fromCurrency ${prev.symbol} price to ${price}`);
 
-      return { ...prev, balance, price };
+      return { ...prev, balance: getCurrencyBalance(prev.symbol), price };
     });
 
     setToCurrency(prev => {
-      const userAsset = userAssets.find(asset => asset.asset_symbol === prev.symbol);
-      const balance = userAsset ? userAsset.balance :
-                     prev.symbol === 'USDT' ? usdtBalance :
-                     prev.symbol === 'BTC' ? btcBalance :
-                     prev.balance;
-
       const price = getPriceForSymbol(prev.symbol);
       console.log(`SwapPage: Updated toCurrency ${prev.symbol} price to ${price}`);
 
-      return { ...prev, balance, price };
+      return { ...prev, balance: getCurrencyBalance(prev.symbol), price };
     });
 
     // Also update in available currencies
     setAvailableCurrencies(prev =>
       prev.map(currency => {
-        const userAsset = userAssets.find(asset => asset.asset_symbol === currency.symbol);
-        const balance = userAsset ? userAsset.balance :
-                       currency.symbol === 'USDT' ? usdtBalance :
-                       currency.symbol === 'BTC' ? btcBalance :
-                       currency.balance;
-
         const price = getPriceForSymbol(currency.symbol);
 
-        return { ...currency, balance, price };
+        return { ...currency, balance: getCurrencyBalance(currency.symbol), price };
       })
     );
-  }, [usdtBalance, btcBalance, userAssets, getPriceForSymbol, marketData, snapshotData, lastSnapshotTime, lockedPrices]);
+  }, [getCurrencyBalance, getPriceForSymbol, marketData, snapshotData, lastSnapshotTime, lockedPrices]);
 
   // Initialize available currencies
   useEffect(() => {
@@ -399,29 +389,21 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       const name = allowedCrypto.name;
 
       // Get icon URL from static mapping
-      const iconUrl = CRYPTO_ICON_URLS[symbol] || 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png';
+      const iconUrl = symbol === 'EUR'
+        ? ''
+        : CRYPTO_ICON_URLS[symbol] || 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png';
 
       // Get price using the robust helper function
       const price = getPriceForSymbol(symbol);
 
       // Get balance from user assets or default balances
-      let balance;
-      const userAsset = userAssets.find(asset => asset.asset_symbol === symbol);
-      if (userAsset) {
-        balance = userAsset.balance;
-      } else if (symbol === 'BTC') {
-        balance = btcBalance;
-      } else if (symbol === 'USDT') {
-        balance = usdtBalance;
-      }
-
       // Add to available currencies
       initialCurrencies.push({
         symbol,
         name,
         iconUrl,
         price,
-        balance
+        balance: getCurrencyBalance(symbol)
       });
     }
 
@@ -429,7 +411,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     console.log(`SwapPage: Initialized ${initialCurrencies.length} swap currencies with prices:`,
       initialCurrencies.map(c => `${c.symbol}:$${c.price}`).join(', '));
     setIsLoadingCurrencies(false);
-  }, [marketData, snapshotData, usdtBalance, btcBalance, userAssets, getPriceForSymbol]);
+  }, [marketData, snapshotData, getCurrencyBalance, getPriceForSymbol]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -460,20 +442,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     }
   }, [swapError, swapSuccess]);
 
-  // Calculate exchange rate
-  const getExchangeRate = () => {
-    if (fromCurrency.symbol === 'USDT' && toCurrency.symbol === 'BTC') {
-      return availableBalance !== undefined ? availableBalance : currentBtcPrice;
-    }
-    if (fromCurrency.symbol === 'BTC' && toCurrency.symbol === 'USDT') {
-      return availableBalance || usdtBalance;
-    }
-    if (fromCurrency.price && toCurrency.price) {
-      return fromCurrency.price / toCurrency.price;
-    }
-    return 0;
-  };
-
   // Handle from amount change
   const handleFromAmountChange = (value: string) => {
     // Sanitize input - only allow numbers and decimal point
@@ -485,9 +453,9 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       return;
     }
 
-    // Limit decimal places to 8
+    // Fiat is entered in cents; crypto retains higher precision.
     const parts = sanitizedValue.split('.');
-    if (parts[1] && parts[1].length > 8) {
+    if (parts[1] && parts[1].length > getInputDecimals(fromCurrency.symbol)) {
       return;
     }
 
@@ -532,7 +500,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
         // Store full precision for slippage calculation
         setCalculatedToAmountFullPrecision(calculatedToAmount);
         // Store rounded version for display
-        setToAmount(calculatedToAmount.toFixed(8));
+        setToAmount(calculatedToAmount.toFixed(getInputDecimals(toCurrency.symbol)));
       } else {
         setCalculatedToAmountFullPrecision(null);
         setToAmount('');
@@ -558,9 +526,9 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       return;
     }
 
-    // Limit decimal places to 8
+    // Fiat is entered in cents; crypto retains higher precision.
     const parts = sanitizedValue.split('.');
-    if (parts[1] && parts[1].length > 8) {
+    if (parts[1] && parts[1].length > getInputDecimals(toCurrency.symbol)) {
       return;
     }
 
@@ -605,7 +573,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
         // Store full precision for slippage calculation
         setCalculatedFromAmountFullPrecision(calculatedFromAmount);
         // Store rounded version for display
-        setFromAmount(calculatedFromAmount.toFixed(8));
+        setFromAmount(calculatedFromAmount.toFixed(getInputDecimals(fromCurrency.symbol)));
       } else {
         setCalculatedFromAmountFullPrecision(null);
         setFromAmount('');
@@ -693,7 +661,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       const maxSwappable = Math.max(0, fromCurrency.balance - buffer);
       
       // Round down to appropriate decimal places to prevent floating-point inaccuracies
-      const decimals = fromCurrency.symbol === 'USDT' ? 2 : 6;
+      const decimals = fromCurrency.symbol === 'EUR' ? 2 : 6;
       const maxSwappableValue = Math.floor(maxSwappable * Math.pow(10, decimals)) / Math.pow(10, decimals);
       const maxSwappableString = maxSwappableValue.toFixed(decimals);
       
@@ -718,26 +686,31 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     }
     
     // Additional pre-confirmation checks
-    const MIN_SWAP_AMOUNT = 0.0001;
-    const MAX_SWAP_AMOUNT_USD = 1000000;
+    const MIN_SWAP_VALUE_EUR = 0.01;
+    const MAX_SWAP_VALUE_EUR = 1000000;
     const MAX_SLIPPAGE = 0.05; // 5% maximum slippage
-    
-    if (amount < MIN_SWAP_AMOUNT) {
-      setSwapError(`Minimum swap amount is ${MIN_SWAP_AMOUNT}`);
-      return;
-    }
-    
-    // Check USD value limit (use effective prices)
+
+    // Check value limits using the locked quote prices.
     const fromPrice = getEffectivePrice('from');
     const toPrice = getEffectivePrice('to');
+    if (!fromPrice || !toPrice || fromPrice <= 0 || toPrice <= 0) {
+      setSwapError('Currency prices unavailable. Please try again later.');
+      return;
+    }
+
     const fromUsdValue = amount * fromPrice;
-    if (fromUsdValue > MAX_SWAP_AMOUNT_USD) {
-      setSwapError(`Maximum swap amount is $${MAX_SWAP_AMOUNT_USD.toLocaleString()}`);
+    if (convertUsdToEur(fromUsdValue) < MIN_SWAP_VALUE_EUR) {
+      setSwapError(`Minimum swap value is ${formatEur(MIN_SWAP_VALUE_EUR)}`);
+      return;
+    }
+
+    if (convertUsdToEur(fromUsdValue) > MAX_SWAP_VALUE_EUR) {
+      setSwapError(`Maximum swap value is ${formatEur(MAX_SWAP_VALUE_EUR)}`);
       return;
     }
 
     // Check balance
-    if (fromCurrency.balance && amount > fromCurrency.balance) {
+    if (amount > (fromCurrency.balance || 0)) {
       setSwapError(`Insufficient ${fromCurrency.symbol} balance`);
       return;
     }
@@ -748,12 +721,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       return;
     }
 
-    // Validate prices are available and reasonable (use effective prices)
-    if (!fromPrice || !toPrice || fromPrice <= 0 || toPrice <= 0) {
-      setSwapError('Currency prices unavailable. Please try again later.');
-      return;
-    }
-    
     // Validate the to amount is calculated and reasonable
     const toAmountNum = parseFloat(toAmount);
     if (isNaN(toAmountNum) || toAmountNum <= 0) {
@@ -842,27 +809,34 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     // Additional security checks
     const SWAP_FEE_RATE = 0.001; // 0.1% fee
     const MAX_SLIPPAGE = 0.05; // 5% maximum slippage allowed
-    const MIN_SWAP_AMOUNT = 0.0001; // Minimum swap amount
-    const MAX_SWAP_AMOUNT = 1000000; // Maximum swap amount in USD value
+    const MIN_SWAP_VALUE_EUR = 0.01;
+    const MAX_SWAP_VALUE_EUR = 1000000;
 
-    // Check minimum swap amount
-    if (amount < MIN_SWAP_AMOUNT) {
-      setSwapError(`Minimum swap amount is ${MIN_SWAP_AMOUNT}`);
+    const fromPrice = getEffectivePrice('from');
+    const toPrice = getEffectivePrice('to');
+    if (!fromPrice || !toPrice || fromPrice <= 0 || toPrice <= 0) {
+      setSwapError('Invalid currency prices. Please try again later.');
       setShowConfirmation(false);
       return;
     }
 
-    // Calculate USD value of the swap to check maximum (use locked prices)
-    const fromUsdValue = amount * getEffectivePrice('from');
-    if (fromUsdValue > MAX_SWAP_AMOUNT) {
-      setSwapError(`Maximum swap amount is $${MAX_SWAP_AMOUNT.toLocaleString()}`);
+    // Calculate the swap value using the locked prices.
+    const fromUsdValue = amount * fromPrice;
+    if (convertUsdToEur(fromUsdValue) < MIN_SWAP_VALUE_EUR) {
+      setSwapError(`Minimum swap value is ${formatEur(MIN_SWAP_VALUE_EUR)}`);
+      setShowConfirmation(false);
+      return;
+    }
+
+    if (convertUsdToEur(fromUsdValue) > MAX_SWAP_VALUE_EUR) {
+      setSwapError(`Maximum swap value is ${formatEur(MAX_SWAP_VALUE_EUR)}`);
       setShowConfirmation(false);
       return;
     }
 
 
     // Double-check balance before executing
-    if (fromCurrency.balance && amount > fromCurrency.balance) {
+    if (amount > (fromCurrency.balance || 0)) {
       setSwapError(`Insufficient ${fromCurrency.symbol} balance`);
       setShowConfirmation(false);
       return;
@@ -875,15 +849,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       return;
     }
 
-    // Check if prices are valid and not zero (using effective/locked prices)
-    const fromPrice = getEffectivePrice('from');
-    const toPrice = getEffectivePrice('to');
-    if (!fromPrice || !toPrice || fromPrice <= 0 || toPrice <= 0) {
-      setSwapError('Invalid currency prices. Please try again later.');
-      setShowConfirmation(false);
-      return;
-    }
-    
     setIsSwapping(true);
     setSwapError(null);
     setSwapSuccess(null);
@@ -902,7 +867,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       console.log('Swap result:', success);
 
       if (success) {
-        setSwapSuccess(`Successfully swapped ${amount} ${fromCurrency.symbol} to ${toAmountNum.toFixed(6)} ${toCurrency.symbol}`);
+        setSwapSuccess(`Successfully swapped ${formatAssetAmount(amount, fromCurrency.symbol)} ${fromCurrency.symbol} to ${formatAssetAmount(toAmountNum, toCurrency.symbol)} ${toCurrency.symbol}`);
         // Reset form
         setFromAmount('');
         setToAmount('');
@@ -935,8 +900,25 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     return amount * 0.001; // 0.1% fee
   };
 
-  // Render crypto icon with fallback
+  const getAmountDecimals = (symbol: string) => symbol === 'EUR' ? 2 : 6;
+  const getInputDecimals = (symbol: string) => symbol === 'EUR' ? 2 : 8;
+  const formatAssetAmount = (amount: number, symbol: string) =>
+    amount.toFixed(getAmountDecimals(symbol));
+  const formatBalance = (currency: CryptoCurrency) =>
+    formatAssetAmount(currency.balance || 0, currency.symbol);
+  const formatAssetValue = (amount: number, currencyType: 'from' | 'to') =>
+    formatFiat(amount * getEffectivePrice(currencyType));
+
+  // Render an asset icon with a dedicated fiat treatment.
   const renderCryptoIcon = (currency: CryptoCurrency) => {
+    if (currency.symbol === 'EUR') {
+      return (
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white">
+          <Euro size={18} strokeWidth={2.5} />
+        </div>
+      );
+    }
+
     return (
       <div className="relative w-8 h-8 rounded-full overflow-hidden app-icon-tile flex items-center justify-center">
         <img 
@@ -993,7 +975,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
           {/* Header */}
           <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-violet-400 bg-clip-text text-transparent sm:text-2xl">
-              {t('swap.title')}
+              Swap Assets
             </h2>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 sm:gap-3 sm:text-sm">
               {lockedPrices ? (
@@ -1046,7 +1028,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
             <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-sm text-slate-400">{t('swap.from')}</span>
               <span className="text-sm text-slate-400 sm:text-right">
-                {t('common.balance')}: {fromCurrency.balance?.toFixed(fromCurrency.symbol === 'USDT' ? 2 : 6)} {fromCurrency.symbol}
+                {t('common.balance')}: {formatBalance(fromCurrency)} {fromCurrency.symbol}
               </span>
             </div>
             <div className="rounded-xl app-surface-muted p-4">
@@ -1076,7 +1058,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                           <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
                           <input
                             type="text"
-                            placeholder="Search tokens..."
+                            placeholder="Search assets..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full app-input pl-10 pr-4 py-2 rounded-lg"
@@ -1098,8 +1080,8 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                               </div>
                             </div>
                             <div className="shrink-0 text-right">
-                              <div className="text-white">{currency.balance?.toFixed(currency.symbol === 'USDT' ? 2 : 6) || '0'}</div>
-                              <div className="text-slate-400 text-sm">${(currency.price || 0).toFixed(2)}</div>
+                              <div className="text-white">{formatBalance(currency)}</div>
+                              <div className="text-slate-400 text-sm">{formatFiat(currency.price || 0)}</div>
                             </div>
                           </button>
                         ))}
@@ -1110,7 +1092,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="text-slate-400 text-sm">
-                  ≈ ${((parseFloat(fromAmount) || 0) * getEffectivePrice('from')).toFixed(2)}
+                  ≈ {formatAssetValue(parseFloat(fromAmount) || 0, 'from')}
                 </span>
                 <button
                   onClick={handleMaxClick}
@@ -1137,7 +1119,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
             <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-sm text-slate-400">{t('swap.to')}</span>
               <span className="text-sm text-slate-400 sm:text-right">
-                {t('common.balance')}: {toCurrency.balance?.toFixed(toCurrency.symbol === 'USDT' ? 2 : 6)} {toCurrency.symbol}
+                {t('common.balance')}: {formatBalance(toCurrency)} {toCurrency.symbol}
               </span>
             </div>
             <div className="rounded-xl app-surface-muted p-4">
@@ -1167,7 +1149,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                           <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
                           <input
                             type="text"
-                            placeholder="Search tokens..."
+                            placeholder="Search assets..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full app-input pl-10 pr-4 py-2 rounded-lg"
@@ -1189,8 +1171,8 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                               </div>
                             </div>
                             <div className="shrink-0 text-right">
-                              <div className="text-white">{currency.balance?.toFixed(currency.symbol === 'USDT' ? 2 : 6) || '0'}</div>
-                              <div className="text-slate-400 text-sm">${(currency.price || 0).toFixed(2)}</div>
+                              <div className="text-white">{formatBalance(currency)}</div>
+                              <div className="text-slate-400 text-sm">{formatFiat(currency.price || 0)}</div>
                             </div>
                           </button>
                         ))}
@@ -1201,7 +1183,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="text-slate-400 text-sm">
-                  ≈ ${((parseFloat(toAmount) || 0) * getEffectivePrice('to')).toFixed(2)}
+                  ≈ {formatAssetValue(parseFloat(toAmount) || 0, 'to')}
                 </span>
               </div>
             </div>
@@ -1241,11 +1223,11 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
               </div>
               <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-slate-400">Fee (0.1%)</span>
-                <span className="text-white sm:text-right">{calculateFee().toFixed(6)} {fromCurrency.symbol}</span>
+                <span className="text-white sm:text-right">{formatAssetAmount(calculateFee(), fromCurrency.symbol)} {fromCurrency.symbol}</span>
               </div>
               <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-slate-400">Minimum Received</span>
-                <span className="text-white sm:text-right">{(parseFloat(toAmount) * 0.995).toFixed(6)} {toCurrency.symbol}</span>
+                <span className="text-white sm:text-right">{formatAssetAmount(parseFloat(toAmount) * 0.995, toCurrency.symbol)} {toCurrency.symbol}</span>
               </div>
             </div>
           )}
@@ -1312,7 +1294,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                     <span className="truncate font-medium text-white">{symbol}</span>
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="text-white">${data.price.toFixed(2)}</div>
+                    <div className="text-white">{formatFiat(data.price)}</div>
                   </div>
                 </div>
               );
@@ -1336,7 +1318,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                       {tx.description}
                     </span>
                     <span className={`shrink-0 text-xs ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(6)}
+                      {tx.amount > 0 ? '+' : ''}{tx.currency?.toUpperCase() === 'EUR' ? formatEur(tx.amount) : formatFiat(tx.amount)}
                     </span>
                   </div>
                   <div className="text-xs text-slate-400">
@@ -1355,13 +1337,13 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       </div>
       </div>
 
-      {/* About Crypto Swaps */}
+      {/* About asset swaps */}
       <div className="w-full rounded-2xl app-surface-primary p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-8 h-8 app-icon-tile rounded-lg flex items-center justify-center">
             <Info size={16} className="text-white" />
           </div>
-          <h3 className="text-lg font-semibold text-white">{t('swap.aboutCryptoSwaps')}</h3>
+          <h3 className="text-lg font-semibold text-white">About Asset Swaps</h3>
         </div>
         
         <p className="text-slate-300 text-sm mb-4 leading-relaxed">
@@ -1429,9 +1411,9 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                     <span className="text-white font-medium">{fromCurrency.symbol}</span>
                   </div>
                   <div className="text-left sm:text-right">
-                    <div className="text-white font-bold">{parseFloat(fromAmount).toFixed(6)}</div>
+                    <div className="text-white font-bold">{formatAssetAmount(parseFloat(fromAmount), fromCurrency.symbol)}</div>
                     <div className="text-slate-400 text-sm">
-                      ≈ ${((parseFloat(fromAmount) || 0) * getEffectivePrice('from')).toFixed(2)}
+                      ≈ {formatAssetValue(parseFloat(fromAmount) || 0, 'from')}
                     </div>
                   </div>
                 </div>
@@ -1449,9 +1431,9 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                     <span className="text-white font-medium">{toCurrency.symbol}</span>
                   </div>
                   <div className="text-left sm:text-right">
-                    <div className="text-white font-bold">{parseFloat(toAmount).toFixed(6)}</div>
+                    <div className="text-white font-bold">{formatAssetAmount(parseFloat(toAmount), toCurrency.symbol)}</div>
                     <div className="text-slate-400 text-sm">
-                      ≈ ${((parseFloat(toAmount) || 0) * getEffectivePrice('to')).toFixed(2)}
+                      ≈ {formatAssetValue(parseFloat(toAmount) || 0, 'to')}
                     </div>
                   </div>
                 </div>
@@ -1466,7 +1448,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
                 </div>
                 <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-slate-400">Fee (0.1%)</span>
-                  <span className="text-white sm:text-right">{calculateFee().toFixed(6)} {fromCurrency.symbol}</span>
+                  <span className="text-white sm:text-right">{formatAssetAmount(calculateFee(), fromCurrency.symbol)} {fromCurrency.symbol}</span>
                 </div>
               </div>
             </div>

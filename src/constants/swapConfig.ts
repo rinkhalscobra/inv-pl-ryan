@@ -303,10 +303,10 @@ export function calculateDailySwapCost(
     return 0;
   }
 
-  const effectivePositionValue = positionSize * leverage;
-  const dailySwapCost = effectivePositionValue * swapConfig.dailySwapRate;
-
-  return dailySwapCost;
+  // positionSize is already the leveraged market notional. Applying leverage
+  // again made the browser estimate disagree with settlement.
+  void leverage;
+  return positionSize * swapConfig.dailySwapRate;
 }
 
 export function calculateSwapCostForDuration(

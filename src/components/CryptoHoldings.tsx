@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DollarSign, Bitcoin, Eye, EyeOff, TrendingUp, TrendingDown, Info, Search, Euro } from 'lucide-react';
-import { useDatabase, DatabaseUserAsset } from '../hooks/useDatabase';
+import { Bitcoin, Eye, EyeOff, TrendingUp, TrendingDown, Info, Search, Euro } from 'lucide-react';
+import { DatabaseUserAsset } from '../hooks/useDatabase';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
@@ -20,7 +20,6 @@ interface CryptoAsset {
   balance: number;
   usdValue: number;
   change24h?: number;
-  color: string;
 }
 
 const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
@@ -30,8 +29,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
   userAssets = []
 }) => {
   const { t } = useTranslation();
-  const { formatFiat } = useFiatCurrency();
-  const { assets } = useDatabase();
+  const { convertUsdToEur, formatFiat } = useFiatCurrency();
   const { marketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice } = useBybitData();
   const [showBalances, setShowBalances] = useState(true);
@@ -88,16 +86,15 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
     let portfolioValue = 0;
     let weightedChange = 0;
     
-    // Add USDT if balance > 0
+    // The historical usdt_balance column is the internal fiat ledger; present it as EUR.
     if (usdtBalance > 0) {
       assetList.push({
-        symbol: 'USDT',
-        name: 'Tether',
-        icon: <DollarSign size={20} className="text-green-400" />,
-        balance: usdtBalance,
+        symbol: 'EUR',
+        name: 'Euro',
+        icon: <Euro size={20} className="text-green-400" />,
+        balance: convertUsdToEur(usdtBalance),
         usdValue: usdtBalance,
-        change24h: 0, // Stablecoin, no change
-        color: 'green'
+        change24h: 0
       });
       portfolioValue += usdtBalance;
     }
@@ -117,7 +114,6 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
         balance: btcBalance,
         usdValue: btcValue,
         change24h: btcChangePercentage,
-        color: 'orange'
       });
 
       portfolioValue += btcValue;
@@ -125,8 +121,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
     }
     
     // Add other assets if they have a balance > 0
-    // Combine userAssets from props with assets from useDatabase hook
-    const allAssets = [...userAssets, ...(assets || [])];
+    const allAssets = userAssets;
     // Create a Map to deduplicate assets by symbol
     const assetMap = new Map();
     allAssets.forEach(asset => {
@@ -156,20 +151,15 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
           const usdValue = asset.balance * price;
           const valueChange = usdValue * (changePercentage / 100);
 
-          // Get a color based on the asset symbol (for visual variety)
-          const colors = ['blue', 'purple', 'indigo', 'pink', 'red', 'yellow', 'emerald', 'teal', 'cyan'];
-          const colorIndex = asset.asset_symbol.charCodeAt(0) % colors.length;
-
           assetList.push({
             symbol: asset.asset_symbol,
             name: asset.asset_symbol, // We could improve this with a name lookup
-            icon: <div className={`flex items-center justify-center w-5 h-5 rounded-full bg-${colors[colorIndex]}-500/20 text-${colors[colorIndex]}-400 text-xs font-bold`}>
+            icon: <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/20 text-xs font-bold text-blue-400">
               {asset.asset_symbol.substring(0, 2)}
             </div>,
             balance: asset.balance,
             usdValue,
-            change24h: changePercentage,
-            color: colors[colorIndex]
+            change24h: changePercentage
           });
 
           portfolioValue += usdValue;
@@ -184,7 +174,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
     setCryptoAssets(assetList);
     setTotalValue(portfolioValue);
     setTotalChange(totalChangePercentage);
-  }, [usdtBalance, btcBalance, marketData, userAssets, assets, getPriceForSymbol]);
+  }, [usdtBalance, btcBalance, marketData, userAssets, getPriceForSymbol, convertUsdToEur]);
 
   // Filter assets based on search term
   const filteredAssets = cryptoAssets.filter(asset => {
@@ -255,7 +245,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
               className="flex items-center justify-between p-4 bg-slate-700/30 rounded-xl hover:bg-slate-700/50 transition-all duration-300"
             >
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 bg-${asset.color}-500/20 rounded-full flex items-center justify-center`}>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-700/50">
                   {asset.icon}
                 </div>
                 <div>
@@ -265,7 +255,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
               </div>
               <div className="text-right">
                 <div className="font-bold text-white">
-                  {showBalances ? asset.balance.toFixed(asset.symbol === 'USDT' ? 2 : 6) : '••••••'}
+                  {showBalances ? asset.balance.toFixed(asset.symbol === 'EUR' ? 2 : 6) : '••••••'}
                 </div>
                 <div className="flex items-center justify-end gap-1 text-sm">
                   <span className="text-slate-400">

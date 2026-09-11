@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { DollarSign, QrCode, Copy, RefreshCw, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Euro, Copy, RefreshCw, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
 import QRCode from 'qrcode';
 import { supabase } from '../lib/supabaseClient';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface NowPaymentsDepositProps {
   userId: string;
@@ -20,6 +21,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
   fixedPayCurrency,
   buttonLabel = 'Generate Deposit Address',
 }) => {
+  const { formatEur } = useFiatCurrency();
   const [amount, setAmount] = useState(initialAmount);
   const [payCurrency, setPayCurrency] = useState(fixedPayCurrency || 'BTC');
   const [loading, setLoading] = useState(false);
@@ -28,7 +30,12 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
-  const [statusPolling, setStatusPolling] = useState<number | null>(null);
+  const statusPolling = useRef<number | null>(null);
+
+  const stopPolling = () => {
+    if (statusPolling.current !== null) window.clearInterval(statusPolling.current);
+    statusPolling.current = null;
+  };
 
   // Available cryptocurrencies
   const availableCurrencies = [
@@ -47,11 +54,9 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
   // Clean up polling on unmount
   useEffect(() => {
     return () => {
-      if (statusPolling) {
-        clearInterval(statusPolling);
-      }
+      stopPolling();
     };
-  }, [statusPolling]);
+  }, []);
 
   useEffect(() => {
     setAmount(initialAmount);
@@ -84,10 +89,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
     setPaymentData(null);
     setPaymentStatus(null);
     
-    if (statusPolling) {
-      clearInterval(statusPolling);
-      setStatusPolling(null);
-    }
+    stopPolling();
 
     try {
       const numAmount = parseFloat(amount);
@@ -116,11 +118,9 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
       setPaymentStatus('waiting');
 
       // Start polling for payment status
-      const interval = setInterval(() => {
-        checkPaymentStatus(data.payment_id);
-      }, 15000); // Check every 15 seconds
-      
-      setStatusPolling(interval);
+      statusPolling.current = window.setInterval(() => {
+        void checkPaymentStatus(data.payment_id);
+      }, 15000);
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred');
     } finally {
@@ -146,10 +146,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
         
         // If payment is completed, stop polling and notify parent
         if (data.payment_status === 'finished') {
-          if (statusPolling) {
-            clearInterval(statusPolling);
-            setStatusPolling(null);
-          }
+          stopPolling();
 
           // Call both callbacks if provided
           onDepositComplete?.();
@@ -158,10 +155,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
         
         // If payment failed or expired, stop polling
         if (['failed', 'expired', 'refunded'].includes(data.payment_status)) {
-          if (statusPolling) {
-            clearInterval(statusPolling);
-            setStatusPolling(null);
-          }
+          stopPolling();
         }
       }
     } catch (err) {
@@ -258,18 +252,18 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
       {!paymentData ? (
         <>
           {!initialAmount && <div>
-            <label className="block text-sm text-slate-400 mb-2">Amount (USD)</label>
+            <label className="block text-sm text-slate-400 mb-2">Amount (EUR)</label>
             <div className="relative">
               <input
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount in USD"
+                placeholder="Enter amount in EUR"
                 className="w-full app-input pl-10 pr-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                min="1"
-                step="1"
+                min="10"
+                step="0.01"
               />
-              <DollarSign size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+              <Euro size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
             </div>
           </div>}
 
@@ -325,7 +319,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
               <div>
                 <div className="text-sm text-slate-400 mb-1">Amount to Send</div>
                 <div className="text-xl font-bold text-white">{paymentData.pay_amount} {paymentData.pay_currency}</div>
-                <div className="text-xs text-slate-400">≈ ${amount} USD</div>
+                <div className="text-xs text-slate-400">Approx. {formatEur(Number(amount))}</div>
               </div>
               
               <div>
@@ -366,10 +360,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
                 setPaymentData(null);
                 setQrCodeUrl(null);
                 setPaymentStatus(null);
-                if (statusPolling) {
-                  clearInterval(statusPolling);
-                  setStatusPolling(null);
-                }
+                stopPolling();
               }}
               className="flex-1 app-action-soft text-white py-3 rounded-xl font-medium transition-colors"
             >

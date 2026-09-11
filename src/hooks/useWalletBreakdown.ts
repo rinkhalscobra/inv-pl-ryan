@@ -1,19 +1,47 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './useAuth';
 
 export interface WalletBreakdown {
   totalBalance: number;
+  liquidBalance: number;
   usedMargin: number;
   futuresUsedMargin: number;
   futuresOrdersReserved: number;
   unrealizedPnl: number;
   availableBalance: number;
+  fiatAvailableBalance: number;
+  btcAvailableBalance: number;
   robotAllocatedBalance: number;
   stakedAmount: number;
   loading: boolean;
   error: string | null;
 }
+
+interface WalletSources {
+  usdtBalance: number;
+  btcBalance: number;
+  assets: Array<{ asset_symbol: string; balance: number }>;
+  positions: Array<{ margin: number; unrealized_pnl: number }>;
+  orders: Array<{ reserved_margin: number }>;
+  robotAllocatedBalance: number;
+  stakes: Array<{ asset_symbol: string; staked_amount: number }>;
+}
+
+const emptySources: WalletSources = {
+  usdtBalance: 0,
+  btcBalance: 0,
+  assets: [],
+  positions: [],
+  orders: [],
+  robotAllocatedBalance: 0,
+  stakes: [],
+};
+
+const asNumber = (value: unknown) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
 
 export const useWalletBreakdown = (
   usdtBalanceProp?: number,
@@ -22,186 +50,149 @@ export const useWalletBreakdown = (
   getPriceFn?: (symbol: string) => number
 ) => {
   const { user } = useAuth();
-  const getPriceFnRef = useRef(getPriceFn);
-  getPriceFnRef.current = getPriceFn;
+  const [sources, setSources] = useState<WalletSources>(emptySources);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const refreshTimerRef = useRef<number | null>(null);
 
-  const hasLoadedRef = useRef(false);
-
-  const [breakdown, setBreakdown] = useState<WalletBreakdown>({
-    totalBalance: 0,
-    usedMargin: 0,
-    futuresUsedMargin: 0,
-    futuresOrdersReserved: 0,
-    unrealizedPnl: 0,
-    availableBalance: 0,
-    robotAllocatedBalance: 0,
-    stakedAmount: 0,
-    loading: true,
-    error: null
-  });
-
-  const lookupPrice = useCallback(async (symbol: string): Promise<number> => {
-    if (getPriceFnRef.current) {
-      const wsPrice = getPriceFnRef.current(symbol);
-      if (wsPrice > 0) return wsPrice;
-    }
-
-    const { data, error } = await supabase
-      .from('market_data')
-      .select('price')
-      .eq('symbol', symbol)
-      .order('timestamp', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error || !data) return 0;
-    return parseFloat(data.price?.toString() || '0') || 0;
-  }, []);
-
-  const calculateBreakdown = useCallback(async () => {
+  const fetchSources = useCallback(async () => {
     if (!user) {
-      setBreakdown(prev => ({ ...prev, loading: false }));
+      setSources(emptySources);
+      setLoading(false);
+      setError(null);
       return;
     }
 
     try {
-      if (!hasLoadedRef.current) {
-        setBreakdown(prev => ({ ...prev, loading: true, error: null }));
-      }
-
-      let usdtBalance = usdtBalanceProp;
-      let btcBalance = btcBalanceProp;
-
-      if (usdtBalance === undefined || btcBalance === undefined) {
-        const { data: balanceData, error: balanceError } = await supabase
-          .from('balances')
-          .select('usdt_balance, btc_balance')
-          .eq('user_id', user.id)
-          .single();
-
-        if (balanceError) throw balanceError;
-
-        usdtBalance = parseFloat(balanceData?.usdt_balance?.toString() || '0') || 0;
-        btcBalance = parseFloat(balanceData?.btc_balance?.toString() || '0') || 0;
-      }
-
-      let currentBtcPrice = btcPriceProp || 0;
-      if (!currentBtcPrice || currentBtcPrice <= 0) {
-        currentBtcPrice = await lookupPrice('BTCUSDT');
-      }
-
-      let totalBalance = usdtBalance + (btcBalance * currentBtcPrice);
-
-      const { data: userAssets, error: assetsError } = await supabase
-        .from('user_assets')
-        .select('asset_symbol, balance')
-        .eq('user_id', user.id);
-
-      if (!assetsError && userAssets && userAssets.length > 0) {
-        for (const asset of userAssets) {
-          if (asset.asset_symbol === 'USDT' || asset.asset_symbol === 'BTC') continue;
-
-          const balance = parseFloat(asset.balance?.toString() || '0') || 0;
-          if (balance <= 0) continue;
-
-          const price = await lookupPrice(`${asset.asset_symbol}USDT`);
-          if (price > 0) {
-            totalBalance += balance * price;
-          }
-        }
-      }
-
-      const [
-        { data: futuresPositions, error: futuresError },
-        { data: futuresOrders, error: futuresOrdersError },
-        { data: robotState, error: robotError },
-        { data: userStakes, error: stakesError }
-      ] = await Promise.all([
+      const [balancesResult, assetsResult, positionsResult, ordersResult, robotResult, stakesResult] = await Promise.all([
+        supabase.from('balances').select('usdt_balance, btc_balance').eq('user_id', user.id).single(),
+        supabase.from('user_assets').select('asset_symbol, balance').eq('user_id', user.id),
         supabase.from('futures_positions').select('margin, unrealized_pnl').eq('user_id', user.id).eq('is_open', true),
         supabase.from('futures_orders').select('reserved_margin').eq('user_id', user.id).eq('status', 'open'),
         supabase.from('robot_states').select('allocated_balance').eq('user_id', user.id).maybeSingle(),
-        supabase.from('user_stakes').select('asset_symbol, staked_amount').eq('user_id', user.id).eq('status', 'active')
+        supabase.from('user_stakes').select('asset_symbol, staked_amount').eq('user_id', user.id).eq('status', 'active'),
       ]);
 
-      if (futuresError) throw futuresError;
-      if (futuresOrdersError) throw futuresOrdersError;
-      if (robotError) throw robotError;
-      if (stakesError) throw stakesError;
+      const firstError = [balancesResult, assetsResult, positionsResult, ordersResult, robotResult, stakesResult]
+        .find(result => result.error)?.error;
+      if (firstError) throw firstError;
 
-      const futuresUsedMargin = futuresPositions?.reduce((sum, pos) => {
-        return sum + (parseFloat(pos.margin?.toString() || '0') || 0);
-      }, 0) || 0;
-
-      const futuresOrdersReserved = futuresOrders?.reduce((sum, order) => {
-        return sum + (parseFloat(order.reserved_margin?.toString() || '0') || 0);
-      }, 0) || 0;
-
-      const usedMargin = futuresUsedMargin + futuresOrdersReserved;
-
-      const futuresUnrealizedPnl = futuresPositions?.reduce((sum, pos) => {
-        return sum + (parseFloat(pos.unrealized_pnl?.toString() || '0') || 0);
-      }, 0) || 0;
-
-      const unrealizedPnl = futuresUnrealizedPnl;
-      const robotAllocatedBalance = parseFloat(robotState?.allocated_balance?.toString() || '0') || 0;
-      totalBalance += robotAllocatedBalance;
-
-      let totalStakedValue = 0;
-      if (userStakes && userStakes.length > 0) {
-        for (const stake of userStakes) {
-          const stakedAmount = parseFloat(stake.staked_amount?.toString() || '0') || 0;
-          if (stakedAmount <= 0) continue;
-
-          if (stake.asset_symbol === 'USDT') {
-            totalStakedValue += stakedAmount;
-          } else if (stake.asset_symbol === 'BTC') {
-            totalStakedValue += stakedAmount * currentBtcPrice;
-          } else {
-            const price = await lookupPrice(`${stake.asset_symbol}USDT`);
-            if (price > 0) {
-              totalStakedValue += stakedAmount * price;
-            }
-          }
-        }
-      }
-
-      const availableBalance = Math.max(0, totalBalance + unrealizedPnl - usedMargin - robotAllocatedBalance - totalStakedValue);
-
-      hasLoadedRef.current = true;
-
-      setBreakdown({
-        totalBalance,
-        usedMargin,
-        futuresUsedMargin,
-        futuresOrdersReserved,
-        unrealizedPnl,
-        availableBalance,
-        robotAllocatedBalance,
-        stakedAmount: totalStakedValue,
-        loading: false,
-        error: null
+      setSources({
+        usdtBalance: asNumber(balancesResult.data?.usdt_balance),
+        btcBalance: asNumber(balancesResult.data?.btc_balance),
+        assets: (assetsResult.data || []).map(asset => ({
+          asset_symbol: String(asset.asset_symbol).toUpperCase(),
+          balance: asNumber(asset.balance),
+        })),
+        positions: (positionsResult.data || []).map(position => ({
+          margin: asNumber(position.margin),
+          unrealized_pnl: asNumber(position.unrealized_pnl),
+        })),
+        orders: (ordersResult.data || []).map(order => ({ reserved_margin: asNumber(order.reserved_margin) })),
+        robotAllocatedBalance: asNumber(robotResult.data?.allocated_balance),
+        stakes: (stakesResult.data || []).map(stake => ({
+          asset_symbol: String(stake.asset_symbol).toUpperCase(),
+          staked_amount: asNumber(stake.staked_amount),
+        })),
       });
-
-    } catch (error: any) {
-      console.error('Error calculating wallet breakdown:', error);
-      setBreakdown(prev => ({
-        ...prev,
-        loading: false,
-        error: error.message || 'Failed to calculate wallet breakdown'
-      }));
+      setError(null);
+    } catch (fetchError) {
+      console.error('Error loading wallet breakdown:', fetchError);
+      setError(fetchError instanceof Error ? fetchError.message : 'Failed to load wallet breakdown');
+    } finally {
+      setLoading(false);
     }
-  }, [user, usdtBalanceProp, btcBalanceProp, btcPriceProp, lookupPrice]);
+  }, [user]);
 
   useEffect(() => {
-    calculateBreakdown();
-  }, [calculateBreakdown]);
+    setLoading(true);
+    void fetchSources();
+  }, [fetchSources]);
 
-  const refreshBreakdown = useCallback(() => {
-    calculateBreakdown();
-  }, [calculateBreakdown]);
+  useEffect(() => {
+    if (!user) return;
+
+    const queueRefresh = () => {
+      if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = window.setTimeout(() => void fetchSources(), 120);
+    };
+    const channel = supabase
+      .channel(`wallet-breakdown-${user.id}-${crypto.randomUUID()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'balances', filter: `user_id=eq.${user.id}` }, queueRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_assets', filter: `user_id=eq.${user.id}` }, queueRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'futures_positions', filter: `user_id=eq.${user.id}` }, queueRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'futures_orders', filter: `user_id=eq.${user.id}` }, queueRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'robot_states', filter: `user_id=eq.${user.id}` }, queueRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_stakes', filter: `user_id=eq.${user.id}` }, queueRefresh)
+      .subscribe();
+
+    return () => {
+      if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current);
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchSources, user]);
+
+  const breakdown = useMemo<WalletBreakdown>(() => {
+    const usdtBalance = usdtBalanceProp ?? sources.usdtBalance;
+    const btcBalance = btcBalanceProp ?? sources.btcBalance;
+    const getPrice = (symbol: string) => {
+      const price = getPriceFn?.(symbol) || 0;
+      return Number.isFinite(price) && price > 0 ? price : 0;
+    };
+    const btcPrice = btcPriceProp && btcPriceProp > 0 ? btcPriceProp : getPrice('BTCUSDT');
+    const missingPrices = new Set<string>();
+    if (btcBalance > 0 && btcPrice <= 0) missingPrices.add('BTC');
+
+    let liquidBalance = usdtBalance + btcBalance * btcPrice;
+    for (const asset of sources.assets) {
+      if (asset.balance <= 0 || asset.asset_symbol === 'USDT' || asset.asset_symbol === 'BTC') continue;
+      const price = getPrice(`${asset.asset_symbol}USDT`);
+      if (price <= 0) missingPrices.add(asset.asset_symbol);
+      liquidBalance += asset.balance * price;
+    }
+
+    const futuresUsedMargin = sources.positions.reduce((sum, position) => sum + position.margin, 0);
+    const futuresOrdersReserved = sources.orders.reduce((sum, order) => sum + order.reserved_margin, 0);
+    const usedMargin = futuresUsedMargin + futuresOrdersReserved;
+    const unrealizedPnl = sources.positions.reduce((sum, position) => sum + position.unrealized_pnl, 0);
+
+    let stakedAmount = 0;
+    for (const stake of sources.stakes) {
+      if (stake.staked_amount <= 0) continue;
+      if (stake.asset_symbol === 'USDT') stakedAmount += stake.staked_amount;
+      else if (stake.asset_symbol === 'BTC') stakedAmount += stake.staked_amount * btcPrice;
+      else {
+        const price = getPrice(`${stake.asset_symbol}USDT`);
+        if (price <= 0) missingPrices.add(stake.asset_symbol);
+        stakedAmount += stake.staked_amount * price;
+      }
+    }
+
+    const totalBalance = liquidBalance + sources.robotAllocatedBalance + stakedAmount;
+    const availableBalance = Math.max(0, liquidBalance + unrealizedPnl - usedMargin);
+    const fiatAvailableBalance = Math.max(0, usdtBalance - usedMargin);
+
+    return {
+      totalBalance,
+      liquidBalance,
+      usedMargin,
+      futuresUsedMargin,
+      futuresOrdersReserved,
+      unrealizedPnl,
+      availableBalance,
+      fiatAvailableBalance,
+      btcAvailableBalance: Math.max(0, btcBalance),
+      robotAllocatedBalance: sources.robotAllocatedBalance,
+      stakedAmount,
+      loading,
+      error: error || (missingPrices.size > 0
+        ? `Live price unavailable for: ${Array.from(missingPrices).join(', ')}`
+        : null),
+    };
+  }, [btcBalanceProp, btcPriceProp, error, getPriceFn, loading, sources, usdtBalanceProp]);
 
   return {
     ...breakdown,
-    refreshBreakdown
+    refreshBreakdown: fetchSources,
   };
 };

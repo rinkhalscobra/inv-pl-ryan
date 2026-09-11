@@ -104,13 +104,14 @@ export interface DatabaseRobotState {
 export interface DatabaseTransaction {
   id: string;
   user_id: string;
-  type: 'deposit' | 'withdrawal' | 'trade' | 'robot_profit' | 'binary_trade' | 'stake' | 'staking_profit' | 'staking_return' | 'challenge_fee' | 'challenge_reward';
+  type: string;
   amount: number;
   currency?: string;
   description: string;
   status: 'completed' | 'pending' | 'failed';
   created_at: string;
   updated_at: string;
+  withdrawal_details?: Record<string, unknown>;
 }
 
 export interface DatabaseUserStake {
@@ -433,6 +434,24 @@ export const useDatabase = () => {
     fetchUserProfile,
     fetchReferredUsers
   ]);
+
+  // Keep wallet-facing state synchronized with Supabase changes from RPCs, CRM,
+  // provider callbacks, and other open sessions.
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`account-live-${user.id}-${crypto.randomUUID()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'balances', filter: `user_id=eq.${user.id}` }, () => void fetchBalances())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, () => void fetchTransactions())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_stakes', filter: `user_id=eq.${user.id}` }, () => void fetchUserStakes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'robot_states', filter: `user_id=eq.${user.id}` }, () => void fetchRobotState())
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchBalances, fetchRobotState, fetchTransactions, fetchUserStakes, user]);
 
   // Update balances
   const updateBalances = useCallback(async (updates: { usdt_balance?: number, btc_balance?: number }) => {

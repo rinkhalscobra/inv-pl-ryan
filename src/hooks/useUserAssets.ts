@@ -135,6 +135,23 @@ export const useUserAssets = () => {
     fetchAssets();
   }, [fetchAssets]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`user-assets-live-${user.id}-${crypto.randomUUID()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_assets', filter: `user_id=eq.${user.id}` },
+        () => void fetchAssets()
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchAssets, user]);
+
   return {
     assets,
     loading,

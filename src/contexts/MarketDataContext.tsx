@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { wsSymbolToAppSymbol } from '../utils/symbolMapping';
 import {
   CFD_INSTRUMENTS,
@@ -55,6 +55,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
   const [lastSnapshotTime, setLastSnapshotTime] = useState<number>(Date.now());
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [error, setError] = useState<string | null>(null);
+  const refreshInFlightRef = useRef(false);
   const isConnected = connectionState === 'connected';
 
   const loadDatabaseFallback = useCallback(async () => {
@@ -120,13 +121,19 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
   }, []);
 
   const refreshFreeMarketCache = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     const { data: sessionResult } = await supabase.auth.getSession();
-    if (!sessionResult.session) return;
-    const { error: refreshError } = await supabase.functions.invoke('cfd-market-data', {
-      body: { instruments: FREE_PRICE_INSTRUMENTS },
-      headers: { Authorization: `Bearer ${sessionResult.session.access_token}` }
-    });
-    if (!refreshError) await loadDatabaseFallback();
+    try {
+      if (!sessionResult.session) return;
+      const { error: refreshError } = await supabase.functions.invoke('cfd-market-data', {
+        body: { instruments: FREE_PRICE_INSTRUMENTS },
+        headers: { Authorization: `Bearer ${sessionResult.session.access_token}` }
+      });
+      if (!refreshError) await loadDatabaseFallback();
+    } finally {
+      refreshInFlightRef.current = false;
+    }
   }, [loadDatabaseFallback]);
 
   const getMarketDataBySymbol = useCallback((symbol: string): MarketDataItem | null => {
@@ -152,13 +159,58 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
   useEffect(() => {
     void loadDatabaseFallback();
     void refreshFreeMarketCache();
-    const databaseInterval = window.setInterval(() => void loadDatabaseFallback(), 5 * 60 * 1000);
-    const apiInterval = window.setInterval(() => void refreshFreeMarketCache(), 15 * 60 * 1000);
+    const databaseInterval = window.setInterval(() => void loadDatabaseFallback(), 30 * 1000);
+    const apiInterval = window.setInterval(() => void refreshFreeMarketCache(), 15 * 1000);
     return () => {
       window.clearInterval(databaseInterval);
       window.clearInterval(apiInterval);
     };
   }, [loadDatabaseFallback, refreshFreeMarketCache]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`market-data-live-${crypto.randomUUID()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'market_data' },
+        payload => {
+          const row = payload.new as Record<string, string | number | null>;
+          if (!row?.symbol || !FREE_PRICE_INSTRUMENTS.some(item => item.symbol === row.symbol)) return;
+
+          const rawSymbol = String(row.symbol);
+          const appSymbol = resolveCfdAppSymbol(rawSymbol) || wsSymbolToAppSymbol(rawSymbol);
+          const item: MarketDataItem = {
+            symbol: appSymbol,
+            price: Number(row.price) || 0,
+            change_24h: Number(row.change_24h) || 0,
+            high_price_24h: Number(row.high_price_24h) || 0,
+            low_price_24h: Number(row.low_price_24h) || 0,
+            volume_24h: Number(row.volume_24h) || 0,
+            bid_price: row.bid_price == null ? undefined : Number(row.bid_price),
+            ask_price: row.ask_price == null ? undefined : Number(row.ask_price),
+            timestamp: String(row.timestamp || new Date().toISOString()),
+            updated_at: String(row.updated_at || new Date().toISOString())
+          };
+          if (item.price <= 0) return;
+
+          const merge = (previous: MarketDataItem[]) => {
+            const next = new Map(previous.map(entry => [entry.symbol, entry]));
+            next.set(item.symbol, item);
+            return Array.from(next.values());
+          };
+          setMarketData(merge);
+          setSnapshotData(merge);
+          setLastSnapshotTime(Date.now());
+          setConnectionState('connected');
+          setError(null);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => void loadDatabaseFallback();

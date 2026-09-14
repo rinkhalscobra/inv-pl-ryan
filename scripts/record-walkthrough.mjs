@@ -71,7 +71,7 @@ await page.getByPlaceholder(/enter your password/i).fill(password);
 await focus(page.getByRole('button', { name: /sign in/i }));
 await pause(2_000);
 await page.getByRole('button', { name: /sign in/i }).click();
-await page.waitForURL((url) => url.pathname === '/', { timeout: 60000 });
+await page.waitForURL((url) => url.pathname === '/dashboard', { timeout: 60000 });
 await page.waitForLoadState('domcontentloaded');
 await pause(6_000);
 

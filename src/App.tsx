@@ -19,6 +19,7 @@ import OrderBook from './components/OrderBook';
 import PairDetailsPanel from './components/PairDetailsPanel';
 import StakingPage from './pages/StakingPage';
 import HomePage from './pages/HomePage';
+import LandingPage from './pages/LandingPage';
 import SignInPage from './pages/SignInPage';
 import SignUpPage from './pages/SignUpPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -589,8 +590,13 @@ const handleUpdatePassword = async (newPassword: string) => {
     <Router>
       <div className="min-h-screen app-page-bg text-white">
           <Routes>
-            {/* Handle password recovery at root path */}
+            {/* Public landing page and root-level password recovery links */}
             <Route path="/" element={
+              isRecoveryLink ? <ResetPasswordPage /> : <LandingPage />
+            } />
+
+            {/* Authenticated trading workspace */}
+            <Route path="/dashboard" element={
               isRecoveryLink ? (
                 <ResetPasswordPage />
               ) : user ? (
@@ -865,7 +871,7 @@ const handleUpdatePassword = async (newPassword: string) => {
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
               ) : user ? (
-                isAdmin ? <AdminCRMPage isAdmin /> : <Navigate to="/" replace />
+                isAdmin ? <AdminCRMPage isAdmin /> : <Navigate to="/dashboard" replace />
               ) : (
                 <Navigate to="/auth" replace />
               )
@@ -873,22 +879,22 @@ const handleUpdatePassword = async (newPassword: string) => {
             
             {/* Auth routes */}
             <Route path="/auth" element={
-              user ? <Navigate to="/" replace /> : <SignInPage />
+              user ? <Navigate to="/dashboard" replace /> : <SignInPage />
             } />
             <Route path="/auth/register" element={
-              user ? <Navigate to="/" replace /> : <SignUpPage />
+              user ? <Navigate to="/dashboard" replace /> : <SignUpPage />
             } />
             <Route path="/signin" element={
-              user ? <Navigate to="/" replace /> : <SignInPage />
+              user ? <Navigate to="/dashboard" replace /> : <SignInPage />
             } />
             <Route path="/signup" element={
-              user ? <Navigate to="/" replace /> : <SignUpPage />
+              user ? <Navigate to="/dashboard" replace /> : <SignUpPage />
             } />
             <Route path="/sign-up" element={
-              user ? <Navigate to="/" replace /> : <SignUpPage />
+              user ? <Navigate to="/dashboard" replace /> : <SignUpPage />
             } />
             <Route path="/forgot-password" element={
-              user ? <Navigate to="/" replace /> : <ForgotPasswordPage />
+              user ? <Navigate to="/dashboard" replace /> : <ForgotPasswordPage />
             } />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />

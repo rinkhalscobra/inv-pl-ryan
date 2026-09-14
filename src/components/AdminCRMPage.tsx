@@ -629,7 +629,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <button onClick={() => navigate('/')} className="rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-slate-400 transition hover:border-purple-500/50 hover:text-white" aria-label="Back to trading platform">
+              <button onClick={() => navigate('/dashboard')} className="rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-slate-400 transition hover:border-purple-500/50 hover:text-white" aria-label="Back to trading platform">
                 <ArrowLeft size={22} />
               </button>
               <div className="rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 p-2.5 shadow-lg shadow-purple-500/20">

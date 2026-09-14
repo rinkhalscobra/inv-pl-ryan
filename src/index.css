@@ -2,6 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scroll-behavior: smooth;
+}
+
+.landing-page {
+  font-feature-settings: "ss01" on, "cv02" on, "cv03" on;
+}
+
+.landing-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 72px 72px;
+  -webkit-mask-image: linear-gradient(to bottom, black, transparent 82%);
+  mask-image: linear-gradient(to bottom, black, transparent 82%);
+}
+
+.landing-glow {
+  position: absolute;
+  z-index: -5;
+  border-radius: 9999px;
+  filter: blur(90px);
+  pointer-events: none;
+  animation: landing-float 9s ease-in-out infinite;
+}
+
+.landing-glow-one {
+  right: 5%;
+  top: 19%;
+  width: 24rem;
+  height: 24rem;
+  background: rgba(124, 58, 237, 0.14);
+}
+
+.landing-glow-two {
+  left: 12%;
+  top: 54%;
+  width: 18rem;
+  height: 18rem;
+  background: rgba(14, 165, 233, 0.08);
+  animation-delay: -4s;
+}
+
+.landing-dashboard {
+  animation: landing-rise 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes landing-rise {
+  from { opacity: 0; transform: translateY(24px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes landing-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -20px, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .landing-glow,
+  .landing-dashboard { animation: none; }
+}
+
 @layer base {
   :root {
     --app-bg: #070b16;

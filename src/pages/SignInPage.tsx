@@ -25,7 +25,7 @@ const SignInPage: React.FC = () => {
       const { error: signInError } = await signIn(email, password);
       if (signInError) throw signInError;
       sessionStorage.removeItem('marketLoadingShown');
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (signInError: any) {
       setError(signInError.message || 'Unable to sign in');
     } finally {

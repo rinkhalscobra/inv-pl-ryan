@@ -56,7 +56,7 @@ const AuthCallbackPage: React.FC = () => {
 
         // Clear the URL parameters and redirect to home
         console.log('AuthCallback: Redirecting to home...');
-        navigate('/', { replace: true });
+        navigate('/dashboard', { replace: true });
 
       } catch (err: any) {
         console.error('AuthCallback: Error during auth callback:', err);

@@ -67,7 +67,7 @@ const SignUpPage: React.FC = () => {
       }
 
       sessionStorage.removeItem('marketLoadingShown');
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Failed to create account');
     } finally {

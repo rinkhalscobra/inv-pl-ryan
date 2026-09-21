@@ -187,6 +187,7 @@ export const useDatabase = () => {
   const [referralCount, setReferralCount] = useState(0);
   const [referredUsers, setReferredUsers] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [crmRole, setCrmRole] = useState<'client' | 'agent' | 'retention' | 'admin'>('client');
 
   // Fetch user balances
   const fetchBalances = useCallback(async () => {
@@ -348,11 +349,13 @@ export const useDatabase = () => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('kyc_status, referral_code, referral_count, is_admin')
-        .eq('id', user.id)
-        .single();
+      const [{ data, error }, { data: roleData, error: roleError }] = await Promise.all([
+        supabase.from('users')
+          .select('kyc_status, referral_code, referral_count, is_admin')
+          .eq('id', user.id)
+          .single(),
+        supabase.rpc('crm_my_role')
+      ]);
 
       if (error) throw error;
 
@@ -361,6 +364,7 @@ export const useDatabase = () => {
         setReferralCode(data.referral_code);
         setReferralCount(data.referral_count || 0);
         setIsAdmin(data.is_admin || false);
+        setCrmRole(data.is_admin ? 'admin' : !roleError && (roleData === 'agent' || roleData === 'retention') ? roleData : 'client');
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -397,6 +401,7 @@ export const useDatabase = () => {
     if (user) {
       setLoading(true);
       setIsAdmin(false);
+      setCrmRole('client');
       const initializeData = async () => {
         try {
           // Fetch critical data first and await it
@@ -421,6 +426,7 @@ export const useDatabase = () => {
       initializeData();
     } else {
       setIsAdmin(false);
+      setCrmRole('client');
       setLoading(false);
     }
   }, [
@@ -446,6 +452,7 @@ export const useDatabase = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, () => void fetchTransactions())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_stakes', filter: `user_id=eq.${user.id}` }, () => void fetchUserStakes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'robot_states', filter: `user_id=eq.${user.id}` }, () => void fetchRobotState())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, () => void fetchUserProfile())
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           void Promise.all([fetchBalances(), fetchTransactions(), fetchUserStakes(), fetchRobotState()]);
@@ -454,19 +461,23 @@ export const useDatabase = () => {
 
     const catchUp = () => {
       if (document.hidden) return;
-      void Promise.all([fetchBalances(), fetchTransactions(), fetchUserStakes(), fetchRobotState()]);
+      void Promise.all([fetchBalances(), fetchTransactions(), fetchUserStakes(), fetchRobotState(), fetchUserProfile()]);
     };
     window.addEventListener('focus', catchUp);
     window.addEventListener('online', catchUp);
     document.addEventListener('visibilitychange', catchUp);
+    const roleRefresh = window.setInterval(() => {
+      if (!document.hidden) void fetchUserProfile();
+    }, 30000);
 
     return () => {
       window.removeEventListener('focus', catchUp);
       window.removeEventListener('online', catchUp);
       document.removeEventListener('visibilitychange', catchUp);
+      window.clearInterval(roleRefresh);
       void supabase.removeChannel(channel);
     };
-  }, [fetchBalances, fetchRobotState, fetchTransactions, fetchUserStakes, user]);
+  }, [fetchBalances, fetchRobotState, fetchTransactions, fetchUserStakes, fetchUserProfile, user]);
 
   // Update balances
   const updateBalances = useCallback(async (updates: { usdt_balance?: number, btc_balance?: number }) => {
@@ -768,6 +779,7 @@ export const useDatabase = () => {
     referralCount,
     referredUsers,
     isAdmin,
+    crmRole,
     fetchRobotState,
     fetchTransactions,
     fetchUserStakes,

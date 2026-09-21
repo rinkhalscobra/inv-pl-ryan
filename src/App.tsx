@@ -46,6 +46,8 @@ import SwapCryptoPage from './components/SwapCryptoPage';
 import SpinTheWheel from './components/SpinTheWheel';
 import PaymentSandbox from './components/PaymentSandbox';
 import AdminCRMPage from './components/AdminCRMPage';
+import CRMHierarchyPage from './components/CRMHierarchyPage';
+import CRMStaffPage from './components/CRMStaffPage';
 
 export type TradingMode = 'home' | 'swap' | 'futures' | 'cfd' | 'robot' | 'wallet' | 'profile' | 'staking' | 'wheel' | 'payment_sandbox';
 
@@ -105,7 +107,8 @@ function AppContent() {
     fetchUserStakes,
     fetchRobotState,
     calculateCurrentEarnings,
-    isAdmin
+    isAdmin,
+    crmRole
   } = useDatabase();
   const { assets, fetchAssets } = useUserAssets();
   const { 
@@ -644,6 +647,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                     signOut={signOut}
                     marketDataList={marketData}
                     isAdmin={isAdmin}
+                    crmRole={crmRole}
                   />
                   
                   <main>
@@ -868,6 +872,23 @@ const handleUpdatePassword = async (newPassword: string) => {
               ) : (
                 <Navigate to="/auth" replace />
               )
+            } />
+
+            <Route path="/admin/hierarchy" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
+              ) : user ? (
+                isAdmin ? <CRMHierarchyPage /> : <Navigate to="/dashboard" replace />
+              ) : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/crm" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>
+              ) : user ? (
+                isAdmin ? <Navigate to="/admin" replace /> :
+                  crmRole === 'agent' || crmRole === 'retention' ? <CRMStaffPage role={crmRole} /> : <Navigate to="/dashboard" replace />
+              ) : <Navigate to="/auth" replace />
             } />
             
             {/* Auth routes */}

@@ -46,6 +46,7 @@ interface HeaderProps {
   signOut: () => void;
   marketDataList: MarketData[];
   isAdmin: boolean;
+  crmRole: 'client' | 'agent' | 'retention' | 'admin';
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -58,7 +59,8 @@ const Header: React.FC<HeaderProps> = ({
   totalPortfolioValue,
   user,
   signOut,
-  isAdmin
+  isAdmin,
+  crmRole
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -423,7 +425,7 @@ const Header: React.FC<HeaderProps> = ({
                       <div className="truncate text-sm font-semibold text-white" title={user.email || undefined}>{user.email}</div>
                       <div className="mt-0.5 text-xs text-slate-400">Trading account</div>
                     </div>
-                    {isAdmin && <span className="shrink-0 rounded-md border border-violet-400/20 bg-violet-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-200">Admin</span>}
+                    {crmRole !== 'client' && <span className="shrink-0 rounded-md border border-violet-400/20 bg-violet-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-200">{crmRole}</span>}
                   </div>
 
                   <div className="mt-1 rounded-xl border border-white/[0.08] bg-[#101720] px-3.5 py-3">
@@ -481,6 +483,21 @@ const Header: React.FC<HeaderProps> = ({
                       >
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-violet-300"><ShieldCheck size={17} /></span>
                         <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Administration CRM</span><span className="block text-xs text-slate-500">Customer management</span></span>
+                        <ChevronRight size={15} className="shrink-0 text-slate-600 transition-colors group-hover:text-slate-300" />
+                      </button>
+                    )}
+                    {(crmRole === 'agent' || crmRole === 'retention') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate('/crm');
+                          setShowUserMenu(false);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`group flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left text-slate-300 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-violet-300"><ShieldCheck size={17} /></span>
+                        <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">CRM workspace</span><span className="block text-xs text-slate-500">Assigned clients</span></span>
                         <ChevronRight size={15} className="shrink-0 text-slate-600 transition-colors group-hover:text-slate-300" />
                       </button>
                     )}

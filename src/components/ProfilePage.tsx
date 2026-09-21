@@ -80,6 +80,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [showKycUpload, setShowKycUpload] = useState(false);
   const [kycStatus, setKycStatus] = useState<'not_verified' | 'pending' | 'verified'>(propKycStatus || 'not_verified');
   const [taxIdStatus, setTaxIdStatus] = useState<TaxIdStatus | null>(null);
+  const [taxIdStatusLoading, setTaxIdStatusLoading] = useState(true);
+  const [taxIdStatusError, setTaxIdStatusError] = useState(false);
 
   // Profile information state
   const [firstName, setFirstName] = useState('');
@@ -134,8 +136,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   useEffect(() => {
     let active = true;
     const fetchTaxIdStatus = async () => {
+      setTaxIdStatusLoading(true);
+      setTaxIdStatusError(false);
       const { data, error } = await supabase.rpc('get_my_kyc_tax_id_status');
-      if (active && !error) setTaxIdStatus((data as TaxIdStatus | null) || null);
+      if (active) {
+        if (error) setTaxIdStatusError(true);
+        else setTaxIdStatus((data as TaxIdStatus | null) || null);
+        setTaxIdStatusLoading(false);
+      }
     };
     void fetchTaxIdStatus();
     return () => { active = false; };
@@ -212,10 +220,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
   const handleKycStatusChange = (status: 'not_verified' | 'pending' | 'verified') => {
     setKycStatus(status);
+    setTaxIdStatus(null);
+    setTaxIdStatusLoading(true);
+    setTaxIdStatusError(false);
     propUpdateKycStatus(status);
   };
 
   const showAccountRail = activeTab === 'profile' || activeTab === 'security';
+  const verificationState = kycStatus === 'verified'
+    ? 'verified'
+    : taxIdStatus?.status === 'rejected'
+      ? 'action_required'
+      : kycStatus === 'pending' && !taxIdStatus && !taxIdStatusLoading && !taxIdStatusError
+        ? 'tax_id_required'
+        : kycStatus === 'pending' || taxIdStatus?.status === 'pending'
+          ? 'under_review'
+          : 'not_started';
+  const canSubmitVerification = verificationState === 'not_started' || verificationState === 'action_required' || verificationState === 'tax_id_required';
 
   return (
     <div className="w-full px-4 py-5 sm:px-6 lg:px-8">
@@ -557,74 +578,48 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
                 {/* KYC Section */}
                 <div id="kyc-section" className="app-surface-muted rounded-xl p-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">{t('profile.kycVerification')}</h3>
-                  <p className="text-slate-400 mb-4">
-                    {t('profile.kycDescription')}
-                  </p>
+                  <h3 className="text-lg font-semibold text-white">{t('profile.kycVerification')}</h3>
                   
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      kycStatus === 'verified' ? 'bg-green-500/20' : 
-                      kycStatus === 'pending' ? 'bg-amber-500/20' : 
-                      'bg-amber-500/20'
-                    }`}>
-                      {kycStatus === 'verified' ? (
-                        <CheckCircle size={20} className="text-green-400" />
-                      ) : kycStatus === 'pending' ? (
-                        <Clock size={20} className="text-amber-400" />
-                      ) : (
-                        <AlertTriangle size={20} className="text-amber-400" />
-                      )}
+                  <div className="mt-4 flex items-start gap-3 rounded-xl border border-white/[0.08] bg-slate-950/35 p-4">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${verificationState === 'verified' ? 'bg-emerald-500/15 text-emerald-400' : verificationState === 'under_review' ? 'bg-amber-500/15 text-amber-400' : 'bg-violet-500/15 text-violet-300'}`}>
+                      {verificationState === 'verified' ? <CheckCircle size={19} /> : verificationState === 'under_review' ? <Clock size={19} /> : <Shield size={19} />}
                     </div>
-                    <div>
-                      <div className="text-white font-medium">
-                        {kycStatus === 'verified' ? t('profile.verificationComplete') : 
-                         kycStatus === 'pending' ? t('profile.verificationPending') : 
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white">
+                        {verificationState === 'verified' ? t('profile.verificationComplete') :
+                         verificationState === 'under_review' ? t('profile.verificationPending') :
+                         verificationState === 'tax_id_required' ? t('profile.taxIdRequired') :
+                         verificationState === 'action_required' ? t('profile.actionRequired') :
                          t('profile.verificationRequired')}
                       </div>
-                      <div className="text-sm text-slate-400">
-                        {kycStatus === 'verified' ? t('profile.accountVerified') : 
-                         kycStatus === 'pending' ? t('profile.documentsReviewed') : 
-                         t('profile.accountNotVerified')}
-                      </div>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-400">
+                        {verificationState === 'verified' ? t('profile.accountVerified') :
+                         verificationState === 'under_review' ? t('profile.documentsReviewed') :
+                         verificationState === 'tax_id_required' ? t('profile.addTaxIdDescription') :
+                         verificationState === 'action_required' ? t('profile.resubmitDescription') :
+                         t('profile.kycDescription')}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/70 bg-slate-950/50 px-4 py-3">
-                    <div>
-                      <div className="text-sm font-medium text-white">Tax ID</div>
-                      <div className="mt-0.5 text-xs text-slate-400">{taxIdStatus ? `On file · ending ${taxIdStatus.last_four}` : 'No Tax ID on file'}</div>
-                    </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${taxIdStatus?.status === 'verified' ? 'bg-emerald-500/15 text-emerald-300' : taxIdStatus?.status === 'pending' ? 'bg-amber-500/15 text-amber-300' : taxIdStatus?.status === 'rejected' ? 'bg-red-500/15 text-red-300' : 'bg-slate-700/70 text-slate-300'}`}>
-                      {taxIdStatus?.status === 'verified' ? 'Approved' : taxIdStatus?.status === 'pending' ? 'Pending admin review' : taxIdStatus?.status === 'rejected' ? 'Resubmission required' : 'Not submitted'}
-                    </span>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] px-1 pb-4 text-sm">
+                    <span className="text-slate-400">Tax ID</span>
+                    <span className="font-mono text-slate-200">{taxIdStatus ? `•••• ${taxIdStatus.last_four}` : taxIdStatusError ? t('profile.unavailable') : taxIdStatusLoading ? t('profile.loading') : t('profile.notOnFile')}</span>
                   </div>
                   {taxIdStatus?.status === 'rejected' && taxIdStatus.review_reason && (
-                    <div className="mb-5 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                    <div className="mt-4 rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
                       <span className="font-semibold">Review note:</span> {taxIdStatus.review_reason}
                     </div>
                   )}
                   
-                  {(kycStatus === 'not_verified' || (kycStatus === 'pending' && !taxIdStatus)) && (
+                  {canSubmitVerification && (
                     <button 
                       onClick={handleStartVerification}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
+                      className="mt-5 flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-500"
                     >
-                      {taxIdStatus?.status === 'rejected' ? 'Resubmit verification' : kycStatus === 'pending' ? 'Complete Tax ID verification' : t('profile.startVerification')}
-                      <ChevronRight size={18} />
+                      {verificationState === 'action_required' ? t('profile.resubmitInformation') : verificationState === 'tax_id_required' ? t('profile.addTaxId') : t('profile.startVerification')}
+                      <ChevronRight size={16} />
                     </button>
-                  )}
-                  
-                  {kycStatus === 'pending' && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-amber-400 text-sm">
-                      {taxIdStatus ? 'Your identity documents and Tax ID are awaiting administrator review.' : 'Your previous KYC submission needs a Tax ID. Complete the verification form to send it for administrator review.'}
-                    </div>
-                  )}
-                  
-                  {kycStatus === 'verified' && (
-                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-green-400 text-sm">
-                      {t('profile.verificationComplete')}
-                    </div>
                   )}
                 </div>
                 
@@ -782,19 +777,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">{t('profile.kycStatus')}</span>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  kycStatus === 'verified' ? 'bg-green-500/20 text-green-400' :
-                  kycStatus === 'pending' ? 'bg-amber-500/20 text-amber-400' :
-                  'bg-amber-500/20 text-amber-400'
+                  verificationState === 'verified' ? 'bg-emerald-500/15 text-emerald-400' :
+                  verificationState === 'under_review' ? 'bg-amber-500/15 text-amber-300' :
+                  'bg-violet-500/15 text-violet-300'
                 }`}>
-                  {kycStatus === 'verified' ? 'Verified' :
-                   kycStatus === 'pending' ? 'Pending' :
+                  {verificationState === 'verified' ? t('profile.verified') :
+                   verificationState === 'under_review' ? t('profile.verificationPending') :
+                   verificationState === 'tax_id_required' ? t('profile.taxIdRequired') :
+                   verificationState === 'action_required' ? t('profile.actionRequired') :
                    t('profile.notVerified')}
                 </span>
               </div>
               
             </div>
             
-            {kycStatus !== 'verified' && (
+            {verificationState !== 'verified' && verificationState !== 'under_review' && (
               <div className="mt-5 border-t border-white/[0.08] pt-4">
                 <button
                   onClick={() => {
@@ -803,7 +800,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   }}
                   className="flex w-full items-center justify-between rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-2.5 text-sm font-semibold text-violet-100 transition-colors hover:bg-violet-500/20"
                 >
-                  {kycStatus === 'pending' ? 'View verification status' : 'Complete verification'}
+                  {verificationState === 'action_required' ? t('profile.reviewVerification') : t('profile.completeVerification')}
                   <ChevronRight size={16} />
                 </button>
               </div>

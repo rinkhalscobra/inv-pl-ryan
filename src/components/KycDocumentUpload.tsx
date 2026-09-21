@@ -464,7 +464,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
             <div>
               <h3 className="text-xl font-semibold text-white">Tax identification</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                Enter the Tax ID issued for your tax jurisdiction. An administrator will review it together with your identity documents.
+                Enter the Tax ID issued in your tax jurisdiction. It will be included with your identity submission.
               </p>
             </div>
             <label htmlFor="kyc-tax-id" className="block text-sm font-medium text-slate-200">Tax ID <span className="text-red-400">*</span></label>
@@ -480,9 +480,6 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
               className="w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-500 focus:border-violet-400"
             />
             <p className="text-xs text-slate-500">4 to 64 characters. Your Tax ID will only be shown to authorized reviewers.</p>
-            <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] p-4 text-sm text-amber-100">
-              Your Tax ID will be marked pending after submission. Only an administrator can approve your KYC application.
-            </div>
           </div>
         );
 
@@ -491,7 +488,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
           <div className="space-y-6">
             <h3 className="text-xl font-semibold text-white mb-4">Review your application</h3>
             <p className="text-slate-300 mb-6">
-              Confirm your documents and Tax ID before sending them for administrator review.
+              Check the details below before submitting.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -521,16 +518,14 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
             <div className="rounded-xl border border-white/[0.08] bg-slate-900/70 p-4">
               <div className="text-xs uppercase tracking-wide text-slate-400">Tax ID</div>
               <div className="mt-1 break-all font-mono text-sm text-white">{taxId.trim()}</div>
-              <div className="mt-2 text-xs text-amber-300">Status after submission: Pending review</div>
             </div>
 
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
-              <Info size={18} className="text-amber-400 mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-white/[0.03] p-4">
+              <Info size={18} className="mt-0.5 flex-shrink-0 text-slate-400" />
               <div>
-                <p className="text-amber-400 text-sm font-medium">Important Information</p>
+                <p className="text-sm font-medium text-slate-200">Before you submit</p>
                 <p className="text-slate-300 text-xs mt-1">
-                  By submitting these documents, you confirm that all information provided is accurate and authentic. 
-                  An administrator will review your documents and Tax ID. You can check the decision in your profile.
+                  By submitting, you confirm the information is accurate and authentic. You can follow your verification status in your profile.
                 </p>
               </div>
             </div>
@@ -580,7 +575,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
             </div>
             <h3 className="text-xl font-semibold text-white mb-3">Application submitted</h3>
             <p className="text-slate-300 mb-6">
-              Your identity documents and Tax ID are pending administrator review. Your account status will update after a decision is made.
+              We’ve received your identity details. You can track the review status in your profile.
             </p>
           </div>
         ) : (

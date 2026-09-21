@@ -36,7 +36,7 @@ interface MarketDataContextType {
   getPriceBySymbol: (symbol: string) => number;
   getSnapshotPriceBySymbol: (symbol: string) => number;
   refreshSnapshot: () => void;
-  refreshQuotes: (symbol?: string) => Promise<void>;
+  refreshQuotes: (symbol?: string, force?: boolean) => Promise<void>;
   lastSnapshotTime: number;
 }
 
@@ -137,7 +137,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
     }
   }, []);
 
-  const refreshFreeMarketCache = useCallback(async (symbol?: string) => {
+  const refreshFreeMarketCache = useCallback(async (symbol?: string, force = false) => {
     const instrument = symbol ? getCfdInstrument(symbol) : undefined;
     if (symbol && (!instrument || !FREE_PRICE_SYMBOLS.has(instrument.symbol))) return;
     const instruments = instrument
@@ -149,7 +149,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
     const interval = instrument ? SELECTED_QUOTE_INTERVAL_MS : PRICE_REFRESH_INTERVAL_MS;
     if ((instrument ? selectedRefreshInFlightRef.current.has(instrument.symbol) : catalogRefreshInFlightRef.current)
       || !navigator.onLine || document.hidden
-      || Date.now() - lastRequest < interval) return;
+      || Date.now() - lastRequest < (force && instrument ? 30_000 : interval)) return;
     if (instrument) selectedRefreshInFlightRef.current.add(instrument.symbol);
     else catalogRefreshInFlightRef.current = true;
     try {
@@ -159,7 +159,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
       if (instrument) lastSelectedRefreshRef.current.set(instrument.symbol, requestedAt);
       else lastRefreshRequestRef.current = requestedAt;
       const { data: refreshResult, error: refreshError } = await supabase.functions.invoke('cfd-market-data', {
-        body: { instruments },
+        body: { instruments, force: force && !!instrument },
         headers: { Authorization: `Bearer ${sessionResult.session.access_token}` }
       });
       if (refreshError) throw refreshError;

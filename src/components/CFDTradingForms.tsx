@@ -61,7 +61,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
-  const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol, error: quoteRefreshError } = useMarketData();
+  const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol, refreshQuotes, error: quoteRefreshError } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isTerminal = surfaceVariant === 'terminal';
   const isCfdSurface = surfaceVariant === 'cfd' || isTerminal;
@@ -118,6 +118,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRetryingQuote, setIsRetryingQuote] = useState(false);
   const [, setQuoteClock] = useState(0);
 
   // Get current price for the selected CFD instrument using snapshot
@@ -612,12 +613,21 @@ const getLotSize = (symbol: string): number => {
             {selectedInstrument?.tradable === false
               ? 'This market is listed, but trading is unavailable until a verified quote source is connected.'
               : Number.isFinite(quoteTimestamp) && Date.now() - quoteTimestamp >= 2 * 60 * 1000
-                ? 'The market is closed or its latest quote is delayed. Trading resumes when a current quote arrives.'
+                ? 'A current quote is unavailable. The last price is shown for reference; trading resumes when a fresh quote arrives.'
                 : 'Waiting for a verified live price before trading is enabled.'}
             {selectedInstrument?.tradable !== false && (
               <span className="mt-1 block text-xs text-amber-200/80">
                 {quoteIssue} {quoteRefreshError || ''}
               </span>
+            )}
+            {selectedInstrument?.tradable !== false && (
+              <button type="button" disabled={isRetryingQuote} onClick={async () => {
+                setIsRetryingQuote(true);
+                try { await refreshQuotes(selectedPair, true); }
+                finally { setIsRetryingQuote(false); }
+              }} className="mt-2 block text-xs font-semibold text-amber-200 underline underline-offset-2 disabled:opacity-50">
+                {isRetryingQuote ? 'Checking quote...' : 'Retry quote'}
+              </button>
             )}
           </span>
         </div>

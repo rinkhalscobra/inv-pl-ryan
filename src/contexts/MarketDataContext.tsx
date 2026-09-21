@@ -60,7 +60,8 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
   const [lastSnapshotTime, setLastSnapshotTime] = useState<number>(Date.now());
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [error, setError] = useState<string | null>(null);
-  const refreshInFlightRef = useRef(false);
+  const catalogRefreshInFlightRef = useRef(false);
+  const selectedRefreshInFlightRef = useRef(new Set<string>());
   const lastRefreshRequestRef = useRef(0);
   const lastSelectedRefreshRef = useRef(new Map<string, number>());
   const isConnected = connectionState === 'connected';
@@ -146,30 +147,31 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
       ? lastSelectedRefreshRef.current.get(instrument.symbol) || 0
       : lastRefreshRequestRef.current;
     const interval = instrument ? SELECTED_QUOTE_INTERVAL_MS : PRICE_REFRESH_INTERVAL_MS;
-    if (refreshInFlightRef.current || !navigator.onLine || document.hidden
+    if ((instrument ? selectedRefreshInFlightRef.current.has(instrument.symbol) : catalogRefreshInFlightRef.current)
+      || !navigator.onLine || document.hidden
       || Date.now() - lastRequest < interval) return;
-    refreshInFlightRef.current = true;
+    if (instrument) selectedRefreshInFlightRef.current.add(instrument.symbol);
+    else catalogRefreshInFlightRef.current = true;
     try {
       const { data: sessionResult } = await supabase.auth.getSession();
       if (!sessionResult.session) return;
       const requestedAt = Date.now();
       if (instrument) lastSelectedRefreshRef.current.set(instrument.symbol, requestedAt);
-      else {
-        lastRefreshRequestRef.current = requestedAt;
-        for (const item of FREE_PRICE_INSTRUMENTS) lastSelectedRefreshRef.current.set(item.symbol, requestedAt);
-      }
-      const { error: refreshError } = await supabase.functions.invoke('cfd-market-data', {
+      else lastRefreshRequestRef.current = requestedAt;
+      const { data: refreshResult, error: refreshError } = await supabase.functions.invoke('cfd-market-data', {
         body: { instruments },
         headers: { Authorization: `Bearer ${sessionResult.session.access_token}` }
       });
       if (refreshError) throw refreshError;
+      if (refreshResult?.success !== true) throw new Error('CFD quote refresh failed');
       await loadDatabaseFallback(instrument?.symbol);
     } catch {
       if (instrument) lastSelectedRefreshRef.current.set(instrument.symbol, Date.now() - SELECTED_QUOTE_INTERVAL_MS + 30_000);
       else lastRefreshRequestRef.current = Date.now() - PRICE_REFRESH_INTERVAL_MS + 30_000;
       setError('CFD quote refresh is temporarily unavailable');
     } finally {
-      refreshInFlightRef.current = false;
+      if (instrument) selectedRefreshInFlightRef.current.delete(instrument.symbol);
+      else catalogRefreshInFlightRef.current = false;
     }
   }, [loadDatabaseFallback]);
 

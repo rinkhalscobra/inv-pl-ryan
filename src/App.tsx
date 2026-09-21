@@ -130,24 +130,36 @@ function AppContent() {
   // Supabase Realtime pushes each stored quote to the UI without reloading it.
   useEffect(() => {
     if (!user || tradingMode !== 'cfd') return;
-    void refreshQuotes();
     const refreshSelected = () => {
       if (!document.hidden) void refreshQuotes(selectedPair);
     };
     refreshSelected();
     const selectedTimer = window.setInterval(refreshSelected, 90 * 1000);
-    const catalogTimer = window.setInterval(() => void refreshQuotes(), 5 * 60 * 1000);
     window.addEventListener('focus', refreshSelected);
     window.addEventListener('online', refreshSelected);
     document.addEventListener('visibilitychange', refreshSelected);
     return () => {
       window.clearInterval(selectedTimer);
-      window.clearInterval(catalogTimer);
       window.removeEventListener('focus', refreshSelected);
       window.removeEventListener('online', refreshSelected);
       document.removeEventListener('visibilitychange', refreshSelected);
     };
   }, [refreshQuotes, selectedPair, tradingMode, user]);
+
+  useEffect(() => {
+    if (!user || tradingMode !== 'cfd') return;
+    let stopped = false;
+    let catalogTimer: number;
+    const refreshCatalog = async () => {
+      await refreshQuotes();
+      if (!stopped) catalogTimer = window.setTimeout(() => void refreshCatalog(), 5 * 60 * 1000);
+    };
+    catalogTimer = window.setTimeout(() => void refreshCatalog(), 10 * 1000);
+    return () => {
+      stopped = true;
+      window.clearTimeout(catalogTimer);
+    };
+  }, [refreshQuotes, tradingMode, user]);
   
   // Check if this is a password recovery link
   const isRecoveryLink = useMemo(() => {
@@ -472,7 +484,7 @@ const handleUpdatePassword = async (newPassword: string) => {
       return false;
     } catch (error) {
       console.error('Error in handleFuturesTrade:', error);
-      return false;
+      throw error;
     }
   }, [selectedPair, openPosition, refreshBreakdown, fetchBalances, fetchActivePositions, fetchOpenOrders]);
 

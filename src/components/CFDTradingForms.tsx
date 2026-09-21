@@ -61,7 +61,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
-  const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol } = useMarketData();
+  const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol, error: quoteRefreshError } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isTerminal = surfaceVariant === 'terminal';
   const isCfdSurface = surfaceVariant === 'cfd' || isTerminal;
@@ -140,6 +140,13 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     && Number.isFinite(quoteTimestamp)
     && quoteTimestamp <= Date.now() + 60 * 1000
     && Date.now() - quoteTimestamp < 2 * 60 * 1000;
+  const quoteIssue = !selectedQuote
+    ? 'No stored quote has arrived for this market.'
+    : !Number.isFinite(quoteTimestamp)
+      ? 'The stored quote has no valid source time.'
+      : quoteTimestamp > Date.now() + 60 * 1000
+        ? 'The stored quote has an invalid future time.'
+        : `Last source quote: ${new Date(quoteTimestamp).toLocaleString()}.`;
   const canTradeSelectedInstrument = selectedInstrument?.tradable !== false && hasVerifiedPrice;
   useEffect(() => {
     if (!Number.isFinite(quoteTimestamp)) return;
@@ -468,7 +475,9 @@ const getLotSize = (symbol: string): number => {
     try {
       const opened = await Promise.resolve(onCFDTrade(selectedPair, 'long', amount * lotSize, leverage, marginType, longStopLoss || undefined, longTakeProfit || undefined, orderType, priceToUse));
       if (!opened) throw new Error('The position was not accepted');
-      setSuccessMessage(`Long position opened successfully for ${amount} lots`);
+      setSuccessMessage(orderType === 'limit'
+        ? `Long limit order placed for ${amount} lots`
+        : `Long position opened for ${amount} lots`);
       setLongAmount('');
       setLongPercentage(0);
       setLongStopLoss(null);
@@ -513,7 +522,9 @@ const getLotSize = (symbol: string): number => {
     try {
       const opened = await Promise.resolve(onCFDTrade(selectedPair, 'short', amount * lotSize, leverage, marginType, shortStopLoss || undefined, shortTakeProfit || undefined, orderType, priceToUse));
       if (!opened) throw new Error('The position was not accepted');
-      setSuccessMessage(`Short position opened successfully for ${amount} lots`);
+      setSuccessMessage(orderType === 'limit'
+        ? `Short limit order placed for ${amount} lots`
+        : `Short position opened for ${amount} lots`);
       setShortAmount('');
       setShortPercentage(0);
       setShortStopLoss(null);
@@ -600,7 +611,14 @@ const getLotSize = (symbol: string): number => {
           <span>
             {selectedInstrument?.tradable === false
               ? 'This market is listed, but trading is unavailable until a verified quote source is connected.'
-              : 'Waiting for a verified live price before trading is enabled.'}
+              : Number.isFinite(quoteTimestamp) && Date.now() - quoteTimestamp >= 2 * 60 * 1000
+                ? 'The market is closed or its latest quote is delayed. Trading resumes when a current quote arrives.'
+                : 'Waiting for a verified live price before trading is enabled.'}
+            {selectedInstrument?.tradable !== false && (
+              <span className="mt-1 block text-xs text-amber-200/80">
+                {quoteIssue} {quoteRefreshError || ''}
+              </span>
+            )}
           </span>
         </div>
       )}

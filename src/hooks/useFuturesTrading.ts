@@ -207,8 +207,9 @@ export const useFuturesTrading = () => {
       await Promise.all([fetchActivePositions(), fetchOpenOrders()]);
       return data.result?.id || null;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Order placement failed');
-      return null;
+      const failure = caught instanceof Error ? caught : new Error('Order placement failed');
+      setError(failure.message);
+      throw failure;
     } finally {
       setLoading(false);
     }

@@ -154,7 +154,7 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
   const { user } = useAuth();
   const { formatFiat, formatFiatNumber, formatTradingPair } = useFiatCurrency();
   const { loadPositionHistory, positionHistory, updateStopLossTakeProfit, loading, error } = useFuturesTrading();
-  const { isConnected: cfdConnected, getPriceBySymbol: getCfdPrice, getMarketDataBySymbol: getCfdQuote, connectionState: cfdConnectionState } = useMarketData();
+  const { isConnected: cfdConnected, getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, isConnected: cryptoConnected, connectionState: cryptoConnectionState, getPriceDirection } = useBybitData();
 
   const isCfdMode = tradingMode === 'cfd';
@@ -551,15 +551,12 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
   // Monitor positions for TP/SL triggers
   useEffect(() => {
+    // CFD fills and risk exits are processed against server quotes by the engine.
+    if (isCfdMode) return;
     positionsWithLiveData.forEach(position => {
       const { id, currentPrice, side, takeProfit, stopLoss } = position;
 
       if (!currentPrice || currentPrice <= 0) return;
-      if (isCfdMode) {
-        const quoteTime = Date.parse(getCfdQuote(position.symbol)?.timestamp || '');
-        if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
-          || Date.now() - quoteTime >= 2 * 60_000) return;
-      }
 
       let shouldClose = false;
       let reason = '';
@@ -592,7 +589,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
         });
       }
     });
-  }, [positionsWithLiveData.map(p => `${p.id}-${p.currentPrice}`).join(','), processingPositions, getCfdQuote, isCfdMode]);
+  }, [positionsWithLiveData.map(p => `${p.id}-${p.currentPrice}`).join(','), processingPositions, isCfdMode]);
 
   const handleClosePosition = async (positionId: string, symbol?: string): Promise<boolean> => {
     try {

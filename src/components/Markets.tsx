@@ -229,7 +229,7 @@ const Markets: React.FC<MarketsProps> = ({
             price: marketDataItem.price || 0,
             change_24h: marketDataItem.change_24h || 0,
             volume_24h: marketDataItem.volume_24h || 0,
-            timestamp: marketDataItem.timestamp || new Date().toISOString(),
+            timestamp: marketDataItem.timestamp || '',
             isLive: Number.isFinite(quoteTime) && quoteTime <= Date.now() + 60_000
               && Date.now() - quoteTime < 2 * 60_000,
             isTradable: instrument?.tradable !== false,
@@ -241,7 +241,7 @@ const Markets: React.FC<MarketsProps> = ({
           price: 0,
           change_24h: 0,
           volume_24h: 0,
-          timestamp: new Date().toISOString(),
+          timestamp: '',
           isLive: false,
           isTradable: instrument?.tradable !== false,
           category: instrument?.category

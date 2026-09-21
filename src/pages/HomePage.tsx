@@ -8,7 +8,6 @@ import {
   BarChart3, 
   ArrowRight, 
   Zap, 
-  Repeat, 
   Layers, 
   Clock, 
   DollarSign, 
@@ -21,7 +20,6 @@ import {
   Bitcoin,
   LineChart,
   PieChart,
-  Activity,
   Newspaper,
   ExternalLink,
   ChevronLeft,
@@ -536,41 +534,43 @@ const HomePage: React.FC<HomePageProps> = ({
     }).slice(0, 5); // Take top 5 for display
   };
 
-  const homeBackgroundClass = 'app-page-bg';
-  const primaryCardClass = 'rounded-2xl app-surface-raised';
-  const secondaryCardClass = 'rounded-2xl app-surface-primary';
+  const primaryCardClass = 'rounded-xl app-surface-raised';
+  const secondaryCardClass = 'rounded-xl app-surface-primary';
   const secondaryItemCardClass = 'rounded-xl app-surface-muted';
-  const quickActionCardClass = 'w-full rounded-xl app-surface-raised app-surface-hover p-4 text-white transition-all duration-200 hover:scale-[1.01]';
-  const quickActionCtaClass = 'mx-auto flex w-full items-center justify-center gap-2 rounded-xl app-action-soft px-6 py-3 font-semibold transition-all duration-300 sm:w-auto';
+  const quickActionCardClass = 'w-full rounded-lg app-surface-muted app-surface-hover p-4 text-white transition-colors';
+  const quickActionCtaClass = 'inline-flex w-full items-center justify-center gap-2 rounded-lg app-action-soft px-5 py-2.5 text-sm font-semibold transition-colors sm:w-auto';
 
   return (
-    <div className={`mx-auto w-full px-4 py-4 sm:px-6 sm:py-6 lg:p-8 ${homeBackgroundClass}`}>
+    <div className="trading-feature-page min-h-screen text-white">
+    <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
       {/* Giveaway Popups */}
       <GiveawayCampaignPopup forceShow={showCampaignPopup} />
       <GiveawayWinnerPopup forceShow={showWinnerPopup} />
       <GiveawayComingSoonPopup forceShow={showComingSoonPopup} />
 
       {/* Welcome Section */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="mb-1 text-2xl font-bold text-white sm:mb-2 sm:text-3xl">
+      <div className="mb-5 flex flex-col gap-3 border-b border-white/[0.08] pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-white sm:text-2xl">
             {t('home.welcomeTitle')}
           </h1>
+          <p className="mt-1 text-sm text-slate-400">{t('home.welcomeSubtitle')}</p>
         </div>
-        <p className="text-sm text-slate-400 sm:text-base">
-          {t('home.welcomeSubtitle')}
-        </p>
+        <span className="inline-flex w-fit items-center gap-2 rounded-md border border-white/[0.08] bg-[#11151b] px-3 py-1.5 text-xs text-slate-300">
+          <span className={`h-2 w-2 rounded-full ${isRealtimeConnected ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+          {isRealtimeConnected ? 'Market feed live' : 'Market feed connecting'}
+        </span>
       </div>
       
       {/* Quick Stats */}
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:mb-8 sm:grid-cols-2 sm:gap-6 xl:grid-cols-4">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className={`${primaryCardClass} p-2.5 sm:p-3.5`}>
           <div className="mb-1 flex items-start gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg shadow-purple-500/25">
+            <div className="app-icon-tile flex h-9 w-9 items-center justify-center rounded-lg">
               <Wallet size={18} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-[13px] text-purple-100">{getPeriodLabel()} {t('home.change')}</div>
+              <div className="text-[13px] text-slate-400">Portfolio value</div>
               <div className="text-lg font-bold text-white sm:text-xl" translate="no">
                 {isDataLoading ? (
                   <div className="flex items-center gap-2">
@@ -584,7 +584,7 @@ const HomePage: React.FC<HomePageProps> = ({
             </div>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="text-purple-100/80">{getPeriodLabel()} Change</div>
+            <div className="text-slate-400">{getPeriodLabel()} Change</div>
             <div className="text-white" translate="no">
               {isDataLoading ? (
                 <span className="text-white">--</span>
@@ -597,34 +597,34 @@ const HomePage: React.FC<HomePageProps> = ({
         
         <div className={`${primaryCardClass} p-2.5 sm:p-3.5`}>
           <div className="mb-1 flex items-start gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg shadow-purple-500/25">
+            <div className="app-icon-tile flex h-9 w-9 items-center justify-center rounded-lg">
               <TrendingUp size={18} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-[13px] text-purple-100">Positions P&amp;L</div>
+              <div className="text-[13px] text-slate-400">Positions P&amp;L</div>
               <div className="text-lg font-bold text-white sm:text-xl" translate="no">
                 {totalPositionsPnl >= 0 ? '+' : ''}{formatFiat(totalPositionsPnl)}
               </div>
             </div>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="text-purple-100/80">Open Positions</div>
+            <div className="text-slate-400">Open Positions</div>
             <div className="text-white" translate="no">{futuresPositions.length}</div>
           </div>
         </div>
         
         <div className={`${primaryCardClass} p-2.5 sm:p-3.5`}>
           <div className="mb-1 flex items-start gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg shadow-purple-500/25">
+            <div className="app-icon-tile flex h-9 w-9 items-center justify-center rounded-lg">
               <Bitcoin size={18} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-[13px] text-purple-100">BTC Price</div>
+              <div className="text-[13px] text-slate-400">BTC Price</div>
               <div className="text-lg font-bold text-white sm:text-xl" translate="no">{formatFiat(currentBtcPrice)}</div>
             </div>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="text-purple-100/80">24h Change</div>
+            <div className="text-slate-400">24h Change</div>
             <div className="text-white" translate="no">
               {(getCryptoDataBySymbol('BTCUSDT')?.change_24h ?? 0) >= 0 ? '+' : ''}
               {(getCryptoDataBySymbol('BTCUSDT')?.change_24h ?? 0).toFixed(2)}%
@@ -634,24 +634,24 @@ const HomePage: React.FC<HomePageProps> = ({
         
         <div className={`${primaryCardClass} p-2.5 sm:p-3.5`}>
           <div className="mb-1 flex items-start gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg shadow-purple-500/25">
-              <BarChart3 size={18} className="text-white" />
+            <div className="app-icon-tile flex h-9 w-9 items-center justify-center rounded-lg">
+              <DollarSign size={18} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-[13px] text-purple-100">Trading Volume</div>
-              <div className="text-lg font-bold text-white sm:text-xl" translate="no">{formatFiat(125430.50)}</div>
+              <div className="text-[13px] text-slate-400">Available balance</div>
+              <div className="text-lg font-bold text-white sm:text-xl" translate="no">{formatFiat(usdtBalance)}</div>
             </div>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="text-purple-100/80">{getPeriodLabel()} Change</div>
-            <div className="text-white" translate="no">+12.5%</div>
+            <div className="text-slate-400">BTC holdings</div>
+            <div className="text-white" translate="no">{btcBalance.toFixed(6)} BTC</div>
           </div>
         </div>
       </div>
 
       {/* Portfolio Chart */}
-      <div className="mb-6 grid grid-cols-1 gap-6 sm:mb-8 lg:grid-cols-3">
-        <div className={`lg:col-span-2 ${secondaryCardClass} p-4 sm:p-6`}>
+      <div className="mb-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
+        <div className={`${secondaryCardClass} min-w-0 p-4 sm:p-6`}>
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-bold text-white">Portfolio Performance</h2>
             <div className="flex flex-wrap gap-2">
@@ -661,8 +661,8 @@ const HomePage: React.FC<HomePageProps> = ({
                   onClick={() => setChartPeriod(period)}
                   className={`rounded-lg px-3 py-1 text-sm transition-all ${
                     chartPeriod === period
-                      ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-purple-500/25'
-                      : 'text-slate-400 hover:bg-blue-500/10 hover:text-white'
+                      ? 'bg-violet-600 text-white'
+                      : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'
                   }`}
                 >
                   {period}
@@ -694,14 +694,14 @@ const HomePage: React.FC<HomePageProps> = ({
         </div>
 
         {/* Market Overview */}
-        <div className={`${secondaryCardClass} p-4 sm:p-6`}>
+        <div className={`${secondaryCardClass} min-w-0 p-4 sm:p-6`}>
           <h3 className="text-lg font-bold text-white mb-4">Market Overview</h3>
-          <div className="space-y-3">
+          <div className="divide-y divide-white/[0.06]">
             {getSortedMarketData().map((data) => {
               const cryptoData = getCryptoDataBySymbol(data.symbol);
               const change24h = cryptoData?.change_24h ?? data.change_24h ?? 0;
               return (
-                <div key={data.symbol} className="flex items-center justify-between gap-3">
+                <div key={data.symbol} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500/16 to-purple-500/18">
                       {data.iconUrl ? (
@@ -758,14 +758,14 @@ const HomePage: React.FC<HomePageProps> = ({
                 <h3 className="text-lg font-bold text-white mb-4">Quick Actions</h3>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <button
-                    onClick={() => setTradingMode('spot')}
+                    onClick={() => setTradingMode('staking')}
                     className={quickActionCardClass}
                   >
                     <div className="flex items-center gap-3">
-                      <Repeat size={20} />
+                      <Layers size={20} />
                       <div className="min-w-0 text-left">
-                        <div className="font-semibold">Spot Trading</div>
-                        <div className="text-sm opacity-80">Buy & Sell Crypto</div>
+                        <div className="font-semibold">Staking</div>
+                        <div className="text-sm opacity-80">Stake assets</div>
                       </div>
                     </div>
                   </button>
@@ -784,14 +784,14 @@ const HomePage: React.FC<HomePageProps> = ({
                   </button>
                   
                   <button
-                    onClick={() => setTradingMode('binary')}
+                    onClick={() => setTradingMode('cfd')}
                     className={quickActionCardClass}
                   >
                     <div className="flex items-center gap-3">
-                      <Activity size={20} />
+                      <BarChart3 size={20} />
                       <div className="min-w-0 text-left">
-                        <div className="font-semibold">Binary Options</div>
-                        <div className="text-sm opacity-80">Quick Predictions</div>
+                        <div className="font-semibold">CFD</div>
+                        <div className="text-sm opacity-80">Trade markets</div>
                       </div>
                     </div>
                   </button>
@@ -810,7 +810,7 @@ const HomePage: React.FC<HomePageProps> = ({
                   </button>
                 </div>
                 
-                <div className="mt-6 text-center">
+                <div className="mt-5 border-t border-white/[0.07] pt-5">
                   <p className="mb-4 text-sm text-slate-400">
                     {t('home.swapDescription')}
                   </p>
@@ -985,7 +985,7 @@ const HomePage: React.FC<HomePageProps> = ({
       </div>
 
       {/* News Section */}
-      <div className={`mt-8 ${secondaryCardClass} p-4 sm:p-6`}>
+      <div className={`mt-5 ${secondaryCardClass} p-4 sm:p-6`}>
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 shadow-lg shadow-purple-500/25">
@@ -1084,6 +1084,7 @@ const HomePage: React.FC<HomePageProps> = ({
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 };

@@ -143,7 +143,6 @@ const StakingPage: React.FC<StakingPageProps> = ({
   const { t } = useTranslation();
   const { isConnected: isRealtimeConnected } = useMarketData();
   const { userStakes, addUserStake, calculateCurrentEarnings, cancelUserStake, claimUserStake, fetchUserStakes, coingeckoMarketCapData } = useDatabase();
-  const homeBackgroundClass = 'app-page-bg';
   const primaryCardBackgroundClass = 'app-surface-raised';
   const secondaryCardBackgroundClass = 'app-surface-primary';
   const itemCardBackgroundClass = 'app-surface-muted';
@@ -547,15 +546,16 @@ const StakingPage: React.FC<StakingPageProps> = ({
     : [];
 
   return (
-    <div className={`min-h-screen p-8 ${homeBackgroundClass}`}>
+    <div className="trading-feature-page min-h-screen text-white">
+      <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-5 border-b border-white/[0.08] pb-5">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-red-400 bg-clip-text text-transparent mb-2">
+          <h1 className="text-xl font-semibold text-white sm:text-2xl">
             {t('staking.title')}
           </h1>
         </div>
-        <p className="text-slate-400">
+        <p className="mt-1 text-sm text-slate-400">
           {t('staking.subtitle')}
         </p>
       </div>
@@ -573,9 +573,9 @@ const StakingPage: React.FC<StakingPageProps> = ({
       )}
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
         {/* Left Column - Available Staking Assets */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="min-w-0 space-y-5">
           {/* Available Staking Assets */}
           <div className={`${secondaryCardBackgroundClass} backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
@@ -593,6 +593,9 @@ const StakingPage: React.FC<StakingPageProps> = ({
             <div className="space-y-4">
               {availableStakingAssets.map((asset) => {
                 const hasActiveStake = hasActiveStakeForAsset(asset.symbol);
+                const assetAvailableBalance = asset.symbol === 'USDT'
+                  ? (availableBalance ?? usdtBalance)
+                  : (asset.balance || 0);
                 
                 return (
                   <div key={asset.id} className={`${itemCardBackgroundClass} rounded-xl border border-slate-700/50 overflow-hidden`}>
@@ -606,7 +609,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-2 md:gap-4 flex-1 justify-end">
+                      <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:gap-4">
                         <div className="text-right hidden sm:block">
                           <div className="text-xs md:text-sm text-slate-400">APY</div>
                           <div className="text-emerald-400 font-bold text-sm md:text-base">{asset.apy}%</div>
@@ -615,15 +618,22 @@ const StakingPage: React.FC<StakingPageProps> = ({
                         <div className="text-right mr-2">
                           <div className="text-xs md:text-sm text-slate-400">{t('common.balance')}</div>
                           <div className="text-white font-medium text-sm md:text-base">
-                            {(asset.symbol === 'USDT' 
-                              ? (availableBalance !== undefined ? availableBalance : usdtBalance)
-                              : asset.balance || 0
-                            ).toFixed(asset.symbol === 'USDT' ? 2 : 6)} {asset.symbol}
+                            {assetAvailableBalance.toFixed(asset.symbol === 'USDT' ? 2 : 6)} {asset.symbol}
                           </div>
                         </div>
                         
                         <button
+                          onClick={() => handleStakeClick(asset)}
+                          disabled={assetAvailableBalance < asset.minStake || hasActiveStake}
+                          className="hidden rounded-lg app-action-primary px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed sm:inline-flex"
+                        >
+                          {hasActiveStake ? t('staking.alreadyStaked') : t('staking.stake')}
+                        </button>
+
+                        <button
                           onClick={() => toggleAssetDetails(asset.id)}
+                          aria-label={`${expandedAssetId === asset.id ? 'Hide' : 'Show'} ${asset.name} staking details`}
+                          aria-expanded={expandedAssetId === asset.id}
                           className={`w-8 h-8 ${controlBackgroundClass} rounded-lg flex items-center justify-center transition-colors flex-shrink-0`}
                         >
                           {expandedAssetId === asset.id ? (
@@ -667,7 +677,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
                         <div className="flex justify-end">
                           <button
                             onClick={() => handleStakeClick(asset)} 
-                            disabled={!asset.balance || asset.balance < asset.minStake || hasActiveStake}
+                            disabled={assetAvailableBalance < asset.minStake || hasActiveStake}
                             className={`${bluePurpleBackgroundClass} ${bluePurpleHoverBackgroundClass} disabled:from-slate-700 disabled:to-slate-800 text-white px-4 md:px-6 py-2 rounded-xl font-medium transition-all duration-300 shadow-lg shadow-purple-500/25 flex items-center gap-2 ${
                               hasActiveStake ? 'cursor-not-allowed opacity-70' : ''
                             }`}
@@ -874,7 +884,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
         </div>
         
         {/* Right Column - Active Stakes & Calculator */}
-        <div className="space-y-8">
+        <div className="min-w-0 space-y-5">
           {/* Staking Calculator */}
           <div className={`${secondaryCardBackgroundClass} backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-2xl`}>
             <div className="flex items-center gap-3 mb-6">
@@ -987,6 +997,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
         </div>
       </div>
 
+      </div>
       {/* Staking Confirmation Modal */}
       {showConfirmationModal && selectedAsset && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">

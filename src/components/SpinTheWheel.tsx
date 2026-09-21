@@ -95,21 +95,19 @@ const SpinTheWheel: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.24),transparent_32%),radial-gradient(circle_at_bottom,rgba(147,51,234,0.16),transparent_42%)] p-4 md:p-8 overflow-hidden relative">
-      <div className="max-w-7xl mx-auto relative z-10 px-4">
-        <div className="text-center py-12">
-          <h1 className="text-5xl md:text-6xl font-black text-white mb-4" style={{
-            textShadow: '0 0 30px rgba(34, 211, 238, 0.8), 0 0 60px rgba(59, 130, 246, 0.6)',
-          }}>
+    <div className="trading-feature-page min-h-screen text-white">
+      <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        <div className="mb-5 border-b border-white/[0.08] pb-5">
+          <h1 className="text-xl font-semibold text-white sm:text-2xl">
             {t('spinWheel.title')}
           </h1>
-          <p className="text-xl text-cyan-300 font-medium">
+          <p className="mt-1 text-sm text-slate-400">
             {t('spinWheel.subtitle')}
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8 items-start">
-          <div className="lg:col-span-1 space-y-6">
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+          <div className="order-2 min-w-0 space-y-5 lg:col-start-2 lg:row-start-1">
             <div className="app-surface-primary rounded-2xl p-6 border border-cyan-500/30">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
@@ -148,9 +146,8 @@ const SpinTheWheel: React.FC = () => {
             </div>
           </div>
 
-          <div className="lg:col-span-1 flex flex-col items-center justify-center gap-12">
-          <div className="relative w-full max-w-[700px] aspect-square flex items-center justify-center">
-            <div className="absolute inset-0 bg-purple-500/28 rounded-full blur-3xl"></div>
+          <div className="order-1 flex min-w-0 flex-col items-center gap-5 rounded-xl border border-white/[0.08] bg-[#11151b] p-4 sm:p-6 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          <div className="relative flex aspect-square w-full max-w-[520px] items-center justify-center">
 
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4 z-20">
               <div className="relative">
@@ -180,7 +177,7 @@ const SpinTheWheel: React.FC = () => {
             <div className="relative w-[95%] h-[95%]">
               <div className="absolute inset-0 rounded-full" style={{
                 background: 'radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.58), rgba(139, 92, 246, 0.64), rgba(168, 85, 247, 0.56))',
-                boxShadow: '0 0 80px rgba(34, 211, 238, 0.6), 0 0 120px rgba(59, 130, 246, 0.4), inset 0 0 60px rgba(255, 255, 255, 0.1)',
+                boxShadow: '0 0 32px rgba(124, 58, 237, 0.18), inset 0 0 36px rgba(255, 255, 255, 0.06)',
               }}>
                 <div className="absolute inset-2 rounded-full bg-gradient-to-br from-indigo-500/16 via-purple-500/16 to-fuchsia-500/14 backdrop-blur-sm border-4 border-cyan-500/50" style={{
                   boxShadow: 'inset 0 0 40px rgba(34, 211, 238, 0.3)',
@@ -242,9 +239,9 @@ const SpinTheWheel: React.FC = () => {
                       })}
                     </svg>
 
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full" style={{
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-20 w-20 rounded-full" style={{
                       background: 'radial-gradient(circle at 30% 30%, #818cf8, #8b5cf6, #c026d3)',
-                      boxShadow: '0 0 30px rgba(34, 211, 238, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.3)',
+                      boxShadow: '0 0 18px rgba(124, 58, 237, 0.35), inset 0 0 16px rgba(255, 255, 255, 0.2)',
                     }}>
                       <div className="absolute inset-2 rounded-full bg-gradient-to-br from-purple-200/40 to-transparent"></div>
                     </div>
@@ -255,23 +252,17 @@ const SpinTheWheel: React.FC = () => {
           </div>
 
           {result && (
-            <div className="text-center animate-bounce">
-              <div className={`text-6xl font-black mb-4 ${
+            <div className="text-center">
+              <div className={`text-xl font-semibold ${
                 result.value === '0' ? 'text-red-400' : 'text-white'
-              }`} style={{
-                textShadow: result.value === '0'
-                  ? '0 0 20px rgba(239, 68, 68, 0.8), 0 0 40px rgba(220, 38, 38, 0.6)'
-                  : '0 0 20px rgba(34, 211, 238, 0.8), 0 0 40px rgba(59, 130, 246, 0.6)',
-              }}>
+              }`}>
                 {result.value === '0' ? 'No Win - Try Again!' : `You Won ${result.label}!`}
               </div>
             </div>
           )}
 
           {!result && (
-            <div className="text-6xl font-black text-white" style={{
-              textShadow: '0 0 20px rgba(34, 211, 238, 0.8), 0 0 40px rgba(59, 130, 246, 0.6)',
-            }}>
+            <div className="text-xl font-semibold text-white">
               Spin to Win!
             </div>
           )}
@@ -295,42 +286,13 @@ const SpinTheWheel: React.FC = () => {
           <button
             onClick={handleSpinWheel}
             disabled={isSpinning || !eligibleDeposit || depositLoading}
-            className="relative group px-16 py-6 rounded-full text-white font-black text-3xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: 'radial-gradient(circle at 30% 30%, #8b5cf6, #c026d3)',
-              boxShadow: '0 0 40px rgba(34, 211, 238, 0.8), 0 0 60px rgba(59, 130, 246, 0.6), inset 0 0 30px rgba(255, 255, 255, 0.2)',
-              textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
-            }}
+            className="app-action-primary rounded-lg px-8 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed"
           >
-            <div className="absolute -left-6 top-1/2 -translate-y-1/2">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500" style={{
-                boxShadow: '0 4px 15px rgba(148, 163, 184, 0.5)',
-              }}></div>
-            </div>
-
-            <div className="absolute -left-3 top-1/4">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-indigo-300 to-purple-400" style={{
-                boxShadow: '0 4px 15px rgba(148, 163, 184, 0.5)',
-              }}></div>
-            </div>
-
             <span>{isSpinning ? `${t('common.loading')}` : t('spinWheel.spinButton')}</span>
-
-            <div className="absolute -right-6 top-1/2 -translate-y-1/2">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" style={{
-                boxShadow: '0 4px 15px rgba(148, 163, 184, 0.5)',
-              }}></div>
-            </div>
-
-            <div className="absolute -right-12 bottom-1/4">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500" style={{
-                boxShadow: '0 4px 15px rgba(148, 163, 184, 0.5)',
-              }}></div>
-            </div>
           </button>
         </div>
 
-        <div className="lg:col-span-1 space-y-6">
+        <div className="order-3 min-w-0 space-y-5 lg:col-start-2 lg:row-start-2">
           <div className="app-surface-primary rounded-2xl p-6 border border-cyan-500/30">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">

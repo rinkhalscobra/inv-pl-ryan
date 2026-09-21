@@ -443,7 +443,6 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
     }
   };
 
-  const pageBackgroundClass = 'app-page-bg';
   const glassPanelStrongClass = 'app-surface-primary';
   const glassSurfaceClass = 'app-surface-muted';
   const glassInnerClass = 'app-surface-muted';
@@ -458,32 +457,25 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   const glassSecondaryActionHoverClass = '';
 
   return (
-    <div className={`min-h-screen ${pageBackgroundClass} text-white relative overflow-hidden`}>
-      {/* Animated Background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/12 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/12 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500/8 rounded-full blur-3xl animate-pulse delay-500"></div>
-      </div>
-
-      <div className="relative z-10 p-4 md:p-8">
+    <div className="trading-feature-page min-h-screen text-white">
+      <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
+        <div className="mb-5 flex flex-col gap-4 border-b border-white/[0.08] pb-5 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-emerald-400 bg-clip-text text-transparent flex items-center gap-3">
-              <Bot size={32} className="text-blue-400" />
+            <h1 className="flex items-center gap-3 text-xl font-semibold text-white sm:text-2xl">
+              <Bot size={24} className="text-violet-400" />
               {t('robot.title')}
             </h1>
-            <p className="text-slate-400">{t('robot.subtitle')}</p>
+            <p className="mt-1 text-sm text-slate-400">{t('robot.subtitle')}</p>
           </div>
 
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-            <div className={`${glassSoftClass} backdrop-blur-sm px-6 py-3 rounded-xl border border-slate-700/50 shadow-lg w-full md:w-auto`}>
-              <div className="text-slate-400 text-sm">{t('header.availableBalance')}</div>
-              <div className="text-white font-mono text-xl">${actualAvailableBalance.toFixed(2)}</div>
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <div className={`${glassSoftClass} w-full rounded-lg border border-white/[0.08] px-4 py-2 sm:w-auto`}>
+              <div className="text-xs text-slate-400">{t('header.availableBalance')}</div>
+              <div className="font-mono text-lg text-white">${actualAvailableBalance.toFixed(2)}</div>
             </div>
             
-            <div className="flex gap-3 w-full md:w-auto">
+            <div className="flex w-full gap-3 sm:w-auto">
               {robotState?.is_active ? (
                 <button
                   onClick={handleDeactivateRobot}
@@ -531,9 +523,9 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
         )}
 
         {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
           {/* Left Column - Robot Status */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="min-w-0 space-y-5">
             {/* Robot Status Card */}
             <div className={`${glassPanelStrongClass} backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-2xl`}>
               <div className="flex items-center justify-between mb-6">
@@ -808,10 +800,10 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
             </div>
           </div>
           
-          {/* Right Column - How It Works & Settings */}
-          <div className="space-y-8">
+          {/* Right Column - Settings & How It Works */}
+          <div className="flex min-w-0 flex-col gap-5">
             {/* How It Works */}
-            <div className={`${glassPanelStrongClass} backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-2xl`}>
+            <div className={`${glassPanelStrongClass} order-2 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-2xl`}>
               <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
                 <Zap size={20} className="text-blue-400" />
                 {t('robot.howItWorks')}
@@ -872,7 +864,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
             </div>
             
             {/* Robot Settings */}
-            <div className={`${glassPanelStrongClass} backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-2xl`}>
+            <div className={`${glassPanelStrongClass} order-1 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50 shadow-2xl`}>
               <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
                 <Settings size={20} className="text-blue-400" />
                 {t('robot.robotSettings')}
@@ -1088,7 +1080,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
           </div>
         </div>
       )}
-    </div>
+      </div>
   );
 };
 

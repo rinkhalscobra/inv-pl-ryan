@@ -32,8 +32,8 @@ export default function SwapTradePanel({ fromField, toField, fromCurrency, toCur
   const canQuote = fromPrice > 0 && toPrice > 0;
 
   return (
-    <section className="relative z-20 mx-auto w-full max-w-2xl min-w-0 rounded-xl border border-white/[0.07] bg-[#11151b] p-4 sm:p-6" aria-label="Swap ticket">
-      <div className="mb-6 flex flex-col gap-3 border-b border-white/[0.07] pb-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="relative z-20 w-full min-w-0 rounded-xl border border-white/[0.08] bg-[#11151b] p-4 shadow-lg shadow-black/10 sm:p-6" aria-label="Swap ticket">
+      <div className="mb-5 flex flex-col gap-3 border-b border-white/[0.07] pb-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold text-white">Swap ticket</h2>
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           {lockedPrices ? (

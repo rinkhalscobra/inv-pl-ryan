@@ -912,10 +912,10 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   const toPrice = getEffectivePrice('to');
 
   return (
-    <div className="min-h-[calc(100vh-72px)] bg-[#070a12] text-slate-100">
+    <div className="min-h-[calc(100vh-72px)] bg-[#0b0e11] text-slate-100">
       <SwapWorkspaceHeader fromSymbol={fromCurrency.symbol} toSymbol={toCurrency.symbol} />
-      <div className="grid min-h-[620px] gap-px bg-[#252a33] xl:grid-cols-[minmax(0,1fr)_340px]">
-        <main className="min-w-0 bg-[#0b0e11] p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto grid w-full max-w-[1440px] items-start gap-4 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)] lg:px-8">
+        <main className="min-w-0">
           <SwapTradePanel
             fromField={{
               side: 'from', currency: fromCurrency, amount: fromAmount,
@@ -954,7 +954,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
             formatAssetAmount={formatAssetAmount}
           />
         </main>
-        <aside className="min-w-0 bg-[#0b0e11] xl:border-l xl:border-white/[0.07]">
+        <aside className="grid min-w-0 gap-4 sm:gap-5">
           <SwapMarketOverview prices={getSortedMarketPrices()} formatFiat={formatFiat} onRefresh={refreshSnapshot} />
           <SwapRecentSwaps transactions={swapTransactions} formatEur={formatEur} formatFiat={formatFiat} />
         </aside>

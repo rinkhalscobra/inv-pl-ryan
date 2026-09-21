@@ -12,7 +12,7 @@ import { calculateDerivativeNotionalUsd, calculateDerivativePnlUsd } from '../ut
 interface CFDTradingFormsProps {
   usdtBalance: number;
   availableBalance?: number;
-  surfaceVariant?: 'default' | 'cfd';
+  surfaceVariant?: 'default' | 'cfd' | 'terminal';
   maxForexLeverage: number;
   minForexLeverage?: number;
   maxCommoditiesLeverage: number;
@@ -60,10 +60,12 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   onCFDTrade
 }) => {
   const { t } = useTranslation();
-  const { convertUsdToEur, formatFiat, formatFiatPrice } = useFiatCurrency();
+  const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
-  const isCfdSurface = surfaceVariant === 'cfd';
+  const isTerminal = surfaceVariant === 'terminal';
+  const isCfdSurface = surfaceVariant === 'cfd' || isTerminal;
+  const [activeSide, setActiveSide] = useState<'long' | 'short'>('long');
   const panelSurfaceClass = isCfdSurface
     ? 'app-surface-primary'
     : 'bg-slate-800/30';
@@ -108,6 +110,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     isLeverageLocked ? minAllowedLeverage : Math.max(minAllowedLeverage, Math.min(10, maxAllowedLeverage))
   );
   const [orderType, setOrderType] = useState<'limit' | 'market'>('market');
+  const [limitPrice, setLimitPrice] = useState('');
   const [longAmount, setLongAmount] = useState('');
   const [shortAmount, setShortAmount] = useState('');
   const [longPercentage, setLongPercentage] = useState(0);
@@ -115,6 +118,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [, setQuoteClock] = useState(0);
 
   // Get current price for the selected CFD instrument using snapshot
   const getCurrentPriceForCFD = useCallback(() => {
@@ -130,12 +134,24 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     : price.toFixed(getPricePrecision());
   const selectedInstrument = CFD_INSTRUMENTS.find(item => item.symbol === selectedPair);
   const selectedQuote = getMarketDataBySymbol(selectedPair);
-  const quoteTimestamp = Date.parse(selectedQuote?.updated_at || selectedQuote?.timestamp || '');
+  const quoteTimestamp = Date.parse(selectedQuote?.timestamp || '');
   const hasVerifiedPrice = Number.isFinite(livePairPrice)
     && livePairPrice > 0
     && Number.isFinite(quoteTimestamp)
+    && quoteTimestamp <= Date.now() + 60 * 1000
     && Date.now() - quoteTimestamp < 2 * 60 * 1000;
   const canTradeSelectedInstrument = selectedInstrument?.tradable !== false && hasVerifiedPrice;
+  useEffect(() => {
+    if (!Number.isFinite(quoteTimestamp)) return;
+    const untilStale = quoteTimestamp + 2 * 60_000 - Date.now();
+    if (untilStale <= 0) return;
+    const timer = window.setTimeout(() => setQuoteClock(Date.now()), untilStale + 1);
+    return () => window.clearTimeout(timer);
+  }, [quoteTimestamp]);
+  const parsedLimitPrice = Number(limitPrice);
+  const orderEntryPrice = orderType === 'limit'
+    ? priceIsUsd ? convertEurToUsd(parsedLimitPrice) : parsedLimitPrice
+    : livePairPrice;
 
 const getLotSize = (symbol: string): number => {
   const instrument = CFD_INSTRUMENTS.find(item => item.symbol === symbol);
@@ -171,7 +187,7 @@ const getLotSize = (symbol: string): number => {
   const calculateLongAmountFromPercentage = useCallback((percentage: number) => {
     if (percentage <= 0) return '';
 
-    const priceToUse = livePairPrice;
+    const priceToUse = orderEntryPrice;
     if (!Number.isFinite(priceToUse) || priceToUse <= 0) return '';
     const lotSize = getLotSize(selectedPair);
     const balanceToUse = availableBalance !== undefined ? availableBalance : usdtBalance;
@@ -184,14 +200,14 @@ const getLotSize = (symbol: string): number => {
     const minTradeSize = getMinTradeSize();
     const adjustedAmount = Math.max(amount, minTradeSize);
 
-    return adjustedAmount.toFixed(getInstrumentType() === 'Stock' ? 0 : 5);
-  }, [availableBalance, usdtBalance, leverage, livePairPrice, selectedPair, getPriceBySymbol]);
+    return adjustedAmount.toFixed(5);
+  }, [availableBalance, usdtBalance, leverage, orderEntryPrice, selectedPair, getPriceBySymbol]);
 
   // Calculate amount from percentage for short positions
   const calculateShortAmountFromPercentage = useCallback((percentage: number) => {
     if (percentage <= 0) return '';
 
-    const priceToUse = livePairPrice;
+    const priceToUse = orderEntryPrice;
     if (!Number.isFinite(priceToUse) || priceToUse <= 0) return '';
     const lotSize = getLotSize(selectedPair);
     const balanceToUse = availableBalance !== undefined ? availableBalance : usdtBalance;
@@ -204,14 +220,29 @@ const getLotSize = (symbol: string): number => {
     const minTradeSize = getMinTradeSize();
     const adjustedAmount = Math.max(amount, minTradeSize);
 
-    return adjustedAmount.toFixed(getInstrumentType() === 'Stock' ? 0 : 5);
-  }, [availableBalance, usdtBalance, leverage, livePairPrice, selectedPair, getPriceBySymbol]);
+    return adjustedAmount.toFixed(5);
+  }, [availableBalance, usdtBalance, leverage, orderEntryPrice, selectedPair, getPriceBySymbol]);
 
   // Stop Loss / Take Profit states
   const [longStopLoss, setLongStopLoss] = useState<{ trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number } | null>(null);
   const [longTakeProfit, setLongTakeProfit] = useState<{ trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number } | null>(null);
   const [shortStopLoss, setShortStopLoss] = useState<{ trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number } | null>(null);
   const [shortTakeProfit, setShortTakeProfit] = useState<{ trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number } | null>(null);
+
+  // Draft amounts and risk levels belong to the instrument on which they were entered.
+  useEffect(() => {
+    setLongAmount('');
+    setShortAmount('');
+    setLongPercentage(0);
+    setShortPercentage(0);
+    setLimitPrice('');
+    setLongStopLoss(null);
+    setLongTakeProfit(null);
+    setShortStopLoss(null);
+    setShortTakeProfit(null);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+  }, [selectedPair]);
 
   // Modal states
   const [showLongSLModal, setShowLongSLModal] = useState(false);
@@ -371,7 +402,7 @@ const getLotSize = (symbol: string): number => {
 
   const getSpreadCost = (amount: number = 1) => {
     const lotSize = getLotSize(selectedPair);
-    const notionalUsd = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, livePairPrice, getPriceBySymbol);
+    const notionalUsd = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, orderEntryPrice, getPriceBySymbol);
     return calculateSpreadCostFromNotional(selectedPair, notionalUsd);
   };
 
@@ -419,7 +450,11 @@ const getLotSize = (symbol: string): number => {
       return;
     }
 
-    const priceToUse = livePairPrice;
+    const priceToUse = orderEntryPrice;
+    if (!Number.isFinite(priceToUse) || priceToUse <= 0) {
+      setErrorMessage('Enter a valid limit price before placing an order.');
+      return;
+    }
     const lotSize = getLotSize(selectedPair);
     const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
@@ -460,7 +495,11 @@ const getLotSize = (symbol: string): number => {
       return;
     }
 
-    const priceToUse = livePairPrice;
+    const priceToUse = orderEntryPrice;
+    if (!Number.isFinite(priceToUse) || priceToUse <= 0) {
+      setErrorMessage('Enter a valid limit price before placing an order.');
+      return;
+    }
     const lotSize = getLotSize(selectedPair);
     const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
@@ -500,7 +539,7 @@ const getLotSize = (symbol: string): number => {
 
   const calculateLongCost = () => {
     const amount = parseFloat(longAmount) || 0;
-    const priceToUse = livePairPrice;
+    const priceToUse = orderEntryPrice;
     const lotSize = getLotSize(selectedPair);
     const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
@@ -510,7 +549,7 @@ const getLotSize = (symbol: string): number => {
 
   const calculateShortCost = () => {
     const amount = parseFloat(shortAmount) || 0;
-    const priceToUse = livePairPrice;
+    const priceToUse = orderEntryPrice;
     const lotSize = getLotSize(selectedPair);
     const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
@@ -527,7 +566,19 @@ const getLotSize = (symbol: string): number => {
   const shortSpreadInfo = shortAmount ? getSpreadDisplay(parseFloat(shortAmount)) : null;
 
   return (
-    <div className={`${panelSurfaceClass} rounded-2xl border border-slate-700/50 p-3 shadow-2xl backdrop-blur-sm md:p-8`}>
+    <div className={`${isTerminal ? 'cfd-order-ticket h-full min-h-[620px] overflow-y-auto bg-[#0b0e11] p-4 [scrollbar-width:thin]' : `${panelSurfaceClass} rounded-2xl border border-slate-700/50 p-3 shadow-2xl backdrop-blur-sm md:p-8`}`} translate="no">
+      {isTerminal && (
+        <>
+          <div className="mb-4 flex items-center justify-between border-b border-white/[0.07] pb-3">
+            <h2 className="text-sm font-semibold text-white">Place order</h2>
+            <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{displayInstrumentType} · {userCfdTier}</span>
+          </div>
+          <div className="mb-4 grid grid-cols-2 rounded-md bg-[#161a1e] p-1">
+            <button type="button" onClick={() => setActiveSide('long')} className={`rounded px-3 py-2 text-xs font-semibold ${activeSide === 'long' ? 'bg-emerald-400/15 text-emerald-300' : 'text-slate-500 hover:text-slate-300'}`}>Buy / Long</button>
+            <button type="button" onClick={() => setActiveSide('short')} className={`rounded px-3 py-2 text-xs font-semibold ${activeSide === 'short' ? 'bg-rose-400/15 text-rose-300' : 'text-slate-500 hover:text-slate-300'}`}>Sell / Short</button>
+          </div>
+        </>
+      )}
       {/* Status Messages */}
       {errorMessage && (
         <div className="mb-4 md:mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-3 md:p-4 flex items-center gap-2 md:gap-3">
@@ -555,7 +606,7 @@ const getLotSize = (symbol: string): number => {
       )}
 
       {/* Instrument Info */}
-      <div className={`${cardSurfaceClass} mb-4 rounded-xl border border-slate-700/50 p-3 md:mb-6 md:p-4`}>
+      <div className={`${cardSurfaceClass} cfd-ticket-instrument mb-4 rounded-xl border border-slate-700/50 p-3 md:mb-6 md:p-4`}>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 text-sm">
           <div>
             <span className="text-slate-400">Type:</span>
@@ -573,7 +624,7 @@ const getLotSize = (symbol: string): number => {
       </div>
 
       {/* Margin Type and Leverage Controls */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 md:mb-8 gap-3 md:gap-0">
+      <div className="cfd-ticket-controls flex flex-col md:flex-row md:items-center md:justify-between mb-4 md:mb-8 gap-3 md:gap-0">
         <div className="flex items-center gap-3 md:gap-6">
           <div className={`${controlSurfaceClass} flex rounded-xl border border-slate-600/30 p-1`}>
             <button
@@ -698,9 +749,26 @@ const getLotSize = (symbol: string): number => {
         </button>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 md:gap-8">
+      {orderType === 'limit' && (
+        <div className="mb-4 md:mb-6">
+          <label htmlFor="cfd-limit-price" className="mb-2 block text-xs text-slate-400">
+            Limit price ({priceIsUsd ? 'EUR' : 'Rate'})
+          </label>
+          <input
+            id="cfd-limit-price"
+            type="text"
+            inputMode="decimal"
+            value={limitPrice}
+            onChange={(event) => setLimitPrice(event.target.value)}
+            placeholder={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
+            className="w-full rounded-md border border-white/[0.09] bg-[#161a1e] px-3 py-3 font-mono text-sm text-white outline-none placeholder:text-slate-600 focus:border-violet-400/50"
+          />
+        </div>
+      )}
+
+      <div className="cfd-side-forms flex flex-col md:flex-row gap-4 md:gap-8">
         {/* Long Form */}
-        <div className="flex-1">
+        <div className={`flex-1 ${isTerminal && activeSide !== 'long' ? 'hidden' : ''}`}>
           <div className="mb-6">
             <div className="flex justify-between text-sm text-slate-400 mb-3">
               <span>{t('trading.availableMargin')}</span>
@@ -714,7 +782,7 @@ const getLotSize = (symbol: string): number => {
           <div className="space-y-6">
             {/* Price Input */}
             <div className="mb-3">
-              <label className="block text-sm text-slate-400 mb-1 md:mb-3">{t('common.price')} ({priceIsUsd ? 'EUR' : 'Rate'})</label>
+              <label className="block text-sm text-slate-400 mb-1 md:mb-3">Mark price ({priceIsUsd ? 'EUR' : 'Rate'})</label>
               <input
                 type="text"
                 value={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
@@ -839,7 +907,7 @@ const getLotSize = (symbol: string): number => {
         </div>
 
         {/* Short Form */}
-        <div className="flex-1">
+        <div className={`flex-1 ${isTerminal && activeSide !== 'short' ? 'hidden' : ''}`}>
           <div className="mb-6">
             <div className="flex justify-between text-sm text-slate-400 mb-3">
               <span>{t('trading.availableMargin')}</span>
@@ -853,7 +921,7 @@ const getLotSize = (symbol: string): number => {
           <div className="space-y-6">
             {/* Price Input */}
             <div className="mb-3">
-              <label className="block text-sm text-slate-400 mb-1 md:mb-3">{t('common.price')} ({priceIsUsd ? 'EUR' : 'Rate'})</label>
+              <label className="block text-sm text-slate-400 mb-1 md:mb-3">Mark price ({priceIsUsd ? 'EUR' : 'Rate'})</label>
               <input
                 type="text"
                 value={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
@@ -984,7 +1052,7 @@ const getLotSize = (symbol: string): number => {
         onClose={() => setShowLongSLModal(false)}
         type="stopLoss"
         side="long"
-        entryPrice={livePairPrice}
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
         amount={parseFloat(longAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}
@@ -999,7 +1067,7 @@ const getLotSize = (symbol: string): number => {
         onClose={() => setShowLongTPModal(false)}
         type="takeProfit"
         side="long"
-        entryPrice={livePairPrice}
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
         amount={parseFloat(longAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}
@@ -1014,7 +1082,7 @@ const getLotSize = (symbol: string): number => {
         onClose={() => setShowShortSLModal(false)}
         type="stopLoss"
         side="short"
-        entryPrice={livePairPrice}
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
         amount={parseFloat(shortAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}
@@ -1029,7 +1097,7 @@ const getLotSize = (symbol: string): number => {
         onClose={() => setShowShortTPModal(false)}
         type="takeProfit"
         side="short"
-        entryPrice={livePairPrice}
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
         amount={parseFloat(shortAmount) || 0}
         leverage={leverage}
         lotSize={getLotSize(selectedPair)}

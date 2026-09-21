@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
 import { MarketDataProvider, useMarketData } from './contexts/MarketDataContext';
@@ -8,6 +8,10 @@ import SpotTradingForms from './components/SpotTradingForms';
 import CFDTradingForms from './components/CFDTradingForms';
 import FuturesTradingForms from './components/FuturesTradingForms';
 import FuturesMyOrders from './components/FuturesMyOrders';
+import FuturesMarketHeader from './components/FuturesMarketHeader';
+import FuturesMarketRail from './components/FuturesMarketRail';
+import CfdMarketHeader from './components/CfdMarketHeader';
+import CfdMarketRail from './components/CfdMarketRail';
 import TradingChart from './components/TradingChart';
 import Markets from './components/Markets';
 import SpotMyOrders from './components/SpotMyOrders';
@@ -33,7 +37,6 @@ import AuthModal from './components/AuthModal';
 import { supabase } from './lib/supabaseClient';
 import { useAuth } from './hooks/useAuth';
 import { useDatabase } from './hooks/useDatabase';
-import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS } from './constants/tradingPairs';
 import { getUserCfdTier } from './constants/tradingTiers';
 import { useUserAssets } from './hooks/useUserAssets';
 import { useFuturesTrading } from './hooks/useFuturesTrading';
@@ -76,7 +79,7 @@ export interface Transaction {
 
 function AppContent() {
   const { user, loading: authLoading, signOut } = useAuth();
-  const { marketData, getSnapshotPriceBySymbol } = useMarketData();
+  const { marketData, getSnapshotPriceBySymbol, refreshQuotes } = useMarketData();
   const { getPriceBySymbol: getBybitPrice } = useBybitData();
   const {
     balances,
@@ -122,12 +125,29 @@ function AppContent() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isPreparingMarkets, setIsPreparingMarkets] = useState(false);
-  
-  // Define tickers based on trading mode
-  const tickers = tradingMode === 'cfd' ? CFD_INSTRUMENTS : TOP_CRYPTO_PAIRS;
 
-  // Interval reference for position refresh
-  const positionRefreshIntervalRef = useRef<number | null>(null);
+  // The free quote source is sampled only while a CFD workspace is open.
+  // Supabase Realtime pushes each stored quote to the UI without reloading it.
+  useEffect(() => {
+    if (!user || tradingMode !== 'cfd') return;
+    void refreshQuotes();
+    const refreshSelected = () => {
+      if (!document.hidden) void refreshQuotes(selectedPair);
+    };
+    refreshSelected();
+    const selectedTimer = window.setInterval(refreshSelected, 90 * 1000);
+    const catalogTimer = window.setInterval(() => void refreshQuotes(), 5 * 60 * 1000);
+    window.addEventListener('focus', refreshSelected);
+    window.addEventListener('online', refreshSelected);
+    document.addEventListener('visibilitychange', refreshSelected);
+    return () => {
+      window.clearInterval(selectedTimer);
+      window.clearInterval(catalogTimer);
+      window.removeEventListener('focus', refreshSelected);
+      window.removeEventListener('online', refreshSelected);
+      document.removeEventListener('visibilitychange', refreshSelected);
+    };
+  }, [refreshQuotes, selectedPair, tradingMode, user]);
   
   // Check if this is a password recovery link
   const isRecoveryLink = useMemo(() => {
@@ -234,22 +254,15 @@ const handleUpdatePassword = async (newPassword: string) => {
     return limitedSymbols;
   }, [selectedPair, activePositions]);
   
-  // Always enable polling as fallback regardless of WebSocket status
-
-  
   // Get current price from ticker or market data
   const currentSelectedPairPrice = useMemo(() => {
-    const ticker = (marketData || []).find(t => t.symbol === selectedPair);
+    const streamPrice = getBybitPrice(selectedPair);
+    if (streamPrice > 0) return streamPrice;
+    const snapshotPrice = getSnapshotPriceBySymbol(selectedPair);
+    if (snapshotPrice > 0) return snapshotPrice;
     const marketPrice = (marketData || []).find(data => data.symbol === selectedPair)?.price;
-    if (marketPrice && marketPrice > 0) {
-      return marketPrice;
-    }
-    
-    return 0;
-  }, [selectedPair, marketData]);
-
-  // Define ticker variable for compatibility
-  const ticker = (marketData || []).find(data => data.symbol === selectedPair);
+    return marketPrice && marketPrice > 0 ? marketPrice : 0;
+  }, [getBybitPrice, getSnapshotPriceBySymbol, selectedPair, marketData]);
 
   // Get live price for a symbol with fallback (using same strategy as WalletPage)
   const getCurrentPrice = useCallback((symbol: string): number => {
@@ -380,36 +393,40 @@ const handleUpdatePassword = async (newPassword: string) => {
     isRecoveryLink
   ]);
 
-  // Set up periodic refresh of active positions - only for authenticated users
   useEffect(() => {
-    // Only set up the interval if the user is logged in
-    if (user) {
-      // Clear any existing interval first
-      if (positionRefreshIntervalRef.current) {
-        clearInterval(positionRefreshIntervalRef.current);
-      }
-      
-      // Set up a new interval to refresh positions every 10 seconds (reduced frequency since WebSocket handles real-time updates)
-      positionRefreshIntervalRef.current = window.setInterval(async () => {
-        
-        try {
-          // Refresh futures positions
-          await fetchActivePositions();
-          
-        } catch (error) {
-          console.error('Error refreshing positions:', error);
-        }
-      }, 10000); // 10 seconds interval (reduced since WebSocket provides real-time updates)
-      
-      // Clean up the interval when the component unmounts
-      return () => {
-        if (positionRefreshIntervalRef.current) {
-          clearInterval(positionRefreshIntervalRef.current);
-          positionRefreshIntervalRef.current = null;
-        }
-      };
-    }
-  }, [user, fetchActivePositions]);
+    if (!user) return;
+    let refreshTimer: number | null = null;
+    const refreshAccount = () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void Promise.all([fetchActivePositions(), fetchOpenOrders()]);
+      }, 100);
+    };
+    const channel = supabase.channel(`futures-account-${user.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'futures_positions', filter: `user_id=eq.${user.id}`,
+      }, refreshAccount)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'futures_orders', filter: `user_id=eq.${user.id}`,
+      }, refreshAccount)
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') refreshAccount();
+      });
+    const catchUp = () => {
+      if (!document.hidden) refreshAccount();
+    };
+    window.addEventListener('focus', catchUp);
+    window.addEventListener('online', catchUp);
+    document.addEventListener('visibilitychange', catchUp);
+    return () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      window.removeEventListener('focus', catchUp);
+      window.removeEventListener('online', catchUp);
+      document.removeEventListener('visibilitychange', catchUp);
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchActivePositions, fetchOpenOrders, user]);
 
   // Handle futures trade
   const handleFuturesTrade = useCallback(async (
@@ -446,7 +463,7 @@ const handleUpdatePassword = async (newPassword: string) => {
       });
       
       if (positionId) {
-        // Refresh wallet breakdown to update available balance
+        await Promise.all([fetchBalances(), fetchActivePositions(), fetchOpenOrders()]);
         refreshBreakdown();
 
         return true;
@@ -457,7 +474,7 @@ const handleUpdatePassword = async (newPassword: string) => {
       console.error('Error in handleFuturesTrade:', error);
       return false;
     }
-  }, [selectedPair, openPosition, refreshBreakdown, fetchBalances]);
+  }, [selectedPair, openPosition, refreshBreakdown, fetchBalances, fetchActivePositions, fetchOpenOrders]);
 
   // Handle closing a futures position
   const handleClosePosition = useCallback(async (positionId: string, livePrice?: number) => {
@@ -466,7 +483,7 @@ const handleUpdatePassword = async (newPassword: string) => {
       const success = await closePosition(positionId, livePrice);
 
       if (success) {
-        // Refresh wallet breakdown to update available balance
+        await fetchBalances();
         refreshBreakdown();
 
         // The closePosition function will handle updating the database and refreshing the positions
@@ -478,7 +495,7 @@ const handleUpdatePassword = async (newPassword: string) => {
       console.error('Error in handleClosePosition:', error);
       return false;
     }
-  }, [closePosition, refreshBreakdown]);
+  }, [closePosition, refreshBreakdown, fetchBalances]);
 
   // Handle spot order
   const handleSpotOrder = useCallback(async (order: {
@@ -643,152 +660,118 @@ const handleUpdatePassword = async (newPassword: string) => {
                     )}
                     
                     {tradingMode === 'futures' && (
-                      <div className="flex min-h-[calc(100vh-64px)] flex-col app-page-bg overflow-y-auto xl:h-[calc(100vh-64px)] xl:min-h-0 xl:flex-row xl:overflow-hidden">
-                        {/* Left Column - Order Book */}
-                        <div className="order-2 w-full shrink-0 border-t border-slate-700 max-h-[420px] overflow-hidden sm:max-h-[480px] xl:order-1 xl:h-full xl:w-80 xl:max-h-none xl:border-r xl:border-t-0">
-                          <OrderBook 
-                            currentPrice={currentSelectedPairPrice}
-                            selectedPair={selectedPair}
-                            tradingMode="futures"
-                          />
-                        </div>
-                        
-                        {/* Middle Column - Chart and Trading Forms */}
-                        <div className="order-1 flex min-w-0 flex-1 flex-col overflow-visible xl:order-2 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:[scrollbar-width:none] xl:[-ms-overflow-style:none] xl:[&::-webkit-scrollbar]:hidden">
-                          {/* Trading Chart */}
-                          <div className="h-[280px] shrink-0 sm:h-[340px] md:h-[420px] xl:h-[420px] xl:flex-none">
-                            <TradingChart key={selectedPair} selectedPair={selectedPair} backgroundVariant="futures" />
-                          </div>
-                          
-                          {/* Trading Forms and Positions */}
-                          <div className="flex flex-col">
-                            {/* Trading Forms */}
-                            <div className="shrink-0 p-2 sm:p-3 xl:p-0">
-                              <FuturesTradingForms
-                                getCurrentPrice={getCurrentPrice}
-                                usdtBalance={balances.usdt_balance}
-                                availableBalance={usdtAvailableMargin}
-                                maxAllowedLeverage={currentMaxFuturesLeverage}
-                                minAllowedLeverage={currentMinFuturesLeverage}
-                                calculateLiquidationPrice={calculateLiquidationPrice}
-                                onFuturesTrade={handleFuturesTrade}
-                                selectedPair={selectedPair}
-                                surfaceVariant="futures"
-                             />
+                      <div className="futures-workspace flex min-h-[calc(100vh-72px)] flex-col bg-[#070a12] text-slate-100">
+                        <FuturesMarketHeader selectedPair={selectedPair} currentPrice={currentSelectedPairPrice} onSelectPair={setSelectedPair} />
+
+                        <div className="futures-terminal-grid min-h-0 flex-1 bg-[#252a33]">
+                          <section className="futures-chart-panel min-w-0 overflow-hidden bg-[#0b0e11]">
+                            <div className="h-[360px] sm:h-[440px] xl:h-full">
+                              <TradingChart key={selectedPair} selectedPair={selectedPair} backgroundVariant="futures" />
                             </div>
-                            
-                            {/* Positions */}
-                            <div className="border-t border-slate-700">
-                              <FuturesMyOrders 
-                                currentBtcPrice={currentSelectedPairPrice}
-                                futuresPositions={activePositions}
-                                marketData={marketData}
-                                onClosePosition={handleClosePosition}
-                                openOrders={openOrders}
-                                onCancelOrder={cancelOrder}
-                                onCancelAllOrders={cancelAllOpenOrders}
-                                updateBalances={updateBalances}
-                                ticker={ticker}
-                                balances={balances}
-                                selectedPair={selectedPair}
-                                tradingMode={tradingMode}
-                                currentSelectedPairPrice={currentSelectedPairPrice}
-                              />
-                            </div>
+                          </section>
+
+                          <div className="futures-depth-panel min-h-0 overflow-hidden bg-[#0b0e11]">
+                            <FuturesMarketRail
+                              orderBook={(
+                                <OrderBook
+                                  selectedPair={selectedPair}
+                                  tradingMode="futures"
+                                  compact
+                                />
+                              )}
+                              markets={(
+                                <Markets
+                                  selectedPair={selectedPair}
+                                  setSelectedPair={setSelectedPair}
+                                  currentPrice={currentSelectedPairPrice}
+                                  tradingMode="futures"
+                                  compact
+                                />
+                              )}
+                            />
                           </div>
-                        </div>
-                      
-                        
-                        {/* Right Column - Markets */}
-                        <div className="order-3 w-full shrink-0 border-t border-slate-700 overflow-visible xl:h-full xl:w-80 xl:max-h-none xl:overflow-hidden xl:border-l xl:border-t-0">
-                          <Markets 
-                            marketData={marketData}
-                            selectedPair={selectedPair}
-                            setSelectedPair={setSelectedPair}
-                            currentPrice={currentSelectedPairPrice}
-                            tradingMode="futures"
-                          />
+
+                          <section className="futures-order-panel min-h-[620px] overflow-hidden bg-[#0b0e11] xl:min-h-0">
+                            <FuturesTradingForms
+                              usdtBalance={balances.usdt_balance}
+                              availableBalance={usdtAvailableMargin}
+                              maxAllowedLeverage={currentMaxFuturesLeverage}
+                              minAllowedLeverage={currentMinFuturesLeverage}
+                              calculateLiquidationPrice={calculateLiquidationPrice}
+                              onFuturesTrade={handleFuturesTrade}
+                              selectedPair={selectedPair}
+                              surfaceVariant="futures"
+                            />
+                          </section>
+
+                          <section className="futures-positions-panel min-h-[320px] overflow-hidden bg-[#0b0e11] xl:min-h-0">
+                            <FuturesMyOrders
+                              currentBtcPrice={currentSelectedPairPrice}
+                              futuresPositions={activePositions}
+                              onClosePosition={handleClosePosition}
+                              openOrders={openOrders}
+                              onCancelOrder={cancelOrder}
+                              onCancelAllOrders={() => cancelAllOpenOrders(selectedPair)}
+                              updateBalances={updateBalances}
+                              balances={balances}
+                              selectedPair={selectedPair}
+                              tradingMode={tradingMode}
+                              currentSelectedPairPrice={currentSelectedPairPrice}
+                            />
+                          </section>
                         </div>
                       </div>
                     )}
                     
                     {tradingMode === 'cfd' && (
-                      <div className="flex h-[calc(100vh-64px)] flex-col app-page-bg overflow-y-auto lg:flex-row">
-                        {/* Left Column - Pair Details Panel (full width on mobile, fixed width on desktop) */}
-                        <div className="hidden lg:block w-full lg:w-96 h-auto lg:h-full p-4 overflow-y-auto hide-scrollbar">
-                          <div className="h-full rounded-2xl app-surface-primary">
-                            <PairDetailsPanel
-                              currentPrice={currentSelectedPairPrice}
-                              selectedPair={selectedPair}
-                              tradingMode="cfd"
-                              onPairSelect={setSelectedPair}
+                      <div className="cfd-workspace flex min-h-[calc(100vh-72px)] flex-col bg-[#070a12] text-slate-100">
+                        <CfdMarketHeader selectedPair={selectedPair} currentPrice={currentSelectedPairPrice} onSelectPair={setSelectedPair} />
+                        <div className="cfd-terminal-grid min-h-0 flex-1 bg-[#252a33]">
+                          <section className="cfd-chart-panel min-w-0 overflow-hidden bg-[#0b0e11]">
+                            <div className="h-[360px] sm:h-[440px] xl:h-full">
+                              <TradingChart key={selectedPair} selectedPair={selectedPair} backgroundVariant="cfd-terminal" />
+                            </div>
+                          </section>
+                          <div className="cfd-depth-panel min-h-0 overflow-hidden bg-[#0b0e11]">
+                            <CfdMarketRail
+                              details={<PairDetailsPanel currentPrice={currentSelectedPairPrice} selectedPair={selectedPair} tradingMode="cfd" onPairSelect={setSelectedPair} compact />}
+                              markets={<Markets selectedPair={selectedPair} setSelectedPair={setSelectedPair} currentPrice={currentSelectedPairPrice} tradingMode="cfd" compact />}
                             />
                           </div>
-                        </div>
-
-                        {/* Middle Column - Chart and Trading Forms */}
-                        <div className="flex-1 flex h-full flex-col app-page-bg overflow-y-auto hide-scrollbar">
-                          <div className="p-4 space-y-4">
-                            {/* Trading Chart */}
-                            <div className="h-[500px] overflow-hidden rounded-2xl app-surface-primary">
-                              <TradingChart key={selectedPair} selectedPair={selectedPair} backgroundVariant="cfd" />
-                            </div>
-
-                            {/* Trading Forms and Positions */}
-                            <div className="flex flex-col overflow-hidden rounded-2xl app-surface-primary">
-                              {/* Trading Forms */}
-                              <div className="p-4">
-                                <CFDTradingForms
-                                  currentPrice={currentSelectedPairPrice}
-                                  usdtBalance={balances.usdt_balance}
-                                  calculateLiquidationPrice={calculateLiquidationPrice}
-                                  selectedPair={selectedPair}
-                                  onCFDTrade={handleFuturesTrade}
-                                  maxForexLeverage={currentMaxForexLeverage}
-                                  minForexLeverage={currentMinForexLeverage}
-                                  maxCommoditiesLeverage={currentMaxCommoditiesLeverage}
-                                  minCommoditiesLeverage={currentMinCommoditiesLeverage}
-                                  maxStocksLeverage={currentMaxStocksLeverage}
-                                  minStocksLeverage={currentMinStocksLeverage}
-                                  availableBalance={usdtAvailableMargin}
-                                  userCfdTier={userCfdTier.name}
-                                  surfaceVariant="cfd"
-                                />
-                              </div>
-
-                              {/* Positions */}
-                              <div className="border-t border-slate-700/50">
-                                <FuturesMyOrders
-                                  currentBtcPrice={currentSelectedPairPrice}
-                                  futuresPositions={activePositions}
-                                  marketData={marketData}
-                                  onClosePosition={handleClosePosition}
-                                  openOrders={openOrders}
-                                  onCancelOrder={cancelOrder}
-                                  onCancelAllOrders={cancelAllOpenOrders}
-                                  updateBalances={updateBalances}
-                                  ticker={ticker}
-                                  balances={balances}
-                                  selectedPair={selectedPair}
-                                  tradingMode={tradingMode}
-                                  currentSelectedPairPrice={currentSelectedPairPrice}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Right Column - Markets (full width on mobile, fixed width on desktop) */}
-                        <div className="hidden lg:block w-full lg:w-80 h-auto lg:h-full p-4 overflow-y-auto hide-scrollbar">
-                          <div className="h-full rounded-2xl app-surface-primary">
-                            <Markets
-                              marketData={marketData}
-                              selectedPair={selectedPair}
-                              setSelectedPair={setSelectedPair}
+                          <section className="cfd-order-panel min-h-[620px] overflow-hidden bg-[#0b0e11] xl:min-h-0">
+                            <CFDTradingForms
                               currentPrice={currentSelectedPairPrice}
-                              tradingMode="cfd"
+                              usdtBalance={balances.usdt_balance}
+                              calculateLiquidationPrice={calculateLiquidationPrice}
+                              selectedPair={selectedPair}
+                              onCFDTrade={handleFuturesTrade}
+                              maxForexLeverage={currentMaxForexLeverage}
+                              minForexLeverage={currentMinForexLeverage}
+                              maxCommoditiesLeverage={currentMaxCommoditiesLeverage}
+                              minCommoditiesLeverage={currentMinCommoditiesLeverage}
+                              maxStocksLeverage={currentMaxStocksLeverage}
+                              minStocksLeverage={currentMinStocksLeverage}
+                              availableBalance={usdtAvailableMargin}
+                              userCfdTier={userCfdTier.name}
+                              surfaceVariant="terminal"
                             />
-                          </div>
+                          </section>
+                          <section className="cfd-positions-panel min-h-[320px] overflow-hidden bg-[#0b0e11] xl:min-h-0">
+                            <FuturesMyOrders
+                              currentBtcPrice={currentSelectedPairPrice}
+                              futuresPositions={activePositions}
+                              onClosePosition={handleClosePosition}
+                              openOrders={openOrders}
+                              onCancelOrder={cancelOrder}
+                              onCancelAllOrders={() => cancelAllOpenOrders(selectedPair)}
+                              updateBalances={updateBalances}
+                              balances={balances}
+                              selectedPair={selectedPair}
+                              tradingMode={tradingMode}
+                              currentSelectedPairPrice={currentSelectedPairPrice}
+                              terminal
+                            />
+                          </section>
                         </div>
                       </div>
                     )}

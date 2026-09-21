@@ -12,7 +12,7 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "private, max-age=5" },
 });
 
-const CACHE_MS = 10_000;
+const CACHE_MS = 5 * 60_000;
 let cacheUntil = 0;
 let activeSync: Promise<number> | null = null;
 
@@ -99,7 +99,9 @@ Deno.serve(async (request: Request) => {
     if (Date.now() < cacheUntil) return json({ success: true, cached: true, updated: 0 });
     if (!activeSync) activeSync = fetchAndPersist(admin).finally(() => { activeSync = null; });
     const updated = await activeSync;
-    return json({ success: true, cached: false, updated, source: "Bybit linear tickers" });
+    const { data: engine, error: engineError } = await admin.rpc("process_futures_engine");
+    if (engineError) console.error("Futures processing failed after quote sync", engineError);
+    return json({ success: true, cached: false, updated, engine, source: "Bybit linear tickers" });
   } catch (error) {
     console.error("Bybit market sync failed", error);
     return json({ error: error instanceof Error ? error.message : "Market sync failed" }, 502);

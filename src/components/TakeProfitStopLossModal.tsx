@@ -14,6 +14,7 @@ interface TakeProfitStopLossModalProps {
   lotSize?: number;
   priceIsUsd?: boolean;
   variant?: 'vertical' | 'horizontal';
+  allowLimitExecution?: boolean;
   onConfirm: (triggerPrice: number, executionType: 'market' | 'limit', executionPrice?: number) => void;
 }
 
@@ -30,6 +31,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
   lotSize = 1,
   priceIsUsd = true,
   variant = 'vertical',
+  allowLimitExecution = true,
   onConfirm
 }) => {
   const { t } = useTranslation();
@@ -96,6 +98,10 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
     let percentage = 0;
     let roi = 0;
 
+    if (!(actualPositionSize > 0) || !(entryPrice > 0) || !(leverage > 0)) {
+      return { triggerPrice: 0, pnl: 0, percentage: 0, roi: 0 };
+    }
+
     if (inputMode === 'price' && priceValue) {
       triggerPrice = parseDisplayPrice(parseFloat(priceValue));
       pnl = calculatePnLFromPrice(triggerPrice);
@@ -138,7 +144,10 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
     }
   };
 
-  const isValid = calculatedValues.triggerPrice > 0 && !isNaN(calculatedValues.triggerPrice);
+  const isValid = actualPositionSize > 0
+    && entryPrice > 0
+    && Number.isFinite(calculatedValues.triggerPrice)
+    && calculatedValues.triggerPrice > 0;
 
   const validateTPSL = (): string | null => {
     if (!isValid) return 'Please enter a valid value';
@@ -395,7 +404,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
                 </div>
               )}
 
-              <div>
+              {allowLimitExecution && <div>
                 <label className="block text-sm text-slate-400 mb-2">Execution Type</label>
                 <select
                   value={executionType}
@@ -414,7 +423,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
                     className={`w-full mt-2 bg-slate-900/50 text-white px-4 py-3 rounded-lg border border-${colorClass}-500/30 focus:outline-none focus:ring-2 focus:ring-${colorClass}-500/50 font-mono`}
                   />
                 )}
-              </div>
+              </div>}
 
               <div className="flex gap-3 pt-2">
                 <button
@@ -642,7 +651,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
           </div>
         )}
 
-        <div className="mb-6">
+        {allowLimitExecution && <div className="mb-6">
           <label className="block text-sm text-slate-400 mb-2">Execution Type</label>
           <select
             value={executionType}
@@ -661,7 +670,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
               className={`w-full mt-2 bg-slate-900/50 text-white px-4 py-3 rounded-lg border border-${colorClass}-500/30 focus:outline-none focus:ring-2 focus:ring-${colorClass}-500/50 font-mono`}
             />
           )}
-        </div>
+        </div>}
 
         <div className="flex gap-3">
           <button

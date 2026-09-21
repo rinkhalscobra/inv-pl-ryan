@@ -32,7 +32,9 @@ const PRICE_BATCH_INTERVAL = 100;
 const WS_SUBSCRIPTION_BATCH_SIZE = 10;
 const WS_SUBSCRIPTION_BATCH_DELAY = 500;
 const STALE_CHECK_INTERVAL = 15000;
-const DB_SYNC_INTERVAL = 60000;
+// WebSocket drives the UI. Persist one server-verified snapshot every five
+// minutes so the free REST allowance is not multiplied by every screen tick.
+const DB_SYNC_INTERVAL = 5 * 60 * 1000;
 
 const CRYPTO_SYMBOLS = TOP_CRYPTO_PAIRS.map(p => p.symbol);
 const CRYPTO_SYMBOL_SET = new Set(CRYPTO_SYMBOLS);

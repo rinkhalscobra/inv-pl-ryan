@@ -36,6 +36,7 @@ interface MarketDataContextType {
   getPriceBySymbol: (symbol: string) => number;
   getSnapshotPriceBySymbol: (symbol: string) => number;
   refreshSnapshot: () => void;
+  refreshQuotes: (symbol?: string) => Promise<void>;
   lastSnapshotTime: number;
 }
 
@@ -48,6 +49,10 @@ interface MarketDataProviderProps {
 const FREE_PRICE_INSTRUMENTS = CFD_INSTRUMENTS
   .filter(instrument => instrument.active && instrument.tradable !== false)
   .map(instrument => ({ symbol: instrument.symbol, type: instrument.type }));
+const FREE_PRICE_SYMBOLS = new Set(FREE_PRICE_INSTRUMENTS.map(instrument => instrument.symbol));
+const PRICE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const SELECTED_QUOTE_INTERVAL_MS = 90 * 1000;
+const quoteTime = (item: MarketDataItem) => Date.parse(item.timestamp || '') || 0;
 
 export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children }) => {
   const [marketData, setMarketData] = useState<MarketDataItem[]>([]);
@@ -56,11 +61,13 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [error, setError] = useState<string | null>(null);
   const refreshInFlightRef = useRef(false);
+  const lastRefreshRequestRef = useRef(0);
+  const lastSelectedRefreshRef = useRef(new Map<string, number>());
   const isConnected = connectionState === 'connected';
 
-  const loadDatabaseFallback = useCallback(async () => {
+  const loadDatabaseFallback = useCallback(async (symbol?: string) => {
     try {
-      const cfdSymbols = FREE_PRICE_INSTRUMENTS.map(instrument => instrument.symbol);
+      const cfdSymbols = symbol ? [symbol] : FREE_PRICE_INSTRUMENTS.map(instrument => instrument.symbol);
       const rows: Array<Record<string, string | number | null>> = [];
 
       for (let index = 0; index < cfdSymbols.length; index += 100) {
@@ -90,12 +97,13 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
             volume_24h: parseFloat(String(row.volume_24h)) || 0,
             bid_price: row.bid_price ? parseFloat(String(row.bid_price)) : undefined,
             ask_price: row.ask_price ? parseFloat(String(row.ask_price)) : undefined,
-            timestamp: String(row.timestamp || new Date().toISOString()),
-            updated_at: String(row.updated_at || new Date().toISOString())
+            timestamp: String(row.timestamp || ''),
+            updated_at: String(row.updated_at || '')
           };
           const existing = itemMap.get(appSymbol);
 
-          if (!existing || (preferred && !existing.preferred)) {
+          if (!existing || quoteTime(item) > quoteTime(existing.item)
+            || (quoteTime(item) === quoteTime(existing.item) && preferred && !existing.preferred)) {
             itemMap.set(appSymbol, { item, preferred });
           }
         }
@@ -105,32 +113,61 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
         if (items.length > 0) {
           setMarketData(prev => {
             const symbolMap = new Map(prev.map(item => [item.symbol, item]));
-            for (const item of items) symbolMap.set(item.symbol, item);
+            for (const item of items) {
+              const previous = symbolMap.get(item.symbol);
+              if (!previous || quoteTime(item) >= quoteTime(previous)) symbolMap.set(item.symbol, item);
+            }
             return Array.from(symbolMap.values());
           });
-          setSnapshotData(items);
+          setSnapshotData(prev => {
+            const symbolMap = new Map(prev.map(item => [item.symbol, item]));
+            for (const item of items) {
+              const previous = symbolMap.get(item.symbol);
+              if (!previous || quoteTime(item) >= quoteTime(previous)) symbolMap.set(item.symbol, item);
+            }
+            return Array.from(symbolMap.values());
+          });
           setLastSnapshotTime(Date.now());
-          setConnectionState('connected');
           setError(null);
         }
       }
     } catch {
-      setConnectionState('disconnected');
       setError('Stored CFD prices are temporarily unavailable');
     }
   }, []);
 
-  const refreshFreeMarketCache = useCallback(async () => {
-    if (refreshInFlightRef.current) return;
+  const refreshFreeMarketCache = useCallback(async (symbol?: string) => {
+    const instrument = symbol ? getCfdInstrument(symbol) : undefined;
+    if (symbol && (!instrument || !FREE_PRICE_SYMBOLS.has(instrument.symbol))) return;
+    const instruments = instrument
+      ? [{ symbol: instrument.symbol, type: instrument.type }]
+      : FREE_PRICE_INSTRUMENTS;
+    const lastRequest = instrument
+      ? lastSelectedRefreshRef.current.get(instrument.symbol) || 0
+      : lastRefreshRequestRef.current;
+    const interval = instrument ? SELECTED_QUOTE_INTERVAL_MS : PRICE_REFRESH_INTERVAL_MS;
+    if (refreshInFlightRef.current || !navigator.onLine || document.hidden
+      || Date.now() - lastRequest < interval) return;
     refreshInFlightRef.current = true;
-    const { data: sessionResult } = await supabase.auth.getSession();
     try {
+      const { data: sessionResult } = await supabase.auth.getSession();
       if (!sessionResult.session) return;
+      const requestedAt = Date.now();
+      if (instrument) lastSelectedRefreshRef.current.set(instrument.symbol, requestedAt);
+      else {
+        lastRefreshRequestRef.current = requestedAt;
+        for (const item of FREE_PRICE_INSTRUMENTS) lastSelectedRefreshRef.current.set(item.symbol, requestedAt);
+      }
       const { error: refreshError } = await supabase.functions.invoke('cfd-market-data', {
-        body: { instruments: FREE_PRICE_INSTRUMENTS },
+        body: { instruments },
         headers: { Authorization: `Bearer ${sessionResult.session.access_token}` }
       });
-      if (!refreshError) await loadDatabaseFallback();
+      if (refreshError) throw refreshError;
+      await loadDatabaseFallback(instrument?.symbol);
+    } catch {
+      if (instrument) lastSelectedRefreshRef.current.set(instrument.symbol, Date.now() - SELECTED_QUOTE_INTERVAL_MS + 30_000);
+      else lastRefreshRequestRef.current = Date.now() - PRICE_REFRESH_INTERVAL_MS + 30_000;
+      setError('CFD quote refresh is temporarily unavailable');
     } finally {
       refreshInFlightRef.current = false;
     }
@@ -158,14 +195,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
 
   useEffect(() => {
     void loadDatabaseFallback();
-    void refreshFreeMarketCache();
-    const databaseInterval = window.setInterval(() => void loadDatabaseFallback(), 30 * 1000);
-    const apiInterval = window.setInterval(() => void refreshFreeMarketCache(), 15 * 1000);
-    return () => {
-      window.clearInterval(databaseInterval);
-      window.clearInterval(apiInterval);
-    };
-  }, [loadDatabaseFallback, refreshFreeMarketCache]);
+  }, [loadDatabaseFallback]);
 
   useEffect(() => {
     const channel = supabase
@@ -175,10 +205,11 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
         { event: '*', schema: 'public', table: 'market_data' },
         payload => {
           const row = payload.new as Record<string, string | number | null>;
-          if (!row?.symbol || !FREE_PRICE_INSTRUMENTS.some(item => item.symbol === row.symbol)) return;
+          if (!row?.symbol) return;
 
           const rawSymbol = String(row.symbol);
           const appSymbol = resolveCfdAppSymbol(rawSymbol) || wsSymbolToAppSymbol(rawSymbol);
+          if (!FREE_PRICE_SYMBOLS.has(appSymbol)) return;
           const item: MarketDataItem = {
             symbol: appSymbol,
             price: Number(row.price) || 0,
@@ -188,41 +219,62 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
             volume_24h: Number(row.volume_24h) || 0,
             bid_price: row.bid_price == null ? undefined : Number(row.bid_price),
             ask_price: row.ask_price == null ? undefined : Number(row.ask_price),
-            timestamp: String(row.timestamp || new Date().toISOString()),
-            updated_at: String(row.updated_at || new Date().toISOString())
+            timestamp: String(row.timestamp || ''),
+            updated_at: String(row.updated_at || '')
           };
           if (item.price <= 0) return;
 
           const merge = (previous: MarketDataItem[]) => {
             const next = new Map(previous.map(entry => [entry.symbol, entry]));
-            next.set(item.symbol, item);
+            const existing = next.get(item.symbol);
+            if (!existing || quoteTime(item) >= quoteTime(existing)) next.set(item.symbol, item);
             return Array.from(next.values());
           };
           setMarketData(merge);
           setSnapshotData(merge);
           setLastSnapshotTime(Date.now());
-          setConnectionState('connected');
           setError(null);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionState('connected');
+          void loadDatabaseFallback();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setConnectionState('reconnecting');
+          setError('Live CFD updates are reconnecting');
+        } else if (status === 'CLOSED') {
+          setConnectionState('disconnected');
+        }
+      });
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadDatabaseFallback]);
 
   useEffect(() => {
-    const handleOnline = () => void loadDatabaseFallback();
+    const catchUp = () => {
+      if (document.hidden) return;
+      void loadDatabaseFallback();
+    };
+    const handleOnline = () => {
+      setConnectionState('reconnecting');
+      catchUp();
+    };
     const handleOffline = () => {
       setConnectionState('disconnected');
       setError('Browser is offline');
     };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('focus', catchUp);
+    document.addEventListener('visibilitychange', catchUp);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', catchUp);
+      document.removeEventListener('visibilitychange', catchUp);
     };
   }, [loadDatabaseFallback]);
 
@@ -236,6 +288,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
     getPriceBySymbol,
     getSnapshotPriceBySymbol,
     refreshSnapshot,
+    refreshQuotes: refreshFreeMarketCache,
     lastSnapshotTime
   };
 

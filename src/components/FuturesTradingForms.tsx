@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle, Plus, CreditCard as Edit2, X } from 'lucide
 import { useTranslation } from 'react-i18next';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { usePrevious } from '../hooks/usePrevious';
-import { calculateSpreadCost, formatSpreadDisplay } from '../constants/spreadConfig';
+import { formatSpreadDisplay } from '../constants/spreadConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
@@ -46,7 +46,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   onFuturesTrade
 }) => {
   const { t } = useTranslation();
-  const { convertUsdToEur, formatFiat, formatFiatPrice } = useFiatCurrency();
+  const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getPriceBySymbol, isConnected: isRealtimeConnected, connectionState, getPriceDirection } = useBybitData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isLeverageLocked = minAllowedLeverage === maxAllowedLeverage;
@@ -54,10 +54,12 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     isLeverageLocked ? minAllowedLeverage : Math.max(minAllowedLeverage, Math.min(10, maxAllowedLeverage))
   );
   const [orderType, setOrderType] = useState<'limit' | 'market'>('market');
+  const [limitPrice, setLimitPrice] = useState('');
   const [longAmount, setLongAmount] = useState('');
   const [shortAmount, setShortAmount] = useState('');
   const [longPercentage, setLongPercentage] = useState(0);
   const [shortPercentage, setShortPercentage] = useState(0);
+  const [activeSide, setActiveSide] = useState<'long' | 'short'>('long');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,11 +137,13 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     
     if (livePairPrice <= 0) return '';
     
-    const targetMargin = usdtBalance * (percentage / 100);
-    const amount = (targetMargin * leverage) / livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertEurToUsd(Number(limitPrice)) : livePairPrice;
+    if (!(entryPrice > 0)) return '';
+    const targetMargin = (availableBalance ?? usdtBalance) * (percentage / 100);
+    const amount = (targetMargin * leverage) / entryPrice;
     
     return amount.toFixed(6);
-  }, [usdtBalance, leverage, livePairPrice]);
+  }, [availableBalance, convertEurToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
 
   // Calculate amount from percentage for short positions
   const calculateShortAmountFromPercentage = useCallback((percentage: number) => {
@@ -147,11 +151,13 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     
     if (livePairPrice <= 0) return '';
     
-    const targetMargin = usdtBalance * (percentage / 100);
-    const amount = (targetMargin * leverage) / livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertEurToUsd(Number(limitPrice)) : livePairPrice;
+    if (!(entryPrice > 0)) return '';
+    const targetMargin = (availableBalance ?? usdtBalance) * (percentage / 100);
+    const amount = (targetMargin * leverage) / entryPrice;
     
     return amount.toFixed(6);
-  }, [usdtBalance, leverage, livePairPrice]);
+  }, [availableBalance, convertEurToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
 
   // Stop Loss / Take Profit states
   const [longStopLoss, setLongStopLoss] = useState<{ trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number } | null>(null);
@@ -164,6 +170,20 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   const [showLongTPModal, setShowLongTPModal] = useState(false);
   const [showShortSLModal, setShowShortSLModal] = useState(false);
   const [showShortTPModal, setShowShortTPModal] = useState(false);
+
+  useEffect(() => {
+    setLongAmount('');
+    setShortAmount('');
+    setLongPercentage(0);
+    setShortPercentage(0);
+    setLimitPrice('');
+    setLongStopLoss(null);
+    setLongTakeProfit(null);
+    setShortStopLoss(null);
+    setShortTakeProfit(null);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+  }, [selectedPair]);
 
   // Generate leverage options based on max allowed leverage
   const generateLeverageOptions = () => {
@@ -239,17 +259,18 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const handleLong = async () => {
     const amount = parseFloat(longAmount);
+    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) : livePairPrice;
     
     if (!amount || amount <= 0) {
       setErrorMessage('Please enter a valid amount');
       return;
     }
 
-    if (!Number.isFinite(livePairPrice) || livePairPrice <= 0) {
-      setErrorMessage('A verified live price is required before placing an order');
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+      setErrorMessage(orderType === 'limit' ? 'Please enter a valid limit price' : 'A verified live price is required before placing an order');
       return;
     }
-    const notionalValue = amount * livePairPrice;
+    const notionalValue = amount * entryPrice;
     const requiredMargin = notionalValue / leverage;
     
     if (requiredMargin > (availableBalance !== undefined ? availableBalance : usdtBalance)) {
@@ -260,9 +281,11 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     // Always pass the live price to ensure the parent component has it
     setIsSubmitting(true);
     try {
-      const opened = await Promise.resolve(onFuturesTrade(selectedPair, 'long', amount, leverage, marginType, longStopLoss || undefined, longTakeProfit || undefined, orderType, livePairPrice));
+      const opened = await Promise.resolve(onFuturesTrade(selectedPair, 'long', amount, leverage, marginType, longStopLoss || undefined, longTakeProfit || undefined, orderType, entryPrice));
       if (!opened) throw new Error('The position was not accepted');
-      setSuccessMessage(`Long position opened successfully for ${amount} ${selectedPair.replace('USDT', '')}`);
+      setSuccessMessage(orderType === 'limit'
+        ? `Long limit order placed for ${amount} ${selectedPair.replace('USDT', '')}`
+        : `Long position opened for ${amount} ${selectedPair.replace('USDT', '')}`);
       setLongAmount('');
       setLongPercentage(0);
       setLongStopLoss(null);
@@ -276,17 +299,18 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const handleShort = async () => {
     const amount = parseFloat(shortAmount);
+    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) : livePairPrice;
     
     if (!amount || amount <= 0) {
       setErrorMessage('Please enter a valid amount');
       return;
     }
 
-    if (!Number.isFinite(livePairPrice) || livePairPrice <= 0) {
-      setErrorMessage('A verified live price is required before placing an order');
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+      setErrorMessage(orderType === 'limit' ? 'Please enter a valid limit price' : 'A verified live price is required before placing an order');
       return;
     }
-    const notionalValue = amount * livePairPrice;
+    const notionalValue = amount * entryPrice;
     const requiredMargin = notionalValue / leverage;
     
     if (requiredMargin > (availableBalance !== undefined ? availableBalance : usdtBalance)) {
@@ -297,9 +321,11 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     // Always pass the live price to ensure the parent component has it
     setIsSubmitting(true);
     try {
-      const opened = await Promise.resolve(onFuturesTrade(selectedPair, 'short', amount, leverage, marginType, shortStopLoss || undefined, shortTakeProfit || undefined, orderType, livePairPrice));
+      const opened = await Promise.resolve(onFuturesTrade(selectedPair, 'short', amount, leverage, marginType, shortStopLoss || undefined, shortTakeProfit || undefined, orderType, entryPrice));
       if (!opened) throw new Error('The position was not accepted');
-      setSuccessMessage(`Short position opened successfully for ${amount} ${selectedPair.replace('USDT', '')}`);
+      setSuccessMessage(orderType === 'limit'
+        ? `Short limit order placed for ${amount} ${selectedPair.replace('USDT', '')}`
+        : `Short position opened for ${amount} ${selectedPair.replace('USDT', '')}`);
       setShortAmount('');
       setShortPercentage(0);
       setShortStopLoss(null);
@@ -325,23 +351,247 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const calculateLongCost = () => {
     const amount = parseFloat(longAmount) || 0;
-    const notionalValue = amount * livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) || 0 : livePairPrice;
+    const notionalValue = amount * entryPrice;
     const requiredMargin = notionalValue / leverage;
-    const spreadCost = amount > 0 ? calculateSpreadCost(selectedPair, livePairPrice, amount, 1) : 0;
-    return requiredMargin + spreadCost;
+    return requiredMargin;
   };
 
   const calculateShortCost = () => {
     const amount = parseFloat(shortAmount) || 0;
-    const notionalValue = amount * livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) || 0 : livePairPrice;
+    const notionalValue = amount * entryPrice;
     const requiredMargin = notionalValue / leverage;
-    const spreadCost = amount > 0 ? calculateSpreadCost(selectedPair, livePairPrice, amount, 1) : 0;
-    return requiredMargin + spreadCost;
+    return requiredMargin;
   };
 
 
   const longSpreadInfo = longAmount ? formatSpreadDisplay(selectedPair, livePairPrice, parseFloat(longAmount), 1) : null;
   const shortSpreadInfo = shortAmount ? formatSpreadDisplay(selectedPair, livePairPrice, parseFloat(shortAmount), 1) : null;
+
+  if (isFuturesSurface) {
+    const isLong = activeSide === 'long';
+    const activeAmount = isLong ? longAmount : shortAmount;
+    const activePercentage = isLong ? longPercentage : shortPercentage;
+    const activeStopLoss = isLong ? longStopLoss : shortStopLoss;
+    const activeTakeProfit = isLong ? longTakeProfit : shortTakeProfit;
+    const activeSpreadInfo = isLong ? longSpreadInfo : shortSpreadInfo;
+    const requiredMargin = isLong ? calculateLongCost() : calculateShortCost();
+    const baseAsset = selectedPair.replace('USDT', '');
+    const orderEntryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) || livePairPrice : livePairPrice;
+    const parsedAmount = Number(activeAmount) || 0;
+    const liquidationPrice = calculateLiquidationPrice(
+      activeSide,
+      orderEntryPrice,
+      leverage,
+      marginType,
+      parsedAmount,
+      availableBalance ?? usdtBalance,
+    );
+    const canSubmit = isSubmitting || parsedAmount <= 0 || (orderType === 'market'
+      ? livePairPrice <= 0
+      : !(Number(limitPrice) > 0));
+
+    const updateAmount = (value: string) => {
+      if (isLong) {
+        setLongAmount(value);
+        setLongPercentage(0);
+      } else {
+        setShortAmount(value);
+        setShortPercentage(0);
+      }
+    };
+
+    const updatePercentage = (percentage: number) => {
+      if (isLong) handleLongPercentage(percentage);
+      else handleShortPercentage(percentage);
+    };
+
+    return (
+      <>
+        <div className="futures-order-ticket flex h-full min-h-[620px] flex-col bg-[#0b0e11]" translate="no">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.07] px-4">
+            <h2 className="text-sm font-semibold text-white">Place order</h2>
+            <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
+              {getConnectionIndicator()} {isRealtimeConnected ? 'Live' : 'Offline'}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+            {(errorMessage || successMessage) && (
+              <div className={`mb-3 flex items-start gap-2 rounded-md border px-3 py-2.5 text-xs ${errorMessage ? 'border-rose-400/25 bg-rose-400/[0.08] text-rose-300' : 'border-emerald-400/25 bg-emerald-400/[0.08] text-emerald-300'}`}>
+                {errorMessage ? <AlertTriangle size={15} className="mt-0.5 shrink-0" /> : <CheckCircle size={15} className="mt-0.5 shrink-0" />}
+                <span>{errorMessage || successMessage}</span>
+              </div>
+            )}
+
+            <div className="mb-4 grid grid-cols-2 rounded-md bg-[#161a1e] p-1">
+              <button
+                type="button"
+                onClick={() => setActiveSide('long')}
+                className={`rounded px-3 py-2 text-xs font-semibold transition ${isLong ? 'bg-emerald-400/15 text-emerald-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Buy / Long
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSide('short')}
+                className={`rounded px-3 py-2 text-xs font-semibold transition ${!isLong ? 'bg-rose-400/15 text-rose-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Sell / Short
+              </button>
+            </div>
+
+            <div className="mb-4 flex items-center gap-5 border-b border-white/[0.07]">
+              {(['market', 'limit'] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => {
+                    setOrderType(type);
+                    if (type === 'limit' && !limitPrice && livePairPrice > 0) setLimitPrice(convertUsdToEur(livePairPrice).toFixed(4));
+                  }}
+                  className={`border-b-2 pb-2.5 text-xs font-semibold capitalize transition ${orderType === type ? 'border-violet-400 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                  {t(`trading.${type}`)}
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1.5 block text-[11px] text-slate-500">Margin mode</label>
+                <div className="grid grid-cols-2 rounded-md border border-white/[0.08] bg-[#161a1e] p-0.5">
+                  {(['isolated', 'cross'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setMarginType(type)}
+                      className={`rounded px-1 py-2 text-[11px] font-medium capitalize transition ${marginType === type ? 'bg-violet-500/20 text-violet-200' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      {t(`trading.${type}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[11px] text-slate-500">{t('common.leverage')}</label>
+                <div className="relative">
+                  <select
+                    value={leverage}
+                    onChange={(event) => setLeverage(Number(event.target.value))}
+                    disabled={isLeverageLocked}
+                    className="h-[38px] w-full appearance-none rounded-md border border-white/[0.08] bg-[#161a1e] px-3 font-mono text-xs font-semibold text-white outline-none transition focus:border-violet-400/50 disabled:cursor-not-allowed"
+                  >
+                    {leverageOptions.map((option) => <option key={option} value={option}>{option}x</option>)}
+                  </select>
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-violet-300">{leverage}x</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-3 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500">{t('trading.availableMargin')}</span>
+              <span className="font-mono font-medium tabular-nums text-slate-200">{formatFiat(availableBalance !== undefined ? availableBalance : usdtBalance)}</span>
+            </div>
+
+            <label className="mb-1.5 flex items-center justify-between text-[11px] text-slate-500">
+              <span>{orderType === 'market' ? 'Mark price' : 'Limit price'}</span>
+              <span className="text-slate-600">EUR</span>
+            </label>
+            {orderType === 'market' ? (
+              <div className={`mb-3 flex h-11 items-center justify-between rounded-md border border-white/[0.09] bg-[#161a1e] px-3 font-mono text-sm tabular-nums ${priceColorClass} ${priceFlashClass}`}>
+                <span>{convertUsdToEur(livePairPrice).toFixed(4)}</span>
+                <span className="text-[10px] font-sans text-slate-600">Market</span>
+              </div>
+            ) : (
+              <div className="relative mb-3">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={limitPrice}
+                  onChange={(event) => setLimitPrice(event.target.value)}
+                  placeholder={convertUsdToEur(livePairPrice).toFixed(4)}
+                  className="h-11 w-full rounded-md border border-white/[0.09] bg-[#161a1e] px-3 pr-14 font-mono text-sm text-white outline-none transition placeholder:text-slate-700 hover:border-white/[0.16] focus:border-violet-400/50 focus:ring-1 focus:ring-violet-400/20"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">EUR</span>
+              </div>
+            )}
+
+            <label className="mb-1.5 flex items-center justify-between text-[11px] text-slate-500">
+              <span>{t('futures.amount')}</span>
+              <span>{baseAsset}</span>
+            </label>
+            <div className="relative mb-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0.0000"
+                value={activeAmount}
+                onChange={(event) => updateAmount(event.target.value)}
+                className="h-11 w-full rounded-md border border-white/[0.09] bg-[#161a1e] px-3 pr-14 font-mono text-sm text-white outline-none transition placeholder:text-slate-700 hover:border-white/[0.16] focus:border-violet-400/50 focus:ring-1 focus:ring-violet-400/20"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">{baseAsset}</span>
+            </div>
+
+            <div className="relative mb-5 pt-3">
+              <div className="absolute left-2 right-2 top-[18px] h-px bg-slate-700" />
+              <div className="relative grid grid-cols-4">
+                {percentageOptions.map((percentage) => (
+                  <button
+                    key={percentage}
+                    type="button"
+                    onClick={() => updatePercentage(percentage)}
+                    className="group flex flex-col items-center gap-1.5 text-[10px] text-slate-500 transition hover:text-slate-300"
+                  >
+                    <span className={`h-3 w-3 rotate-45 border transition ${activePercentage >= percentage ? (isLong ? 'border-emerald-400 bg-emerald-400' : 'border-rose-400 bg-rose-400') : 'border-slate-600 bg-[#0b0e11] group-hover:border-slate-400'}`} />
+                    {percentage}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => isLong ? setShowLongTPModal(true) : setShowShortTPModal(true)}
+                className={`rounded-md border px-2 py-2.5 text-[11px] font-medium transition ${activeTakeProfit ? 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300' : 'border-white/[0.08] bg-white/[0.025] text-slate-400 hover:border-white/[0.15] hover:text-slate-200'}`}
+              >
+                {activeTakeProfit ? <Edit2 size={12} className="mr-1 inline" /> : <Plus size={12} className="mr-1 inline" />} Take profit
+              </button>
+              <button
+                type="button"
+                onClick={() => isLong ? setShowLongSLModal(true) : setShowShortSLModal(true)}
+                className={`rounded-md border px-2 py-2.5 text-[11px] font-medium transition ${activeStopLoss ? 'border-rose-400/35 bg-rose-400/10 text-rose-300' : 'border-white/[0.08] bg-white/[0.025] text-slate-400 hover:border-white/[0.15] hover:text-slate-200'}`}
+              >
+                {activeStopLoss ? <Edit2 size={12} className="mr-1 inline" /> : <Plus size={12} className="mr-1 inline" />} Stop loss
+              </button>
+            </div>
+
+            <dl className="mb-4 space-y-2 border-t border-white/[0.07] pt-3 text-[11px]">
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t('trading.requiredMargin')}</dt><dd className="font-mono tabular-nums text-slate-300">{formatFiat(requiredMargin)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">Est. liquidation</dt><dd className="font-mono tabular-nums text-rose-300">{formatFiatPrice(liquidationPrice)}</dd></div>
+              {activeSpreadInfo && <div className="flex justify-between gap-3"><dt className="text-slate-500">Spread ({activeSpreadInfo.percentage})</dt><dd className="font-mono tabular-nums text-amber-300">{formatFiat(parseFloat(activeSpreadInfo.cost))}</dd></div>}
+            </dl>
+
+            <button
+              type="button"
+              onClick={isLong ? handleLong : handleShort}
+              disabled={canSubmit}
+              className={`h-12 w-full rounded-md text-sm font-bold text-white shadow-lg transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500 ${isLong ? 'bg-emerald-500 shadow-emerald-500/15' : 'bg-rose-500 shadow-rose-500/15'}`}
+            >
+              {isSubmitting ? 'Placing order...' : isLong ? t('futures.buyLong') : t('futures.sellShort')}
+            </button>
+          </div>
+        </div>
+
+        <TakeProfitStopLossModal allowLimitExecution={false} isOpen={showLongSLModal} onClose={() => setShowLongSLModal(false)} type="stopLoss" side="long" entryPrice={orderEntryPrice} amount={parseFloat(longAmount) || 0} leverage={leverage} onConfirm={(price, type, execPrice) => setLongStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice })} />
+        <TakeProfitStopLossModal allowLimitExecution={false} isOpen={showLongTPModal} onClose={() => setShowLongTPModal(false)} type="takeProfit" side="long" entryPrice={orderEntryPrice} amount={parseFloat(longAmount) || 0} leverage={leverage} onConfirm={(price, type, execPrice) => setLongTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice })} />
+        <TakeProfitStopLossModal allowLimitExecution={false} isOpen={showShortSLModal} onClose={() => setShowShortSLModal(false)} type="stopLoss" side="short" entryPrice={orderEntryPrice} amount={parseFloat(shortAmount) || 0} leverage={leverage} onConfirm={(price, type, execPrice) => setShortStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice })} />
+        <TakeProfitStopLossModal allowLimitExecution={false} isOpen={showShortTPModal} onClose={() => setShowShortTPModal(false)} type="takeProfit" side="short" entryPrice={orderEntryPrice} amount={parseFloat(shortAmount) || 0} leverage={leverage} onConfirm={(price, type, execPrice) => setShortTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice })} />
+      </>
+    );
+  }
 
   return (
     <div className={`${panelSurfaceClass} rounded-2xl border border-slate-700/50 p-3 shadow-2xl backdrop-blur-sm sm:p-4 lg:p-6 xl:p-8`}>

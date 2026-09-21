@@ -3,7 +3,7 @@ import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS } from '../constants/tradingPairs';
 
 interface TradingChartProps {
   selectedPair: string;
-  backgroundVariant?: 'default' | 'futures' | 'cfd';
+  backgroundVariant?: 'default' | 'futures' | 'cfd' | 'cfd-terminal';
 }
 
 const TradingChart: React.FC<TradingChartProps> = ({ selectedPair, backgroundVariant = 'default' }) => {
@@ -13,15 +13,15 @@ const TradingChart: React.FC<TradingChartProps> = ({ selectedPair, backgroundVar
   const widgetRef = useRef<any>(null);
   const isFuturesBackground = backgroundVariant === 'futures';
   const isCfdBackground = backgroundVariant === 'cfd';
-  const isThemedBackground = isFuturesBackground || isCfdBackground;
-  const widgetBackgroundColor = isThemedBackground ? '#0f172a' : '#0f172a';
-  const widgetGridColor = isThemedBackground ? '#334155' : '#334155';
-  const wrapperBackgroundClass = isFuturesBackground
-    ? 'app-surface-primary'
+  const isTerminalBackground = isFuturesBackground || backgroundVariant === 'cfd-terminal';
+  const widgetBackgroundColor = isTerminalBackground ? '#0b0e11' : '#0f172a';
+  const widgetGridColor = isTerminalBackground ? '#202630' : '#334155';
+  const wrapperBackgroundClass = isTerminalBackground
+    ? 'bg-[#0b0e11]'
     : isCfdBackground
     ? 'app-surface-primary'
     : 'bg-slate-900';
-  const overlayBackgroundClass = isFuturesBackground
+  const overlayBackgroundClass = isTerminalBackground
     ? 'bg-slate-950/82 backdrop-blur-sm'
     : isCfdBackground
     ? 'bg-slate-950/82 backdrop-blur-sm'
@@ -33,13 +33,12 @@ const TradingChart: React.FC<TradingChartProps> = ({ selectedPair, backgroundVar
     // For crypto pairs, always use BYBIT exchange as it has the most comprehensive coverage
     const cryptoPair = TOP_CRYPTO_PAIRS.find(pair => pair.symbol === symbol);
     if (cryptoPair) {
-      // Use BYBIT for all crypto pairs as it has the most comprehensive symbol coverage
-      return `BYBIT:${symbol}`;
+      return `BYBIT:${symbol}${isFuturesBackground ? '.P' : ''}`;
     }
     
     // Handle crypto pairs that might not be in TOP_CRYPTO_PAIRS but end with USDT
     if (symbol.endsWith('USDT')) {
-      return `BYBIT:${symbol}`;
+      return `BYBIT:${symbol}${isFuturesBackground ? '.P' : ''}`;
     }
 
     const cfdInstrument = CFD_INSTRUMENTS.find(instrument => instrument.symbol === symbol);
@@ -166,6 +165,7 @@ case 'Natural Gas':
           hide_top_toolbar: false,
           hide_legend: false,
           save_image: false,
+          disabled_features: isFuturesBackground ? ["mouse_wheel_scale", "use_localstorage_for_settings"] : [],
           container_id: containerRef.current.id,
           studies: ["Volume@tv-basicstudies"],
           overrides: {
@@ -250,7 +250,7 @@ case 'Natural Gas':
   }, [selectedPair, backgroundVariant, widgetBackgroundColor, widgetGridColor]);
 
   return (
-    <div className={`relative h-full min-h-[280px] overflow-hidden rounded-xl ${wrapperBackgroundClass} sm:min-h-[340px] lg:min-h-[420px] xl:min-h-0`}>
+    <div className={`relative h-full min-h-[280px] overflow-hidden ${isTerminalBackground ? 'rounded-none' : 'rounded-xl'} ${wrapperBackgroundClass} sm:min-h-[340px] lg:min-h-[420px] xl:min-h-0`}>
       {error && (
         <div className={`absolute inset-0 z-10 flex items-center justify-center ${overlayBackgroundClass}`}>
           <div className="text-slate-400 text-center">

@@ -10,6 +10,7 @@ interface PairDetailsPanelProps {
   currentPrice: number;
   tradingMode: 'cfd' | 'futures';
   onPairSelect?: (symbol: string) => void;
+  compact?: boolean;
 }
 
 interface PairStats {
@@ -22,7 +23,7 @@ interface PairStats {
   priceChangePercent24h: number;
 }
 
-export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMode, onPairSelect }: PairDetailsPanelProps) {
+export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMode, onPairSelect, compact = false }: PairDetailsPanelProps) {
   const panelSurfaceClass = 'app-surface-primary';
   const itemSurfaceClass = 'app-surface-muted';
   const infoSurfaceClass = 'app-surface-raised';
@@ -44,45 +45,26 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
 
   useEffect(() => {
     const marketData = getMarketDataBySymbol(selectedPair);
-    console.log('PairDetailsPanel - selectedPair:', selectedPair);
-    console.log('PairDetailsPanel - marketData:', marketData);
 
     if (marketData && marketData.price > 0) {
       const changePercent24h = marketData.change_24h || 0;
-      const prevClose = marketData.price / (1 + (changePercent24h / 100));
+      const prevClose = changePercent24h > -100
+        ? marketData.price / (1 + (changePercent24h / 100)) : 0;
       const absoluteChange = marketData.price - prevClose;
 
-      console.log('PairDetailsPanel - Using real market data:', {
-        price: marketData.price,
-        changePercent24h,
-        prevClose,
-        absoluteChange,
-        dayHigh: marketData.high_price_24h,
-        dayLow: marketData.low_price_24h
-      });
-
       setStats({
-        dayHigh: marketData.high_price_24h || marketData.price * 1.015,
-        dayLow: marketData.low_price_24h || marketData.price * 0.985,
+        dayHigh: marketData.high_price_24h || 0,
+        dayLow: marketData.low_price_24h || 0,
         prevClose: prevClose,
         open: prevClose,
         volume24h: marketData.volume_24h || 0,
         priceChange24h: absoluteChange,
         priceChangePercent24h: changePercent24h
       });
-    } else if (currentPrice > 0) {
-      console.log('PairDetailsPanel - Market data not found, using fallback with currentPrice:', currentPrice);
-      const volatility = currentPrice * 0.015;
-      const randomChange = (Math.random() - 0.5) * volatility * 2;
-
+    } else {
       setStats({
-        dayHigh: currentPrice + Math.abs(volatility * 0.8),
-        dayLow: currentPrice - Math.abs(volatility * 0.8),
-        prevClose: currentPrice - randomChange * 1.5,
-        open: currentPrice - randomChange * 1.2,
-        volume24h: Math.random() * 10000000 + 1000000,
-        priceChange24h: randomChange,
-        priceChangePercent24h: (randomChange / currentPrice) * 100
+        dayHigh: 0, dayLow: 0, prevClose: 0, open: 0,
+        volume24h: 0, priceChange24h: 0, priceChangePercent24h: 0
       });
     }
   }, [currentPrice, selectedPair, getMarketDataBySymbol]);
@@ -91,11 +73,14 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
   const actualPrice = marketData?.price || currentPrice;
 
   const isPositive = stats.priceChange24h >= 0;
-  const formatDisplayedPrice = (value: number) => pairType === 'forex'
+  const formatDisplayedPrice = (value: number) => value <= 0 ? '--' : pairType === 'forex'
     ? value.toFixed(5)
     : formatFiatNumber(value, 2);
   const displayPrice = formatDisplayedPrice(actualPrice);
-  const dayRange = actualPrice > 0 ? ((actualPrice - stats.dayLow) / (stats.dayHigh - stats.dayLow)) * 100 : 50;
+  const dayRange = actualPrice > 0 && stats.dayHigh > stats.dayLow
+    ? Math.max(0, Math.min(100, ((actualPrice - stats.dayLow) / (stats.dayHigh - stats.dayLow)) * 100)) : 50;
+  const quoteTime = Date.parse(marketData?.timestamp || '');
+  const lastUpdate = Number.isFinite(quoteTime) ? new Date(quoteTime).toLocaleTimeString() : '--';
 
   const getTypeLabel = (type: string) => {
     switch(type) {
@@ -120,7 +105,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className={`${compact ? 'cfd-details-compact' : ''} h-full flex flex-col`}>
       <div className="flex-1 overflow-y-auto hide-scrollbar">
         <div className="p-6 space-y-4">
           <div className={`${panelSurfaceClass} rounded-xl border border-purple-500/30 p-6`}>
@@ -158,7 +143,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
 
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <Calendar className="w-4 h-4" />
-              <span>Last update: {new Date().toLocaleTimeString()}</span>
+              <span>Quote time: {lastUpdate}</span>
             </div>
           </div>
 
@@ -174,16 +159,18 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
                 <span className="text-slate-400">{formatDisplayedPrice(stats.dayHigh)}</span>
               </div>
 
-              <div className="relative h-2 overflow-hidden rounded-full bg-gradient-to-r from-indigo-500/12 via-purple-500/12 to-fuchsia-500/12">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-all duration-500"
-                  style={{ width: `${dayRange}%` }}
-                />
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg transition-all duration-500"
-                  style={{ left: `calc(${dayRange}% - 6px)` }}
-                />
-              </div>
+              {stats.dayHigh > stats.dayLow && (
+                <div className="relative h-2 overflow-hidden rounded-full bg-gradient-to-r from-indigo-500/12 via-purple-500/12 to-fuchsia-500/12">
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-all duration-500"
+                    style={{ width: `${dayRange}%` }}
+                  />
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg transition-all duration-500"
+                    style={{ left: `calc(${dayRange}% - 6px)` }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -225,7 +212,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
               <div className="space-y-1 col-span-2">
                 <div className="text-xs text-slate-400">24h Volume</div>
                 <div className="text-lg font-semibold text-white">
-                  {formatFiatCompact(stats.volume24h)}
+                  {stats.volume24h > 0 ? formatFiatCompact(stats.volume24h) : '--'}
                 </div>
               </div>
             </div>
@@ -239,7 +226,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
               <div className="flex-1">
                 <h4 className="text-sm font-semibold text-white mb-1">Market Information</h4>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Real-time {pairType} market data. Prices update continuously during trading hours.
+                  Latest available {pairType} market data. Quote availability depends on the source and trading hours.
                   {pairType === 'forex' && ' Forex markets operate 24/5.'}
                   {pairType === 'stock' && ' Stock markets operate during exchange hours.'}
                   {pairType === 'commodity' && ' Commodity prices reflect spot market rates.'}

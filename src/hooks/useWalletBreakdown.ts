@@ -124,10 +124,22 @@ export const useWalletBreakdown = (
       .on('postgres_changes', { event: '*', schema: 'public', table: 'futures_orders', filter: `user_id=eq.${user.id}` }, queueRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'robot_states', filter: `user_id=eq.${user.id}` }, queueRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_stakes', filter: `user_id=eq.${user.id}` }, queueRefresh)
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') queueRefresh();
+      });
+
+    const catchUp = () => {
+      if (!document.hidden) queueRefresh();
+    };
+    window.addEventListener('focus', catchUp);
+    document.addEventListener('visibilitychange', catchUp);
+    window.addEventListener('online', catchUp);
 
     return () => {
       if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current);
+      window.removeEventListener('focus', catchUp);
+      document.removeEventListener('visibilitychange', catchUp);
+      window.removeEventListener('online', catchUp);
       void supabase.removeChannel(channel);
     };
   }, [fetchSources, user]);

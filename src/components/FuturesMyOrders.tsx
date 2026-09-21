@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Package, X, AlertCircle, Clock, CheckCircle, TrendingUp, TrendingDown, Loader2, ChevronLeft, ChevronRight, Edit2 } from 'lucide-react';
-import { useFuturesTrading, PositionHistoryEntry } from '../hooks/useFuturesTrading';
-import { DatabaseFuturesPosition } from '../hooks/useDatabase';
-import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
+import { useFuturesTrading } from '../hooks/useFuturesTrading';
+import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
+import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
 import { TradingMode } from '../App';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
-import { calculateDailySwapCost, getSwapConfigForSymbol } from '../constants/swapConfig';
+import { calculateDailySwapCost } from '../constants/swapConfig';
+import { calculateSpreadCostFromNotional } from '../constants/spreadConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 import {
@@ -29,6 +30,7 @@ interface FuturesMyOrdersProps {
   selectedPair: string;
   tradingMode: TradingMode;
   currentSelectedPairPrice: number;
+  terminal?: boolean;
 }
 
 interface FuturesOrder {
@@ -145,16 +147,19 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
   balances,
   selectedPair,
   tradingMode,
-  currentSelectedPairPrice
+  currentSelectedPairPrice,
+  terminal = false
 }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const { formatFiat, formatFiatNumber, formatTradingPair } = useFiatCurrency();
-  const { loadPositionHistory, positionHistory, loading, error } = useFuturesTrading();
-  const { marketData, isConnected: cfdConnected, getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
+  const { loadPositionHistory, positionHistory, updateStopLossTakeProfit, loading, error } = useFuturesTrading();
+  const { isConnected: cfdConnected, getPriceBySymbol: getCfdPrice, getMarketDataBySymbol: getCfdQuote, connectionState: cfdConnectionState } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, isConnected: cryptoConnected, connectionState: cryptoConnectionState, getPriceDirection } = useBybitData();
 
   const isCfdMode = tradingMode === 'cfd';
   const isFuturesMode = tradingMode === 'futures';
+  const isTerminalSurface = isFuturesMode || terminal;
   const realtimeConnected = isCfdMode ? cfdConnected : cryptoConnected;
   const connectionState = isCfdMode ? cfdConnectionState : cryptoConnectionState;
 
@@ -168,10 +173,7 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
   const [flashingPrices, setFlashingPrices] = useState<Map<string, 'up' | 'down'>>(new Map());
   const previousPricesRef = useRef<Map<string, number>>(new Map());
   const [calculationTime, setCalculationTime] = useState(() => Date.now());
-  const livePositionsRef = useRef<any[]>([]);
-  const priceLookupRef = useRef(getPriceBySymbol);
-
-  priceLookupRef.current = getPriceBySymbol;
+  const triggeredPositionsRef = useRef(new Set<string>());
 
   useEffect(() => {
     const clock = window.setInterval(() => setCalculationTime(Date.now()), 1000);
@@ -187,52 +189,54 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
     { key: 'positionHistory', label: t('futures.positionHistory') }
   ];
   const isGlassMode = isFuturesMode || isCfdMode;
-  const desktopTableVariant = isFuturesMode ? 'futures' : isCfdMode ? 'cfd' : 'default';
-  const rootSurfaceClass = isFuturesMode
-    ? 'app-surface-primary'
+  const desktopTableVariant = isTerminalSurface ? 'futures' : isCfdMode ? 'cfd' : 'default';
+  const rootSurfaceClass = isTerminalSurface
+    ? 'bg-[#0b0e11]'
     : isCfdMode
     ? 'app-surface-primary'
     : 'bg-slate-800/30';
-  const panelSurfaceClass = isFuturesMode
+  const panelSurfaceClass = isTerminalSurface
     ? 'app-surface-primary'
     : isCfdMode
     ? 'app-surface-primary'
     : 'bg-slate-900/30';
-  const cardSurfaceClass = isFuturesMode
+  const cardSurfaceClass = isTerminalSurface
     ? 'app-surface-muted'
     : isCfdMode
     ? 'app-surface-muted'
     : 'bg-slate-950/30';
-  const desktopSectionClass = isFuturesMode
-    ? 'flex flex-1 min-h-0 flex-col xl:overflow-hidden xl:rounded-2xl app-surface-primary'
+  const desktopSectionClass = isTerminalSurface
+    ? 'flex flex-1 min-h-0 flex-col overflow-hidden bg-[#0b0e11]'
     : isCfdMode
     ? 'flex flex-1 min-h-0 flex-col xl:overflow-hidden xl:rounded-2xl app-surface-primary'
     : 'flex flex-1 min-h-0 flex-col xl:overflow-hidden xl:rounded-2xl xl:border xl:border-slate-700/40 xl:bg-slate-950/20';
   const desktopHeaderCellClass = 'px-4 pb-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500';
   const desktopCellClass = isGlassMode
-    ? 'border-y border-purple-500/15 bg-slate-950/55 px-4 py-4 align-middle text-sm text-slate-300 first:rounded-l-xl first:border-l last:rounded-r-xl last:border-r'
+    ? isTerminalSurface
+      ? 'border-y border-white/[0.05] bg-white/[0.018] px-4 py-3 align-middle text-xs text-slate-300 first:border-l last:border-r'
+      : 'border-y border-purple-500/15 bg-slate-950/55 px-4 py-4 align-middle text-sm text-slate-300 first:rounded-l-xl first:border-l last:rounded-r-xl last:border-r'
     : 'border-y border-slate-700/40 bg-slate-900/35 px-4 py-4 align-middle text-sm text-slate-300 first:rounded-l-xl first:border-l last:rounded-r-xl last:border-r';
-  const tabActiveSurfaceClass = isFuturesMode
+  const tabActiveSurfaceClass = isTerminalSurface
     ? 'app-action-soft text-white shadow-lg shadow-sky-500/10'
     : isCfdMode
     ? 'app-action-soft text-white shadow-lg shadow-sky-500/10'
     : 'border border-purple-400/30 bg-gradient-to-r from-purple-500/20 to-violet-500/20 text-purple-300 shadow-lg shadow-purple-500/20';
-  const tabInactiveSurfaceClass = isFuturesMode
+  const tabInactiveSurfaceClass = isTerminalSurface
     ? 'text-slate-400 app-surface-hover hover:text-white'
     : isCfdMode
     ? 'text-slate-400 app-surface-hover hover:text-white'
     : 'text-slate-400 hover:bg-slate-700/50 hover:text-white';
-  const mobileRowSurfaceClass = isFuturesMode
+  const mobileRowSurfaceClass = isTerminalSurface
     ? 'flex flex-wrap items-center justify-between rounded-xl app-surface-muted app-surface-hover px-3 py-3 shadow-lg transition-all duration-300 md:px-6 md:py-4'
     : isCfdMode
     ? 'flex flex-wrap items-center justify-between rounded-xl app-surface-muted app-surface-hover px-3 py-3 shadow-lg transition-all duration-300 md:px-6 md:py-4'
     : 'flex flex-wrap items-center justify-between bg-slate-900/30 px-3 md:px-6 py-3 md:py-4 rounded-xl hover:bg-slate-900/50 transition-all duration-300 border border-slate-600/30 hover:border-slate-500/50 shadow-lg';
-  const paginationButtonSurfaceClass = isFuturesMode
+  const paginationButtonSurfaceClass = isTerminalSurface
     ? 'rounded-lg app-control p-2 text-slate-400 transition-all duration-200 hover:text-white disabled:cursor-not-allowed disabled:opacity-50'
     : isCfdMode
     ? 'rounded-lg app-control p-2 text-slate-400 transition-all duration-200 hover:text-white disabled:cursor-not-allowed disabled:opacity-50'
     : 'p-2 rounded-lg bg-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200';
-  const primaryActionButtonSurfaceClass = isFuturesMode
+  const primaryActionButtonSurfaceClass = isTerminalSurface
     ? 'flex-1 app-action-primary py-2 md:py-3 rounded-lg md:rounded-xl text-sm md:text-base font-medium md:font-semibold transition-all duration-300 flex items-center justify-center gap-1 md:gap-2'
     : 'flex-1 app-action-primary py-2 md:py-3 rounded-lg md:rounded-xl text-sm md:text-base font-medium md:font-semibold transition-all duration-300 flex items-center justify-center gap-1 md:gap-2';
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -352,19 +356,6 @@ const getPricePrecision = useCallback((symbol: string): number => {
     }
   }, [openOrders, tradingMode, selectedPair, getInstrumentType]);
 
-  // Debug logs - only log when data changes
-  useEffect(() => {
-    console.log('FuturesMyOrders - Data update:', {
-      selectedPair,
-      totalFuturesPositions: futuresPositions.length,
-      filteredFuturesPositions: filteredFuturesPositions.length,
-      totalOpenOrders: openOrders.length,
-      filteredOpenOrders: filteredOpenOrders.length,
-      futuresPositions: futuresPositions.map(p => ({ id: p.id, symbol: p.symbol })),
-      openOrders: openOrders.map(o => ({ id: o.id, symbol: o.symbol }))
-    });
-  }, [selectedPair, futuresPositions.length, filteredFuturesPositions.length, openOrders.length, filteredOpenOrders.length]);
-
   // Calculate real-time PnL and ROI for each position
   const positionsWithLiveData = filteredFuturesPositions.map(position => {
     let livePrice = position.currentPrice || position.current_price || 0;
@@ -375,10 +366,6 @@ const getPricePrecision = useCallback((symbol: string): number => {
     if (realtimePrice > 0) {
       livePrice = realtimePrice;
       
-      // Debug log for forex pairs specifically
-      if (symbol.length === 6 && !symbol.includes('USDT')) {
-        console.log(`FuturesMyOrders: Updated live price for ${symbol} = ${livePrice}`);
-      }
     }
     
     const entryPrice = position.entryPrice || position.entry_price || 0;
@@ -388,6 +375,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
     const side = position.side || 'long';
     const liquidationPrice = position.liquidationPrice || position.liquidation_price || 0;
     const accumulatedSwapCost = position.accumulated_swap_cost || position.accumulatedSwapCost || 0;
+    const entrySpreadCost = position.spread_cost || position.spreadCost || 0;
 
     const positionSize = calculateDerivativeNotionalUsd(symbol, amount, livePrice || entryPrice, getPriceBySymbol);
     const dailySwapCost = calculateDailySwapCost(symbol, positionSize, leverage);
@@ -407,7 +395,11 @@ const getPricePrecision = useCallback((symbol: string): number => {
       amount,
       getPriceBySymbol
     );
-    const netUnrealizedPnl = unrealizedPnl - liveSwapCost;
+    const estimatedExitSpreadCost = calculateSpreadCostFromNotional(symbol, positionSize);
+    const netUnrealizedPnl = Math.max(
+      unrealizedPnl - entrySpreadCost - estimatedExitSpreadCost - liveSwapCost,
+      -margin,
+    );
 
     // Calculate ROI based on net PnL
     const roi = margin > 0 ? (netUnrealizedPnl / margin) * 100 : 0;
@@ -425,6 +417,8 @@ const getPricePrecision = useCallback((symbol: string): number => {
       grossUnrealizedPnl: unrealizedPnl,
       accumulatedSwapCost: liveSwapCost,
       bookedSwapCost: accumulatedSwapCost,
+      entrySpreadCost,
+      estimatedExitSpreadCost,
       dailySwapCost,
       roi,
       takeProfit: position.takeProfit || position.tp_price || null,
@@ -432,31 +426,18 @@ const getPricePrecision = useCallback((symbol: string): number => {
     };
   });
 
-  livePositionsRef.current = positionsWithLiveData;
-
-  // Keep persisted PnL synchronized for wallet/CRM views without writing on
-  // every WebSocket tick. The RPC is scoped to the authenticated user's rows.
-  useEffect(() => {
-    const lastSyncedPrices = new Map<string, number>();
-    const syncPrices = async () => {
-      for (const position of livePositionsRef.current) {
-        const price = priceLookupRef.current(position.symbol);
-        if (!Number.isFinite(price) || price <= 0 || lastSyncedPrices.get(position.id) === price) continue;
-        const { error: syncError } = await supabase.rpc('update_position_current_price', {
-          p_symbol: position.symbol,
-          p_current_price: price
-        });
-        if (!syncError) lastSyncedPrices.set(position.id, price);
-      }
-    };
-
-    void syncPrices();
-    const interval = window.setInterval(() => void syncPrices(), 5000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  const totalUnrealizedPnl = positionsWithLiveData.reduce((sum, pos) => sum + (pos.unrealizedPnl || 0), 0);
-  const totalMargin = positionsWithLiveData.reduce((sum, pos) => sum + (pos.margin || 0), 0);
+  const visibleIds = new Set(positionsWithLiveData.map(position => position.id));
+  const otherUnrealizedPnl = futuresPositions.reduce((sum, position) => (
+    visibleIds.has(position.id) ? sum : sum + Number(position.unrealizedPnl || position.unrealized_pnl || 0)
+  ), 0);
+  const totalUnrealizedPnl = positionsWithLiveData.reduce((sum, pos) => sum + (pos.unrealizedPnl || 0), otherUnrealizedPnl);
+  const totalMargin = futuresPositions.reduce((sum, position) => sum + Number(position.margin || 0), 0);
+  const totalReservedOrderMargin = openOrders.reduce((sum, order) => (
+    sum + Number(order.reservedMargin || order.reserved_margin || 0)
+  ), 0);
+  const walletBalance = balances?.usdt_balance || 0;
+  const accountEquity = walletBalance + totalUnrealizedPnl;
+  const estimatedAvailableMargin = Math.max(0, walletBalance - totalMargin - totalReservedOrderMargin);
   const runningPositions = positionsWithLiveData.length;
 
   useEffect(() => {
@@ -505,7 +486,9 @@ const getPricePrecision = useCallback((symbol: string): number => {
     }
   };
 
-  const positionHistoryData = positionHistory;
+  const positionHistoryData = positionHistory.filter((position) => (
+    isCfdMode ? getInstrumentType(position.symbol) !== 'crypto' : getInstrumentType(position.symbol) === 'crypto'
+  ));
   
   // Calculate pagination for position history
   const totalPages = Math.ceil(positionHistoryData.length / itemsPerPage);
@@ -527,12 +510,19 @@ const getPricePrecision = useCallback((symbol: string): number => {
     setCurrentPage(prev => Math.min(prev + 1, totalPages));
   };
 
-  // Load position history when tab changes to Position History
+  // Keep the open history tab current when positions close in another session.
   useEffect(() => {
-    if (activeTab === 'positionHistory') {
-      loadPositionHistory();
-    }
-  }, [activeTab, loadPositionHistory]);
+    if (activeTab !== 'positionHistory' || !user) return;
+    const channel = supabase
+      .channel(`derivative-history-${user.id}-${crypto.randomUUID()}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'futures_position_history', filter: `user_id=eq.${user.id}`,
+      }, () => void loadPositionHistory())
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') void loadPositionHistory();
+      });
+    return () => { void supabase.removeChannel(channel); };
+  }, [activeTab, loadPositionHistory, user]);
 
   // Update error message when error changes
   useEffect(() => {
@@ -565,6 +555,11 @@ const getPricePrecision = useCallback((symbol: string): number => {
       const { id, currentPrice, side, takeProfit, stopLoss } = position;
 
       if (!currentPrice || currentPrice <= 0) return;
+      if (isCfdMode) {
+        const quoteTime = Date.parse(getCfdQuote(position.symbol)?.timestamp || '');
+        if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
+          || Date.now() - quoteTime >= 2 * 60_000) return;
+      }
 
       let shouldClose = false;
       let reason = '';
@@ -589,28 +584,29 @@ const getPricePrecision = useCallback((symbol: string): number => {
         }
       }
 
-      if (shouldClose && !processingPositions[id]) {
-        console.log(`${reason} for position ${id} at price ${currentPrice}`);
-        handleClosePosition(id, position.symbol).then(() => {
-          setSuccessMessage(reason);
+      if (shouldClose && !processingPositions[id] && !triggeredPositionsRef.current.has(id)) {
+        triggeredPositionsRef.current.add(id);
+        void handleClosePosition(id, position.symbol).then((closed) => {
+          if (closed) setSuccessMessage(reason);
+          else triggeredPositionsRef.current.delete(id);
         });
       }
     });
-  }, [positionsWithLiveData.map(p => `${p.id}-${p.currentPrice}`).join(',')]);
+  }, [positionsWithLiveData.map(p => `${p.id}-${p.currentPrice}`).join(','), processingPositions, getCfdQuote, isCfdMode]);
 
-  const handleClosePosition = async (positionId: string, symbol?: string) => {
+  const handleClosePosition = async (positionId: string, symbol?: string): Promise<boolean> => {
     try {
       setProcessingPositions(prev => ({ ...prev, [positionId]: true }));
 
       // Get live price for the position's symbol
       const livePrice = symbol ? getPriceBySymbol(symbol) : 0;
-      console.log(`Closing position ${positionId} (${symbol}) with live price: ${livePrice}`);
-
       const result = await Promise.resolve(onClosePosition(positionId, livePrice > 0 ? livePrice : undefined));
       if (result === false) throw new Error('Position could not be closed');
       setSuccessMessage('Position closed successfully');
+      return true;
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to close position');
+      return false;
     } finally {
       setProcessingPositions(prev => ({ ...prev, [positionId]: false }));
     }
@@ -619,9 +615,11 @@ const getPricePrecision = useCallback((symbol: string): number => {
   const closeAllPositions = async () => {
     setIsProcessingAll(true);
     try {
+      let failures = 0;
       for (const position of filteredFuturesPositions) {
-        await handleClosePosition(position.id, position.symbol);
+        if (!await handleClosePosition(position.id, position.symbol)) failures += 1;
       }
+      if (failures > 0) throw new Error(`${failures} position${failures === 1 ? '' : 's'} could not be closed`);
     } catch (error) {
       console.error('Error closing all positions:', error);
       setErrorMessage('Failed to close all positions');
@@ -632,24 +630,16 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
   const handleUpdateTPSL = async (positionId: string, type: 'takeProfit' | 'stopLoss', price: number) => {
     try {
-      const column = type === 'takeProfit' ? 'tp_price' : 'sl_price';
-
       // If price is 0, remove the TP/SL by setting it to null
       const value = price > 0 ? price : null;
-
-      const { error } = await supabase
-        .from('futures_positions')
-        .update({ [column]: value })
-        .eq('id', positionId);
-
-      if (error) throw error;
+      const updated = await updateStopLossTakeProfit(positionId, type === 'takeProfit'
+        ? { takeProfit: value }
+        : { stopLoss: value });
+      if (!updated) throw new Error('The risk update was rejected');
 
       const action = value === null ? 'removed' : 'updated';
       setSuccessMessage(`${type === 'takeProfit' ? 'Take Profit' : 'Stop Loss'} ${action} successfully`);
 
-      if (updateBalances) {
-        await updateBalances({});
-      }
     } catch (err: any) {
       setErrorMessage(err.message || `Failed to update ${type === 'takeProfit' ? 'Take Profit' : 'Stop Loss'}`);
     }
@@ -707,7 +697,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
   };
 
   return (
-    <div className={`${rootSurfaceClass} flex h-full min-h-0 flex-col rounded-2xl border border-slate-700/50 p-3 shadow-2xl backdrop-blur-sm sm:p-4 lg:p-6 xl:p-8`} translate="no">
+    <div className={`${rootSurfaceClass} flex h-full min-h-0 flex-col ${isTerminalSurface ? '' : 'rounded-2xl border border-slate-700/50 p-3 shadow-2xl backdrop-blur-sm sm:p-4 lg:p-6 xl:p-8'}`} translate="no">
       {/* Status Messages */}
       {errorMessage && (
         <div className="mb-4 md:mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-3 md:p-4 flex items-center gap-2 md:gap-3">
@@ -723,6 +713,65 @@ const getPricePrecision = useCallback((symbol: string): number => {
         </div>
       )}
 
+      {isTerminalSurface ? (
+        <div className="shrink-0 border-b border-white/[0.07]">
+          <div className="flex flex-col gap-3 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
+            <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 xl:max-w-[720px]">
+              <div>
+                <dt className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Equity</dt>
+                <dd className="mt-1 font-mono text-sm font-medium tabular-nums text-white">{formatFiat(accountEquity)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Available margin</dt>
+                <dd className="mt-1 font-mono text-sm font-medium tabular-nums text-slate-200">{formatFiat(estimatedAvailableMargin)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Unrealized PnL</dt>
+                <dd className={`mt-1 font-mono text-sm font-medium tabular-nums ${totalUnrealizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatFiat(totalUnrealizedPnl)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Used margin</dt>
+                <dd className="mt-1 font-mono text-sm font-medium tabular-nums text-slate-200">{formatFiat(totalMargin)}</dd>
+              </div>
+            </dl>
+
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={closeAllPositions}
+                disabled={isProcessingAll || filteredFuturesPositions.length === 0 || loading}
+                className="rounded-md border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:border-white/[0.16] hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                {isProcessingAll ? t('futures.processing') : t('futures.closeAllPositions')}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelAllOrders}
+                disabled={isProcessingAll || filteredOpenOrders.length === 0 || loading || !onCancelAllOrders}
+                className="rounded-md border border-rose-400/15 bg-rose-400/[0.06] px-3 py-2 text-[11px] font-semibold text-rose-300 transition hover:border-rose-400/30 hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:border-white/[0.07] disabled:bg-white/[0.02] disabled:text-slate-600"
+              >
+                {isProcessingAll ? t('futures.processing') : t('futures.cancelAllOrders')}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex min-w-0 gap-6 overflow-x-auto border-t border-white/[0.05] px-4 hide-scrollbar">
+            {tabs.map((tab) => {
+              const count = tab.key === 'positions' ? runningPositions : tab.key === 'openOrders' ? filteredOpenOrders.length : positionHistoryData.length;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex h-11 shrink-0 items-center gap-2 border-b-2 text-xs font-semibold transition ${activeTab === tab.key ? 'border-violet-400 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                  {tab.label}<span className="rounded bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] text-slate-500">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
       <div className="mb-4 shrink-0 space-y-4 xl:mb-6">
         {/* Assets Section */}
         <div className={`rounded-xl border border-slate-600/30 p-3 shadow-lg sm:p-4 lg:p-6 ${panelSurfaceClass}`}>
@@ -813,6 +862,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
           </div>
         </div>
       </div>
+      )}
 
       {activeTab === 'positions' && (
         <div className={desktopSectionClass} translate="no">
@@ -1394,6 +1444,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
       {/* TP/SL Edit Modal */}
       {editTPSLModal && (
         <TakeProfitStopLossModal
+          allowLimitExecution={false}
           isOpen={editTPSLModal.isOpen}
           onClose={() => setEditTPSLModal(null)}
           type={editTPSLModal.type}

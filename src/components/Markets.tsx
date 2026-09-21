@@ -24,13 +24,15 @@ interface MarketsProps {
   setSelectedPair: (pair: string) => void;
   currentPrice: number;
   tradingMode?: TradingMode;
+  compact?: boolean;
 }
 
 const Markets: React.FC<MarketsProps> = ({
   selectedPair,
   setSelectedPair,
   currentPrice,
-  tradingMode
+  tradingMode,
+  compact = false
 }) => {
   const { t } = useTranslation();
   const { marketData, isConnected: realtimeConnected, error: realtimeError, getMarketDataBySymbol, getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
@@ -92,10 +94,32 @@ const Markets: React.FC<MarketsProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [cfdCategory, setCfdCategory] = useState<'forex' | 'commodity' | 'stock' | 'index'>('forex');
   const [stockCategory, setStockCategory] = useState<'all' | 'technology' | 'fintech' | 'finance' | 'automotive' | 'energy-materials' | 'private'>('all');
+  useEffect(() => {
+    if (tradingMode !== 'cfd') return;
+    const instrument = getCfdInstrument(selectedPair);
+    if (instrument) {
+      setCfdCategory(instrument.type);
+      setStockCategory('all');
+    }
+  }, [selectedPair, tradingMode]);
   const { favorites, isFavorite, toggleFavorite, loading: favoritesLoading } = useFavorites();
 
   const [flashingPrices, setFlashingPrices] = useState<Map<string, 'up' | 'down'>>(new Map());
+  const [freshnessTick, setFreshnessTick] = useState(0);
   const previousPricesRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (tradingMode !== 'cfd') return;
+    const now = Date.now();
+    const nextExpiry = marketData.reduce((earliest, quote) => {
+      if (!getCfdInstrument(quote.symbol)) return earliest;
+      const expiry = Date.parse(quote.timestamp || '') + 2 * 60_000;
+      return expiry > now && expiry < earliest ? expiry : earliest;
+    }, Infinity);
+    if (!Number.isFinite(nextExpiry)) return;
+    const timer = window.setTimeout(() => setFreshnessTick(value => value + 1), nextExpiry - now + 1);
+    return () => window.clearTimeout(timer);
+  }, [marketData, tradingMode, freshnessTick]);
 
   const getInstrumentType = useCallback((symbol: string): string => {
     const cryptoPair = TOP_CRYPTO_PAIRS.find(pair => pair.symbol === symbol);
@@ -199,13 +223,15 @@ const Markets: React.FC<MarketsProps> = ({
         const instrument = getCfdInstrument(item.symbol);
         const marketDataItem = getMarketDataBySymbol(item.symbol);
         if (marketDataItem) {
+          const quoteTime = Date.parse(marketDataItem.timestamp || '');
           return {
             symbol: item.symbol,
             price: marketDataItem.price || 0,
             change_24h: marketDataItem.change_24h || 0,
             volume_24h: marketDataItem.volume_24h || 0,
             timestamp: marketDataItem.timestamp || new Date().toISOString(),
-            isLive: true,
+            isLive: Number.isFinite(quoteTime) && quoteTime <= Date.now() + 60_000
+              && Date.now() - quoteTime < 2 * 60_000,
             isTradable: instrument?.tradable !== false,
             category: instrument?.category
           };
@@ -260,7 +286,7 @@ const Markets: React.FC<MarketsProps> = ({
     }
 
     return filtered;
-  }, [tradingMode, cfdCategory, stockCategory, getMarketDataBySymbol, getPriceBySymbol, getCryptoDataBySymbol, isFavorite, searchTerm]);
+  }, [tradingMode, cfdCategory, stockCategory, getMarketDataBySymbol, getPriceBySymbol, getCryptoDataBySymbol, isFavorite, searchTerm, freshnessTick]);
 
   const sortByPredefinedOrder = (a: MarketData, b: MarketData) => {
     if (tradingMode === 'cfd') {
@@ -340,13 +366,13 @@ const Markets: React.FC<MarketsProps> = ({
 
   return (
     <div
-      className={`min-h-[360px] flex flex-col ${
-        tradingMode === 'futures' ? 'h-auto xl:h-full' : 'h-full'
+      className={`${compact ? 'min-h-0' : 'min-h-[360px]'} flex flex-col ${
+        tradingMode === 'futures' ? (compact ? 'h-full' : 'h-auto xl:h-full') : 'h-full'
       } ${panelSurfaceClass}`}
       translate="no"
     >
-      <div className="border-b border-slate-700/30 p-4 sm:p-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <div className={`border-b border-slate-700/30 ${compact ? 'p-3' : 'p-4 sm:p-6'}`}>
+        <div className={`${compact ? 'hidden' : 'mb-4 flex'} items-center justify-between gap-3`}>
           <div className="flex items-center gap-2">
             {getConnectionIndicator()}
             <h3 className="text-white font-bold text-xl">
@@ -361,13 +387,13 @@ const Markets: React.FC<MarketsProps> = ({
             placeholder={`${t('common.search')}...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className={`${searchSurfaceClass} w-full rounded-xl border border-slate-700/50 py-3 pl-10 pr-4 text-sm text-white transition-all hover:border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50`}
+            className={`${searchSurfaceClass} w-full rounded-md border border-slate-700/50 ${compact ? 'py-2' : 'py-3'} pl-10 pr-4 text-sm text-white transition-all hover:border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50`}
           />
         </div>
       </div>
 
       {tradingMode === 'cfd' && (
-        <div className="space-y-3 border-b border-slate-700/30 px-6 py-4">
+        <div className={`space-y-3 border-b border-slate-700/30 ${compact ? 'px-2 py-2' : 'px-6 py-4'}`}>
           <div className={`flex items-center justify-between rounded-xl border border-slate-700/50 p-2 ${categorySurfaceClass}`}>
             <button
               onClick={() => {
@@ -381,7 +407,7 @@ const Markets: React.FC<MarketsProps> = ({
               <ChevronLeft size={20} />
             </button>
 
-            <div className={`flex items-center gap-3 px-6 py-2.5 rounded-lg font-semibold transition-all duration-300 ${
+            <div className={`flex items-center gap-2 ${compact ? 'px-2 py-1.5' : 'px-6 py-2.5'} rounded-lg font-semibold transition-all duration-300 ${
               cfdCategory === 'forex'
                 ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-purple-500/25'
                 : cfdCategory === 'commodity'
@@ -390,12 +416,12 @@ const Markets: React.FC<MarketsProps> = ({
                 ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25'
                 : categoryActiveSurfaceClass || 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white shadow-lg shadow-purple-500/25'
             }`}>
-              <span className="text-xl">
+              <span className={compact ? 'hidden' : 'text-xl'}>
                 {cfdCategory === 'forex' ? '💱' :
                  cfdCategory === 'commodity' ? '🥇' :
                  cfdCategory === 'stock' ? '📈' : '📊'}
               </span>
-              <span className="text-sm md:text-base">
+              <span className={compact ? 'text-xs' : 'text-sm md:text-base'}>
                 {cfdCategory === 'forex' ? t('cfd.forexPairs') :
                  cfdCategory === 'commodity' ? t('cfd.commodities') :
                  cfdCategory === 'stock' ? t('cfd.stocks') : 'Indices'}
@@ -443,8 +469,10 @@ const Markets: React.FC<MarketsProps> = ({
         </div>
       )}
       <div
-        className={`flex-1 space-y-2 px-4 py-4 sm:px-6 ${
-          tradingMode === 'futures'
+        className={`min-h-0 flex-1 overscroll-contain ${compact ? 'space-y-1.5 px-2 py-2' : 'space-y-2 px-4 py-4 sm:px-6'} ${
+          compact
+            ? 'overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#475569_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70'
+            : tradingMode === 'futures'
             ? 'overflow-visible xl:overflow-y-auto xl:[scrollbar-width:none] xl:[-ms-overflow-style:none] xl:[&::-webkit-scrollbar]:hidden'
             : tradingMode === 'cfd'
             ? `overflow-y-auto ${cfdScrollbarClass}`
@@ -473,7 +501,7 @@ const Markets: React.FC<MarketsProps> = ({
             <div
               key={market.symbol}
               onClick={() => setSelectedPair(market.symbol)}
-              className={`flex cursor-pointer items-center justify-between rounded-xl px-4 py-3 transition-all duration-300 ${rowHoverSurfaceClass} ${market.isTradable ? '' : 'opacity-65'} ${
+              className={`flex cursor-pointer items-center justify-between ${compact ? 'rounded-md px-3 py-2' : 'rounded-xl px-4 py-3'} transition-all duration-300 ${rowHoverSurfaceClass} ${market.isTradable ? '' : 'opacity-65'} ${
                 selectedPair === market.symbol
                   ? selectedRowSurfaceClass
                   : isRecentlyUpdated

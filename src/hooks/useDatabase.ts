@@ -446,9 +446,24 @@ export const useDatabase = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, () => void fetchTransactions())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_stakes', filter: `user_id=eq.${user.id}` }, () => void fetchUserStakes())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'robot_states', filter: `user_id=eq.${user.id}` }, () => void fetchRobotState())
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void Promise.all([fetchBalances(), fetchTransactions(), fetchUserStakes(), fetchRobotState()]);
+        }
+      });
+
+    const catchUp = () => {
+      if (document.hidden) return;
+      void Promise.all([fetchBalances(), fetchTransactions(), fetchUserStakes(), fetchRobotState()]);
+    };
+    window.addEventListener('focus', catchUp);
+    window.addEventListener('online', catchUp);
+    document.addEventListener('visibilitychange', catchUp);
 
     return () => {
+      window.removeEventListener('focus', catchUp);
+      window.removeEventListener('online', catchUp);
+      document.removeEventListener('visibilitychange', catchUp);
       void supabase.removeChannel(channel);
     };
   }, [fetchBalances, fetchRobotState, fetchTransactions, fetchUserStakes, user]);

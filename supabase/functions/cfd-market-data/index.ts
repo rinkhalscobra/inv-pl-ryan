@@ -23,11 +23,11 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.
   status,
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "private, max-age=5" },
 });
-const CACHE_MS = 10 * 1000;
+const CACHE_MS = 60 * 1000;
 const MAX_INSTRUMENTS = 220;
 const YAHOO_BATCH_SIZE = 35;
-let warmCacheUntil = 0;
-let activeRefresh: Promise<{ updated: number; sources: string[] }> | null = null;
+const warmCacheUntil = new Map<string, number>();
+const activeRefreshes = new Map<string, Promise<{ updated: number; sources: string[] }>>();
 
 const yahooOverrides: Record<string, string> = {
   "XAG/USD": "SI=F",
@@ -118,7 +118,9 @@ const refreshPrices = async (
       const price = Number(meta.regularMarketPrice) || closes.at(-1) || 0;
       if (!instrument || price <= 0) continue;
       const previous = Number(meta.chartPreviousClose) || closes.at(-2) || price;
-      const marketTime = Number(meta.regularMarketTime);
+      const marketTime = Number(meta.regularMarketTime) || response?.timestamp?.at(-1) || 0;
+      // Fetch time is not quote time. A closed or delayed market must stay stale.
+      if (!marketTime || marketTime * 1000 > Date.now() + 60_000) continue;
       rows.push({
         symbol: instrument.symbol,
         price,
@@ -126,19 +128,33 @@ const refreshPrices = async (
         high_price_24h: Number(meta.regularMarketDayHigh) || 0,
         low_price_24h: Number(meta.regularMarketDayLow) || 0,
         volume_24h: Number(meta.regularMarketVolume) || 0,
-        timestamp: marketTime > 0 ? new Date(marketTime * 1000).toISOString() : now,
+        timestamp: new Date(marketTime * 1000).toISOString(),
         updated_at: now,
       });
     }
   }
   if (batchResults.some((result) => result.status === "fulfilled")) sources.push("one-minute market quotes");
 
-  for (const batch of chunk(rows, 100)) {
+  const existing = new Map<string, { timestamp: string; price: number }>();
+  for (const batch of chunk(rows.map(row => row.symbol), 100)) {
+    const { data, error } = await admin.from("market_data").select("symbol,timestamp,price").in("symbol", batch);
+    if (error) throw error;
+    for (const item of data || []) existing.set(item.symbol, { timestamp: item.timestamp, price: Number(item.price) });
+  }
+  const changedRows = rows.filter(row => {
+    const previous = existing.get(row.symbol);
+    return !previous || row.timestamp !== previous.timestamp || row.price !== previous.price;
+  });
+  for (const batch of chunk(changedRows, 100)) {
     const { error } = await admin.from("market_data").upsert(batch, { onConflict: "symbol", ignoreDuplicates: false });
     if (error) throw error;
   }
-  warmCacheUntil = Date.now() + CACHE_MS;
-  return { updated: rows.length, sources };
+  if (changedRows.length > 0) {
+    // Process pending fills and risk levels as soon as a new quote arrives.
+    const { error } = await admin.rpc("process_futures_engine");
+    if (error) console.warn("Derivative processing after CFD quote update failed", error);
+  }
+  return { updated: changedRows.length, sources };
 };
 
 Deno.serve(async (request: Request) => {
@@ -163,17 +179,31 @@ Deno.serve(async (request: Request) => {
       .map((item) => [item.symbol.toUpperCase(), { symbol: item.symbol.toUpperCase(), type: item.type }] as const)).values());
     if (instruments.length === 0) return json({ error: "No valid instruments supplied" }, 400);
 
-    if (!body.force && Date.now() < warmCacheUntil) return json({ success: true, cached: true, updated: 0 });
-
-    const { data: sample } = await admin.from("market_data").select("updated_at").eq("symbol", "AAPL").maybeSingle();
-    const sampleTime = sample?.updated_at ? new Date(sample.updated_at).getTime() : 0;
-    if (!body.force && sampleTime > Date.now() - CACHE_MS) {
-      warmCacheUntil = sampleTime + CACHE_MS;
+    const now = Date.now();
+    if (!body.force && instruments.every(item => (warmCacheUntil.get(item.symbol) || 0) > now)) {
       return json({ success: true, cached: true, updated: 0 });
     }
+    if (!body.force) {
+      const recent = new Set<string>();
+      for (const batch of chunk(instruments.map(item => item.symbol), 100)) {
+        const { data, error } = await admin.from("market_data").select("symbol,updated_at").in("symbol", batch);
+        if (error) throw error;
+        for (const item of data || []) {
+          if (Date.parse(item.updated_at || "") > now - CACHE_MS) recent.add(item.symbol);
+        }
+      }
+      if (instruments.every(item => recent.has(item.symbol))) {
+        for (const item of instruments) warmCacheUntil.set(item.symbol, now + CACHE_MS);
+        return json({ success: true, cached: true, updated: 0 });
+      }
+    }
 
-    if (!activeRefresh) activeRefresh = refreshPrices(admin, instruments).finally(() => { activeRefresh = null; });
-    const result = await activeRefresh;
+    const key = instruments.map(item => item.symbol).sort().join("|");
+    if (!activeRefreshes.has(key)) {
+      activeRefreshes.set(key, refreshPrices(admin, instruments).finally(() => activeRefreshes.delete(key)));
+    }
+    const result = await activeRefreshes.get(key)!;
+    for (const item of instruments) warmCacheUntil.set(item.symbol, Date.now() + CACHE_MS);
     return json({ success: true, cached: false, ...result });
   } catch (error) {
     console.error("CFD market refresh failed", error);

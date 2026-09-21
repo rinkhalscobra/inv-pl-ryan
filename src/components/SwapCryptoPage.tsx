@@ -1,30 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import {
-  ArrowDown,
-  RefreshCw,
-  Info,
-  Euro,
-  Search,
-  ChevronDown,
-  X,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Package,
-  TrendingUp,
-  TrendingDown,
-  ExternalLink,
-  Zap,
-  Shield,
-  Smartphone,
-  DollarSign as Dollar,
-  Lock
-} from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useDatabase, DatabaseUserAsset } from '../hooks/useDatabase';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import SwapAboutPanel from './swap/SwapAboutPanel';
+import SwapConfirmationDialog from './swap/SwapConfirmationDialog';
+import SwapMarketOverview from './swap/SwapMarketOverview';
+import SwapRecentSwaps from './swap/SwapRecentSwaps';
+import SwapTradePanel from './swap/SwapTradePanel';
+import SwapWorkspaceHeader from './swap/SwapWorkspaceHeader';
+import type { SwapCurrency } from './swap/types';
 
 interface SwapCryptoPageProps {
   usdtBalance: number;
@@ -35,13 +20,7 @@ interface SwapCryptoPageProps {
   fetchTransactions?: () => Promise<void>;
 }
 
-interface CryptoCurrency {
-  symbol: string;
-  name: string;
-  iconUrl: string;
-  balance?: number;
-  price?: number;
-}
+type CryptoCurrency = SwapCurrency;
 
 // Define icon URLs for swap symbols
 const CRYPTO_ICON_URLS: Record<string, string> = {
@@ -98,10 +77,9 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   userAssets = [],
   fetchTransactions
 }) => {
-  const { t } = useTranslation();
   const { transactions } = useDatabase();
   const { convertUsdToEur, eurUsdRate, formatFiat, formatEur } = useFiatCurrency();
-  const { marketData, snapshotData, isConnected: isLiveDataConnected, getSnapshotPriceBySymbol, refreshSnapshot, lastSnapshotTime } = useMarketData();
+  const { marketData, snapshotData, getSnapshotPriceBySymbol, refreshSnapshot, lastSnapshotTime } = useMarketData();
   const { getPriceBySymbol: getBybitPrice, isConnected: isBybitConnected } = useBybitData();
 
   const [lockedPrices, setLockedPrices] = useState<{ from: number; to: number } | null>(null);
@@ -159,7 +137,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [calculatedToAmountFullPrecision, setCalculatedToAmountFullPrecision] = useState<number | null>(null);
-  const [calculatedFromAmountFullPrecision, setCalculatedFromAmountFullPrecision] = useState<number | null>(null);
+  const [, setCalculatedFromAmountFullPrecision] = useState<number | null>(null);
   const [fromCurrency, setFromCurrency] = useState<CryptoCurrency>(() => ({
     symbol: 'EUR',
     name: 'Euro',
@@ -180,7 +158,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   const [showToTokens, setShowToTokens] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [availableCurrencies, setAvailableCurrencies] = useState<CryptoCurrency[]>([]);
-  const [isLoadingCurrencies, setIsLoadingCurrencies] = useState(false);
+  const [, setIsLoadingCurrencies] = useState(false);
   
   // State for swap status
   const [isSwapping, setIsSwapping] = useState(false);
@@ -189,9 +167,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   
   // State for confirmation modal
   const [showConfirmation, setShowConfirmation] = useState(false);
-  
-  // State for order history
-  const [activeSubTab, setActiveSubTab] = useState<'markets' | 'my_orders'>('markets');
   
   // Refs for dropdown handling
   const fromDropdownRef = useRef<HTMLDivElement>(null);
@@ -381,7 +356,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     setIsLoadingCurrencies(true);
 
     // Create initial currencies array based on ALLOWED_SWAP_SYMBOLS
-    let initialCurrencies: CryptoCurrency[] = [];
+    const initialCurrencies: CryptoCurrency[] = [];
 
     // Process each allowed symbol
     for (const allowedCrypto of ALLOWED_SWAP_SYMBOLS) {
@@ -652,9 +627,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   // Handle max button click
   const handleMaxClick = () => {
     if (fromCurrency.balance) {
-      // Define swap fee rate as a constant
-      const SWAP_FEE_RATE = 0.001; // 0.1% fee
-      
       // For the max button, we want to use the full balance minus a small buffer
       // The fee is deducted from the output, not added to the input
       const buffer = fromCurrency.balance * 0.001; // 0.1% buffer for safety
@@ -807,8 +779,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     }
 
     // Additional security checks
-    const SWAP_FEE_RATE = 0.001; // 0.1% fee
-    const MAX_SLIPPAGE = 0.05; // 5% maximum slippage allowed
     const MIN_SWAP_VALUE_EUR = 0.01;
     const MAX_SWAP_VALUE_EUR = 1000000;
 
@@ -884,9 +854,9 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       } else {
         throw new Error('Swap returned false without throwing an error');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Swap error in component:', error);
-      const errorMessage = error?.message || 'Swap failed. Please try again.';
+      const errorMessage = error instanceof Error ? error.message : 'Swap failed. Please try again.';
       setSwapError(errorMessage);
     } finally {
       setIsSwapping(false);
@@ -908,35 +878,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     formatAssetAmount(currency.balance || 0, currency.symbol);
   const formatAssetValue = (amount: number, currencyType: 'from' | 'to') =>
     formatFiat(amount * getEffectivePrice(currencyType));
-
-  // Render an asset icon with a dedicated fiat treatment.
-  const renderCryptoIcon = (currency: CryptoCurrency) => {
-    if (currency.symbol === 'EUR') {
-      return (
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white">
-          <Euro size={18} strokeWidth={2.5} />
-        </div>
-      );
-    }
-
-    return (
-      <div className="relative w-8 h-8 rounded-full overflow-hidden app-icon-tile flex items-center justify-center">
-        <img 
-          src={currency.iconUrl} 
-          alt={currency.symbol}
-          className="w-full h-full object-contain"
-          onError={(e) => {
-            // On error, replace with text icon
-            e.currentTarget.style.display = 'none';
-            e.currentTarget.nextElementSibling?.classList.remove('hidden');
-          }}
-        />
-        <div className="absolute inset-0 hidden flex items-center justify-center text-white font-bold text-sm">
-          {currency.symbol.substring(0, 2)}
-        </div>
-      </div>
-    );
-  };
 
   // Get market prices for supported swap assets
   const getSortedMarketPrices = () => {
@@ -961,517 +902,79 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       tx.description.toLowerCase().includes('swap')
     )
     .sort((a, b) => {
-      const aTime = new Date(a.created_at || a.timestamp).getTime();
-      const bTime = new Date(b.created_at || b.timestamp).getTime();
+      const aTime = new Date(a.created_at).getTime();
+      const bTime = new Date(b.created_at).getTime();
       return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
     });
 
+  const filteredCurrencies = getFilteredTokens(searchTerm);
+  const fromPrice = getEffectivePrice('from');
+  const toPrice = getEffectivePrice('to');
+
   return (
-    <div className="mx-auto w-full space-y-6 app-page-bg px-4 py-4 sm:space-y-8 sm:px-6 sm:py-6 lg:px-8">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-      <div className="relative z-20 min-w-0 lg:w-2/3">
-        {/* Swap Card */}
-        <div className="mb-8 rounded-2xl app-surface-primary p-4 sm:p-6 lg:p-8">
-          {/* Header */}
-          <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-violet-400 bg-clip-text text-transparent sm:text-2xl">
-              Swap Assets
-            </h2>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 sm:gap-3 sm:text-sm">
-              {lockedPrices ? (
-                <div className="flex w-fit items-center gap-2 rounded-lg app-action-soft px-3 py-1.5">
-                  <Lock size={14} className="text-white" />
-                  <span className="text-white font-medium">
-                    Price Locked: {Math.ceil(remainingLockTime / 1000)}s
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-1">
-                    <div className={`w-2 h-2 rounded-full ${isBybitConnected ? 'bg-green-400' : 'bg-blue-400'}`}></div>
-                    <span>{isBybitConnected ? 'Live Prices' : 'Snapshot Prices'}</span>
-                  </div>
-                  {!isBybitConnected && (
-                    <button
-                      onClick={() => {
-                        refreshSnapshot();
-                      }}
-                      className="flex items-center gap-1 text-blue-400 transition-colors hover:text-blue-300"
-                      title="Refresh prices now"
-                    >
-                      <RefreshCw size={14} />
-                      <span>Refresh</span>
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Status Messages */}
-          {swapError && (
-            <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-              <AlertTriangle size={20} className="text-red-400 flex-shrink-0" />
-              <span className="text-red-400">{swapError}</span>
-            </div>
-          )}
-          
-          {swapSuccess && (
-            <div className="mb-6 flex items-start gap-3 rounded-xl border border-green-500/30 bg-green-500/10 p-4">
-              <CheckCircle size={20} className="text-green-400 flex-shrink-0" />
-              <span className="text-green-400">{swapSuccess}</span>
-            </div>
-          )}
-
-          {/* From Section */}
-          <div className="mb-2">
-            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-sm text-slate-400">{t('swap.from')}</span>
-              <span className="text-sm text-slate-400 sm:text-right">
-                {t('common.balance')}: {formatBalance(fromCurrency)} {fromCurrency.symbol}
-              </span>
-            </div>
-            <div className="rounded-xl app-surface-muted p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <input
-                  type="text"
-                  value={fromAmount}
-                  onChange={(e) => handleFromAmountChange(e.target.value)}
-                  placeholder={t('swap.enterAmount')}
-                  className="w-full bg-transparent text-2xl font-medium text-white focus:outline-none sm:text-3xl"
-                />
-                <div className="relative w-full sm:w-auto" ref={fromDropdownRef}>
-                  <button
-                    onClick={() => setShowFromTokens(!showFromTokens)}
-                    className="flex w-full items-center justify-between gap-2 rounded-xl app-action-soft px-4 py-2 transition-colors sm:w-auto"
-                  >
-                    {renderCryptoIcon(fromCurrency)}
-                    <span className="text-white font-medium">{fromCurrency.symbol}</span>
-                    <ChevronDown size={16} className="text-slate-400" />
-                  </button>
-                  
-                  {/* From Token Dropdown */}
-                  {showFromTokens && (
-                    <div className="absolute top-full right-0 z-50 mt-2 max-h-96 w-full overflow-hidden rounded-xl app-dropdown sm:w-80">
-                      <div className="p-4 border-b border-slate-700">
-                        <div className="relative">
-                          <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Search assets..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full app-input pl-10 pr-4 py-2 rounded-lg"
-                          />
-                        </div>
-                      </div>
-                      <div className="max-h-64 overflow-y-auto [scrollbar-color:#a855f7_#312e81] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-indigo-950/80 [&::-webkit-scrollbar-thumb]:bg-purple-400 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-[2px] [&::-webkit-scrollbar-thumb]:border-solid [&::-webkit-scrollbar-thumb]:border-indigo-950/80">
-                        {getFilteredTokens(searchTerm).map((currency) => (
-                          <button
-                            key={currency.symbol}
-                            onClick={() => handleSelectFromCurrency(currency)}
-                            className="flex w-full items-center justify-between gap-3 p-4 transition-colors hover:bg-purple-500/10"
-                          >
-                            <div className="flex min-w-0 items-center gap-3">
-                              {renderCryptoIcon(currency)}
-                              <div className="min-w-0 text-left">
-                                <div className="text-white font-medium">{currency.symbol}</div>
-                                <div className="truncate text-sm text-slate-400">{currency.name}</div>
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <div className="text-white">{formatBalance(currency)}</div>
-                              <div className="text-slate-400 text-sm">{formatFiat(currency.price || 0)}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-slate-400 text-sm">
-                  ≈ {formatAssetValue(parseFloat(fromAmount) || 0, 'from')}
-                </span>
-                <button
-                  onClick={handleMaxClick}
-                  className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
-                >
-                  MAX
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Swap Button */}
-          <div className="flex justify-center my-4">
-            <button
-              onClick={handleSwapCurrencies}
-              className="app-action-soft rounded-full p-3 transition-colors"
-            >
-              <ArrowDown size={20} className="text-slate-400" />
-            </button>
-          </div>
-
-          {/* To Section */}
-          <div className="mb-6">
-            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-sm text-slate-400">{t('swap.to')}</span>
-              <span className="text-sm text-slate-400 sm:text-right">
-                {t('common.balance')}: {formatBalance(toCurrency)} {toCurrency.symbol}
-              </span>
-            </div>
-            <div className="rounded-xl app-surface-muted p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <input
-                  type="text"
-                  value={toAmount}
-                  onChange={(e) => handleToAmountChange(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full bg-transparent text-2xl font-medium text-white focus:outline-none sm:text-3xl"
-                />
-                <div className="relative w-full sm:w-auto" ref={toDropdownRef}>
-                  <button
-                    onClick={() => setShowToTokens(!showToTokens)}
-                    className="flex w-full items-center justify-between gap-2 rounded-xl app-action-soft px-4 py-2 transition-colors sm:w-auto"
-                  >
-                    {renderCryptoIcon(toCurrency)}
-                    <span className="text-white font-medium">{toCurrency.symbol}</span>
-                    <ChevronDown size={16} className="text-slate-400" />
-                  </button>
-                  
-                  {/* To Token Dropdown */}
-                  {showToTokens && (
-                    <div className="absolute top-full right-0 z-50 mt-2 max-h-96 w-full overflow-hidden rounded-xl app-dropdown sm:w-80">
-                      <div className="p-4 border-b border-slate-700">
-                        <div className="relative">
-                          <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Search assets..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full app-input pl-10 pr-4 py-2 rounded-lg"
-                          />
-                        </div>
-                      </div>
-                      <div className="max-h-64 overflow-y-auto [scrollbar-color:#a855f7_#312e81] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-indigo-950/80 [&::-webkit-scrollbar-thumb]:bg-purple-400 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-[2px] [&::-webkit-scrollbar-thumb]:border-solid [&::-webkit-scrollbar-thumb]:border-indigo-950/80">
-                        {getFilteredTokens(searchTerm).map((currency) => (
-                          <button
-                            key={currency.symbol}
-                            onClick={() => handleSelectToCurrency(currency)}
-                            className="flex w-full items-center justify-between gap-3 p-4 transition-colors hover:bg-purple-500/10"
-                          >
-                            <div className="flex min-w-0 items-center gap-3">
-                              {renderCryptoIcon(currency)}
-                              <div className="min-w-0 text-left">
-                                <div className="text-white font-medium">{currency.symbol}</div>
-                                <div className="truncate text-sm text-slate-400">{currency.name}</div>
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <div className="text-white">{formatBalance(currency)}</div>
-                              <div className="text-slate-400 text-sm">{formatFiat(currency.price || 0)}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-slate-400 text-sm">
-                  ≈ {formatAssetValue(parseFloat(toAmount) || 0, 'to')}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Swap Details */}
-          {fromAmount && toAmount && (
-            <div className="mb-6 space-y-2 rounded-xl app-surface-muted p-4">
-              <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">Exchange Rate</span>
-                  {lockedPrices ? (
-                    <button
-                      onClick={unlockPrices}
-                      className="text-xs text-purple-400 hover:text-purple-300 underline flex items-center gap-1"
-                      title="Unlock and refresh prices"
-                    >
-                      <RefreshCw size={12} />
-                      Unlock & Refresh
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        refreshSnapshot();
-                      }}
-                      className="text-xs text-blue-400 hover:text-blue-300 underline flex items-center gap-1"
-                      title="Refresh prices"
-                    >
-                      <RefreshCw size={12} />
-                      Refresh
-                    </button>
-                  )}
-                </div>
-                <span className="break-all text-white sm:text-right">
-                  1 {fromCurrency.symbol} = {(getEffectivePrice('from') / getEffectivePrice('to')).toFixed(8)} {toCurrency.symbol}
-                </span>
-              </div>
-              <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-slate-400">Fee (0.1%)</span>
-                <span className="text-white sm:text-right">{formatAssetAmount(calculateFee(), fromCurrency.symbol)} {fromCurrency.symbol}</span>
-              </div>
-              <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-slate-400">Minimum Received</span>
-                <span className="text-white sm:text-right">{formatAssetAmount(parseFloat(toAmount) * 0.995, toCurrency.symbol)} {toCurrency.symbol}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Price Status Indicator */}
-          {fromAmount && (!getEffectivePrice('from') || !getEffectivePrice('to')) && (
-            <div className="mb-4 flex items-start gap-2 rounded-xl app-status-warning p-3 text-sm">
-              <AlertTriangle size={16} className="text-purple-400 flex-shrink-0" />
-              <span className="text-purple-400">
-                Price data unavailable. Click the Refresh button to update prices.
-              </span>
-            </div>
-          )}
-
-          {/* Swap Button */}
-          <button
-            onClick={handleShowConfirmation}
-            disabled={!fromAmount || !toAmount || isSwapping || parseFloat(fromAmount) <= 0 || !getEffectivePrice('from') || !getEffectivePrice('to')}
-            className="w-full app-action-primary font-medium py-4 rounded-xl transition-all disabled:cursor-not-allowed"
-          >
-            {isSwapping ? 'Swapping...' : !getEffectivePrice('from') || !getEffectivePrice('to') ? 'Price Unavailable' : 'Swap'}
-          </button>
-        </div>
+    <div className="min-h-[calc(100vh-72px)] bg-[#070a12] text-slate-100">
+      <SwapWorkspaceHeader fromSymbol={fromCurrency.symbol} toSymbol={toCurrency.symbol} />
+      <div className="grid min-h-[620px] gap-px bg-[#252a33] xl:grid-cols-[minmax(0,1fr)_340px]">
+        <main className="min-w-0 bg-[#0b0e11] p-4 sm:p-6 lg:p-8">
+          <SwapTradePanel
+            fromField={{
+              side: 'from', currency: fromCurrency, amount: fromAmount,
+              onAmountChange: handleFromAmountChange,
+              approximateValue: formatAssetValue(parseFloat(fromAmount) || 0, 'from'),
+              currencies: filteredCurrencies, searchTerm, onSearchTermChange: setSearchTerm,
+              isOpen: showFromTokens, onToggle: () => setShowFromTokens(!showFromTokens),
+              onSelect: handleSelectFromCurrency, dropdownRef: fromDropdownRef,
+              formatBalance, formatFiat, onMax: handleMaxClick
+            }}
+            toField={{
+              side: 'to', currency: toCurrency, amount: toAmount,
+              onAmountChange: handleToAmountChange,
+              approximateValue: formatAssetValue(parseFloat(toAmount) || 0, 'to'),
+              currencies: filteredCurrencies, searchTerm, onSearchTermChange: setSearchTerm,
+              isOpen: showToTokens, onToggle: () => setShowToTokens(!showToTokens),
+              onSelect: handleSelectToCurrency, dropdownRef: toDropdownRef,
+              formatBalance, formatFiat
+            }}
+            fromCurrency={fromCurrency}
+            toCurrency={toCurrency}
+            fromAmount={fromAmount}
+            toAmount={toAmount}
+            isSwapping={isSwapping}
+            isBybitConnected={isBybitConnected}
+            lockedPrices={!!lockedPrices}
+            remainingLockTime={remainingLockTime}
+            swapError={swapError}
+            swapSuccess={swapSuccess}
+            onRefresh={refreshSnapshot}
+            onUnlock={unlockPrices}
+            onReverse={handleSwapCurrencies}
+            onConfirm={handleShowConfirmation}
+            getEffectivePrice={getEffectivePrice}
+            calculateFee={calculateFee}
+            formatAssetAmount={formatAssetAmount}
+          />
+        </main>
+        <aside className="min-w-0 bg-[#0b0e11] xl:border-l xl:border-white/[0.07]">
+          <SwapMarketOverview prices={getSortedMarketPrices()} formatFiat={formatFiat} onRefresh={refreshSnapshot} />
+          <SwapRecentSwaps transactions={swapTransactions} formatEur={formatEur} formatFiat={formatFiat} />
+        </aside>
       </div>
-
-      {/* Right Sidebar */}
-      <div className="min-w-0 lg:w-1/3">
-        {/* Market Overview */}
-        <div className="mb-6 min-h-[280px] rounded-2xl app-surface-primary p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Market Overview</h3>
-            <button
-              onClick={refreshSnapshot}
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-          
-          <div className="space-y-3">
-            {getSortedMarketPrices().map((data) => {
-              const symbol = data.symbol.replace('USDT', '');
-
-              return (
-                <div key={data.symbol} className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="relative flex h-6 w-6 items-center justify-center overflow-hidden rounded-full app-icon-tile">
-                      {data.iconUrl ? (
-                        <img
-                          src={data.iconUrl}
-                          alt={`${symbol} logo`}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                          }}
-                        />
-                      ) : null}
-                      <div className={`absolute inset-0 flex items-center justify-center text-xs font-bold text-white ${data.iconUrl ? 'hidden' : ''}`}>
-                        {symbol.substring(0, 2)}
-                      </div>
-                    </div>
-                    <span className="truncate font-medium text-white">{symbol}</span>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-white">{formatFiat(data.price)}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Order History */}
-        <div className="min-h-[240px] rounded-2xl app-surface-primary p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Recent Swaps</h3>
-            <Clock size={16} className="text-slate-400" />
-          </div>
-          
-          <div className="space-y-3 max-h-64 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {swapTransactions.length > 0 ? (
-              swapTransactions.map((tx) => (
-                <div key={tx.id} className="rounded-lg app-surface-muted p-3">
-                  <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="break-words text-sm font-medium text-white">
-                      {tx.description}
-                    </span>
-                    <span className={`shrink-0 text-xs ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.currency?.toUpperCase() === 'EUR' ? formatEur(tx.amount) : formatFiat(tx.amount)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {new Date(tx.timestamp).toLocaleString()}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center text-slate-400 py-8">
-                <Package size={32} className="mx-auto mb-2 opacity-50" />
-                <p>No swap history yet</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      </div>
-
-      {/* About asset swaps */}
-      <div className="w-full rounded-2xl app-surface-primary p-4 sm:p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 app-icon-tile rounded-lg flex items-center justify-center">
-            <Info size={16} className="text-white" />
-          </div>
-          <h3 className="text-lg font-semibold text-white">About Asset Swaps</h3>
-        </div>
-        
-        <p className="text-slate-300 text-sm mb-4 leading-relaxed">
-          {t('swap.aboutDescription')}
-        </p>
-        
-        {/* Advantages */}
-        <div className="mb-4">
-          <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-            <CheckCircle size={14} className="text-emerald-400" />
-            {t('swap.advantages')}
-          </h4>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Zap size={12} className="text-emerald-400" />
-              <span className="text-slate-300 text-sm">{t('swap.instantExecution')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock size={12} className="text-blue-400" />
-              <span className="text-slate-300 text-sm">{t('swap.noOrderBookWaiting')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Smartphone size={12} className="text-purple-400" />
-              <span className="text-slate-300 text-sm">{t('swap.simpleInterface')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-green-400 font-medium text-sm">0.1%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 text-sm">{t('swap.noGasFees')}</span>
-              <CheckCircle size={12} className="text-green-400" />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 text-sm">{t('swap.noNetworkFees')}</span>
-              <CheckCircle size={12} className="text-green-400" />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 text-sm">{t('swap.noHiddenCosts')}</span>
-              <CheckCircle size={12} className="text-green-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Confirmation Modal */}
+      <SwapAboutPanel />
       {showConfirmation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/76 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl app-auth-card app-modal-opaque p-4 sm:p-6 md:p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white">Confirm Swap</h3>
-              <button
-                onClick={() => setShowConfirmation(false)}
-                className="text-slate-400 hover:text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="mb-6 space-y-4">
-              <div className="app-surface-muted rounded-xl p-4">
-                <div className="text-sm text-slate-400 mb-1">You Pay</div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {renderCryptoIcon(fromCurrency)}
-                    <span className="text-white font-medium">{fromCurrency.symbol}</span>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <div className="text-white font-bold">{formatAssetAmount(parseFloat(fromAmount), fromCurrency.symbol)}</div>
-                    <div className="text-slate-400 text-sm">
-                      ≈ {formatAssetValue(parseFloat(fromAmount) || 0, 'from')}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-center">
-                <ArrowDown size={20} className="text-slate-400" />
-              </div>
-
-              <div className="app-surface-muted rounded-xl p-4">
-                <div className="text-sm text-slate-400 mb-1">You Receive</div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {renderCryptoIcon(toCurrency)}
-                    <span className="text-white font-medium">{toCurrency.symbol}</span>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <div className="text-white font-bold">{formatAssetAmount(parseFloat(toAmount), toCurrency.symbol)}</div>
-                    <div className="text-slate-400 text-sm">
-                      ≈ {formatAssetValue(parseFloat(toAmount) || 0, 'to')}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2 rounded-xl app-surface-muted p-4">
-                <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-slate-400">Exchange Rate</span>
-                  <span className="break-all text-white sm:text-right">
-                    1 {fromCurrency.symbol} = {(getEffectivePrice('from') / getEffectivePrice('to')).toFixed(8)} {toCurrency.symbol}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-slate-400">Fee (0.1%)</span>
-                  <span className="text-white sm:text-right">{formatAssetAmount(calculateFee(), fromCurrency.symbol)} {fromCurrency.symbol}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col-reverse gap-3 sm:flex-row">
-              <button
-                onClick={() => setShowConfirmation(false)}
-                className="flex-1 app-action-soft text-white font-medium py-3 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={executeSwap}
-                disabled={isSwapping}
-                className="flex-1 app-action-primary text-white font-medium py-3 rounded-xl transition-all disabled:cursor-not-allowed"
-              >
-                {isSwapping ? 'Swapping...' : 'Confirm Swap'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <SwapConfirmationDialog
+          fromCurrency={fromCurrency}
+          toCurrency={toCurrency}
+          fromAmount={fromAmount}
+          toAmount={toAmount}
+          rate={fromPrice > 0 && toPrice > 0 ? fromPrice / toPrice : 0}
+          fee={calculateFee()}
+          isSwapping={isSwapping}
+          formatAssetAmount={formatAssetAmount}
+          formatAssetValue={formatAssetValue}
+          onCancel={() => setShowConfirmation(false)}
+          onConfirm={executeSwap}
+        />
       )}
-
     </div>
   );
 };

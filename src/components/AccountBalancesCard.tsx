@@ -16,35 +16,22 @@ export default function AccountBalancesCard({
   const { formatFiat } = useFiatCurrency();
 
   return (
-    <div className="app-surface-primary rounded-2xl p-6">
-      <h3 className="mb-4 text-lg font-semibold text-white">{title}</h3>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="app-surface-muted rounded-lg p-4">
-          <div className="mb-2 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                <span className="font-bold text-green-400">€</span>
-              </div>
-              <span className="font-medium text-white">EUR</span>
-            </div>
-            <span className="font-mono text-white">{formatFiat(usdtBalance)}</span>
+    <div className="app-surface-primary rounded-xl p-5 sm:p-6">
+      <h3 className="mb-3 text-base font-semibold text-white">{title}</h3>
+      <div className="divide-y divide-white/[0.07]">
+        <div className="flex min-w-0 items-center justify-between gap-3 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-sm font-bold text-emerald-300">€</div>
+            <div><div className="text-sm font-medium text-white">EUR</div><div className="text-xs text-slate-500">Cash balance</div></div>
           </div>
-          <div className="text-right text-xs text-slate-400">Available funds</div>
+          <span className="truncate font-mono text-sm font-semibold text-white" title={formatFiat(usdtBalance)}>{formatFiat(usdtBalance)}</span>
         </div>
-
-        <div className="app-surface-muted rounded-lg p-4">
-          <div className="mb-2 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/20">
-                <span className="font-bold text-orange-400">₿</span>
-              </div>
-              <span className="font-medium text-white">BTC</span>
-            </div>
-            <span className="font-mono text-white">{btcBalance.toFixed(8)}</span>
+        <div className="flex min-w-0 items-center justify-between gap-3 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-sm font-bold text-orange-300">₿</div>
+            <div><div className="text-sm font-medium text-white">BTC</div><div className="text-xs text-slate-500">Crypto holding</div></div>
           </div>
-          <div className="text-right text-xs text-slate-400">
-            {formatFiat(btcBalance * currentPrice)}
-          </div>
+          <div className="min-w-0 text-right"><div className="truncate font-mono text-sm font-semibold text-white" title={`${btcBalance.toFixed(8)} BTC`}>{btcBalance.toFixed(8)} BTC</div><div className="truncate text-xs text-slate-400">{formatFiat(btcBalance * currentPrice)}</div></div>
         </div>
       </div>
     </div>

@@ -822,14 +822,12 @@ const handleUpdatePassword = async (newPassword: string) => {
                     {tradingMode === 'profile' && (
                       <ProfilePage
                         user={user}
-                        signOut={signOut}
+                        onSignOut={signOut}
+                        usdtBalance={balances.usdt_balance}
+                        btcBalance={balances.btc_balance}
+                        currentPrice={currentBtcPrice}
                         kycStatus={kycStatus}
                         updateKycStatus={updateKycStatus}
-                        referralCode={referralCode}
-                        referralCount={referralCount}
-                        referredUsers={referredUsers}
-                        portfolioSnapshots={portfolioSnapshots}
-                        createPortfolioSnapshot={createPortfolioSnapshot}
                         totalPortfolioValue={totalPortfolioValue}
                         totalPositionsPnl={unrealizedPnl}
                         onUpdatePassword={handleUpdatePassword}

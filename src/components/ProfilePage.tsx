@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { User as UserType } from '@supabase/supabase-js';
 import {
   User,
-  Settings,
   Shield,
   LogOut,
   Lock,
@@ -12,17 +11,14 @@ import {
   CheckCircle,
   AlertTriangle,
   Gift,
-  Users,
   Clock,
   ChevronRight,
-  Copy,
   Save,
   MessageCircle,
   TrendingUp,
   TrendingDown,
   Award,
   Globe,
-  Phone
 } from 'lucide-react';
 import KycDocumentUpload from './KycDocumentUpload';
 import SupportChat from './SupportChat';
@@ -42,16 +38,11 @@ interface ProfilePageProps {
   btcBalance?: number;
   currentPrice?: number;
   onSignOut: () => void;
-  onUpdatePassword: (password: string) => Promise<any>;
-  referralCode: string | null;
-  referralCount: number;
-  referredUsers: any[];
+  onUpdatePassword: (password: string) => Promise<unknown>;
   totalPortfolioValue: number;
   totalPositionsPnl?: number;
   kycStatus: 'not_verified' | 'pending' | 'verified';
   updateKycStatus: (status: 'not_verified' | 'pending' | 'verified') => void;
-  portfolioSnapshots?: any[];
-  createPortfolioSnapshot?: () => Promise<void>;
 }
 
 interface TaxIdStatus {
@@ -69,15 +60,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   currentPrice,
   onSignOut,
   onUpdatePassword,
-  referralCode,
-  referralCount,
-  referredUsers,
   totalPortfolioValue,
   totalPositionsPnl = 0,
   kycStatus: propKycStatus,
   updateKycStatus: propUpdateKycStatus,
-  portfolioSnapshots,
-  createPortfolioSnapshot
 }) => {
   const { t } = useTranslation();
   const { formatFiat, formatFiatWhole } = useFiatCurrency();
@@ -183,21 +169,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not update password');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const copyReferralCode = () => {
-    if (referralCode) {
-      navigator.clipboard.writeText(referralCode);
-      setSuccess('Referral code copied to clipboard');
-      
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
     }
   };
 
@@ -224,8 +199,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
       }
       
       setSuccess('Profile information saved successfully');
-    } catch (err: any) {
-      setError(err.message || 'Failed to save profile information');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save profile information');
     } finally {
       setSavingProfile(false);
     }
@@ -240,34 +215,36 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     propUpdateKycStatus(status);
   };
 
+  const showAccountRail = activeTab === 'profile' || activeTab === 'security';
+
   return (
-    <div className="container mx-auto p-8">
+    <div className="w-full px-4 py-5 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25">
-            <User size={32} className="text-white" />
+      <div className="mb-5 flex flex-col gap-4 border-b border-white/[0.08] pb-5 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-violet-400/20 bg-violet-500/15">
+            <User size={21} className="text-violet-200" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-white">
               {t('profile.accountSettings')}
             </h1>
-            <p className="text-slate-400">{user.email}</p>
+            <p className="mt-0.5 truncate text-sm text-slate-400">{user.email}</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="app-surface-secondary px-6 py-3 rounded-xl">
-            <div className="text-slate-400 text-sm">Portfolio Value</div>
-            <div className="text-white font-mono text-xl">{formatFiat(totalPortfolioValue)}</div>
+        <div className="flex flex-wrap items-center gap-2.5 md:justify-end">
+          <div className="rounded-lg border border-white/[0.1] bg-white/[0.03] px-4 py-2">
+            <div className="text-[11px] text-slate-400">Portfolio value</div>
+            <div className="font-mono text-base font-semibold text-white">{formatFiat(totalPortfolioValue)}</div>
             {totalPositionsPnl !== 0 && (
-              <div className="flex items-center gap-1 mt-1">
+              <div className="mt-0.5 flex items-center gap-1">
                 {totalPositionsPnl >= 0 ? (
                   <TrendingUp size={14} className="text-emerald-400" />
                 ) : (
                   <TrendingDown size={14} className="text-red-400" />
                 )}
-                <span className={`text-sm font-medium ${totalPositionsPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-xs font-medium ${totalPositionsPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {totalPositionsPnl >= 0 ? '+' : ''}{formatFiat(totalPositionsPnl)}
                 </span>
               </div>
@@ -276,7 +253,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
           <button
             onClick={onSignOut}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+            className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/[0.08] px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/15"
           >
             <LogOut size={18} />
             {t('navigation.signOut')}
@@ -285,13 +262,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
       </div>
       
       {/* Tabs */}
-      <div className="flex border-b border-slate-700 mb-8">
+      <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-white/[0.1]" aria-label="Account settings sections">
         <button
           onClick={() => setActiveTab('profile')}
-          className={`px-3 py-2 md:px-6 md:py-3 text-xs md:text-sm font-medium transition-colors ${
+          aria-current={activeTab === 'profile' ? 'page' : undefined}
+          className={`shrink-0 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
             activeTab === 'profile' 
-              ? 'text-blue-400 border-b-2 border-blue-400' 
-              : 'text-slate-400 border-transparent hover:text-white'
+              ? 'border-violet-400 text-white'
+              : 'border-transparent text-slate-400 hover:border-white/[0.18] hover:text-white'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -302,10 +280,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         
         <button
           onClick={() => setActiveTab('security')}
-          className={`px-3 py-2 md:px-6 md:py-3 text-xs md:text-sm font-medium transition-colors ${
+          aria-current={activeTab === 'security' ? 'page' : undefined}
+          className={`shrink-0 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
             activeTab === 'security' 
-              ? 'text-blue-400 border-b-2 border-blue-400' 
-              : 'text-slate-400 border-transparent hover:text-white'
+              ? 'border-violet-400 text-white'
+              : 'border-transparent text-slate-400 hover:border-white/[0.18] hover:text-white'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -316,10 +295,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         
         <button
           onClick={() => setActiveTab('referrals')}
-          className={`px-3 py-2 md:px-6 md:py-3 text-xs md:text-sm font-medium transition-colors ${
+          aria-current={activeTab === 'referrals' ? 'page' : undefined}
+          className={`shrink-0 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
             activeTab === 'referrals'
-              ? 'text-blue-400 border-b-2 border-blue-400'
-              : 'text-slate-400 border-transparent hover:text-white'
+              ? 'border-violet-400 text-white'
+              : 'border-transparent text-slate-400 hover:border-white/[0.18] hover:text-white'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -330,10 +310,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
         <button
           onClick={() => setActiveTab('giveaway')}
-          className={`px-3 py-2 md:px-6 md:py-3 text-xs md:text-sm font-medium transition-colors ${
+          aria-current={activeTab === 'giveaway' ? 'page' : undefined}
+          className={`shrink-0 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
             activeTab === 'giveaway'
-              ? 'text-blue-400 border-b-2 border-blue-400'
-              : 'text-slate-400 border-transparent hover:text-white'
+              ? 'border-violet-400 text-white'
+              : 'border-transparent text-slate-400 hover:border-white/[0.18] hover:text-white'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -344,10 +325,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         
         <button
           onClick={() => setActiveTab('support')}
-          className={`px-3 py-2 md:px-6 md:py-3 text-xs md:text-sm font-medium transition-colors ${
+          aria-current={activeTab === 'support' ? 'page' : undefined}
+          className={`shrink-0 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
             activeTab === 'support' 
-              ? 'text-blue-400 border-b-2 border-blue-400' 
-              : 'text-slate-400 border-transparent hover:text-white'
+              ? 'border-violet-400 text-white'
+              : 'border-transparent text-slate-400 hover:border-white/[0.18] hover:text-white'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -355,7 +337,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             {t('profile.support')}
           </div>
         </button>
-      </div>
+      </nav>
       
       {/* Status Messages */}
       {error && (
@@ -373,18 +355,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
       )}
       
       {/* Tab Content */}
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12 xl:gap-8">
+      <div className={`grid min-w-0 items-start gap-4 ${showAccountRail ? 'xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]' : ''}`}>
         {/* Left Column - Main Content */}
-        <div className="space-y-6 xl:col-span-7">
+        <div className="min-w-0 space-y-4">
           {/* Profile Tab */}
           {activeTab === 'profile' && (
-            <div className="app-surface-primary rounded-2xl p-8">
-              <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
-                <User size={20} className="text-blue-400" />
+            <div className="app-surface-primary rounded-xl p-5 sm:p-6">
+              <h2 className="mb-5 flex items-center gap-2.5 text-lg font-semibold text-white">
+                <User size={19} className="text-violet-300" />
                 {t('profile.profileInformation')}
               </h2>
               
-              <div className="space-y-6">
+              <div className="space-y-5">
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">{t('auth.email')}</label>
                   <div className="relative">
@@ -422,46 +404,48 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   </div>
                 </div>
                 
-                <PhoneInput
-                  value={phoneNumber}
-                  countryCode={countryCode}
-                  onCountryCodeChange={setCountryCode}
-                  onPhoneNumberChange={setPhoneNumber}
-                />
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <PhoneInput
+                    value={phoneNumber}
+                    countryCode={countryCode}
+                    onCountryCodeChange={setCountryCode}
+                    onPhoneNumberChange={setPhoneNumber}
+                  />
 
-                <div>
-                  <label className="block text-sm text-slate-400 mb-2">{t('auth.country')}</label>
-                  <select
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full app-input px-4 py-3 rounded-xl transition-all custom-select"
-                  >
-                    <option value="">{t('profile.selectCountry')}</option>
-                    <option value="US">United States</option>
-                    <option value="UK">United Kingdom</option>
-                    <option value="CA">Canada</option>
-                    <option value="AU">Australia</option>
-                    <option value="DE">Germany</option>
-                    <option value="FR">France</option>
-                    <option value="JP">Japan</option>
-                    <option value="SG">Singapore</option>
-                    <option value="CH">Switzerland</option>
-                    <option value="NL">Netherlands</option>
-                    <option value="ES">Spain</option>
-                    <option value="IT">Italy</option>
-                    <option value="SE">Sweden</option>
-                    <option value="NO">Norway</option>
-                    <option value="DK">Denmark</option>
-                    <option value="FI">Finland</option>
-                    <option value="NZ">New Zealand</option>
-                    <option value="BR">Brazil</option>
-                    <option value="MX">Mexico</option>
-                    <option value="IN">India</option>
-                    <option value="CN">China</option>
-                    <option value="RU">Russia</option>
-                    <option value="ZA">South Africa</option>
-                    <option value="AE">United Arab Emirates</option>
-                  </select>
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-400">{t('auth.country')}</label>
+                    <select
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="app-input custom-select w-full rounded-xl px-4 py-3 transition-all"
+                    >
+                      <option value="">{t('profile.selectCountry')}</option>
+                      <option value="US">United States</option>
+                      <option value="UK">United Kingdom</option>
+                      <option value="CA">Canada</option>
+                      <option value="AU">Australia</option>
+                      <option value="DE">Germany</option>
+                      <option value="FR">France</option>
+                      <option value="JP">Japan</option>
+                      <option value="SG">Singapore</option>
+                      <option value="CH">Switzerland</option>
+                      <option value="NL">Netherlands</option>
+                      <option value="ES">Spain</option>
+                      <option value="IT">Italy</option>
+                      <option value="SE">Sweden</option>
+                      <option value="NO">Norway</option>
+                      <option value="DK">Denmark</option>
+                      <option value="FI">Finland</option>
+                      <option value="NZ">New Zealand</option>
+                      <option value="BR">Brazil</option>
+                      <option value="MX">Mexico</option>
+                      <option value="IN">India</option>
+                      <option value="CN">China</option>
+                      <option value="RU">Russia</option>
+                      <option value="ZA">South Africa</option>
+                      <option value="AE">United Arab Emirates</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Language Preferences */}
@@ -609,7 +593,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/70 bg-slate-950/50 px-4 py-3">
                     <div>
                       <div className="text-sm font-medium text-white">Tax ID</div>
-                      <div className="mt-0.5 text-xs text-slate-400">{taxIdStatus ? `On file · ending ${taxIdStatus.last_four}` : 'Submitted with your identity documents'}</div>
+                      <div className="mt-0.5 text-xs text-slate-400">{taxIdStatus ? `On file · ending ${taxIdStatus.last_four}` : 'No Tax ID on file'}</div>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${taxIdStatus?.status === 'verified' ? 'bg-emerald-500/15 text-emerald-300' : taxIdStatus?.status === 'pending' ? 'bg-amber-500/15 text-amber-300' : taxIdStatus?.status === 'rejected' ? 'bg-red-500/15 text-red-300' : 'bg-slate-700/70 text-slate-300'}`}>
                       {taxIdStatus?.status === 'verified' ? 'Approved' : taxIdStatus?.status === 'pending' ? 'Pending admin review' : taxIdStatus?.status === 'rejected' ? 'Resubmission required' : 'Not submitted'}
@@ -666,9 +650,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
           
           {/* Security Tab */}
           {activeTab === 'security' && (
-            <div className="space-y-8">
+            <div className="space-y-4">
               {/* Change Password */}
-              <div className="app-surface-primary rounded-2xl p-8">
+              <div className="app-surface-primary rounded-xl p-5 sm:p-6">
                 <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
                   <Lock size={20} className="text-blue-400" />
                   {t('profile.changePassword')}
@@ -776,23 +760,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             <SupportChat user={user} />
           )}
 
-          {activeTab === 'profile' && (
-            <div className="hidden xl:block">
-              <AccountBalancesCard
-                title={t('profile.accountBalances')}
-                usdtBalance={usdtBalance || 0}
-                btcBalance={btcBalance || 0}
-                currentPrice={currentPrice || 0}
-              />
-            </div>
-          )}
         </div>
         
         {/* Right Column - Account Summary */}
-        <div className="space-y-6 xl:col-span-5">
+        {showAccountRail && <div className="min-w-0 space-y-4 xl:sticky xl:top-20">
           {/* Account Summary */}
-          <div className="app-surface-primary rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">{t('profile.accountSummary')}</h3>
+          <div className="app-surface-primary rounded-xl p-5 sm:p-6">
+            <h3 className="mb-4 text-base font-semibold text-white">{t('profile.accountSummary')}</h3>
             
             <div className="space-y-4">
               <div className="flex justify-between items-center">
@@ -820,54 +794,30 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               
             </div>
             
-            <div className="mt-6 pt-6 border-t border-slate-700/50">
-              <button 
-                onClick={() => setActiveTab('profile')}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
-              >
-                {t('profile.completeProfile')}
-                <ChevronRight size={16} />
-              </button>
-            </div>
+            {kycStatus !== 'verified' && (
+              <div className="mt-5 border-t border-white/[0.08] pt-4">
+                <button
+                  onClick={() => {
+                    setActiveTab('profile');
+                    window.setTimeout(() => document.getElementById('kyc-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+                  }}
+                  className="flex w-full items-center justify-between rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-2.5 text-sm font-semibold text-violet-100 transition-colors hover:bg-violet-500/20"
+                >
+                  {kycStatus === 'pending' ? 'View verification status' : 'Complete verification'}
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
           </div>
           
           {/* Account Balances */}
-          <div className={`app-surface-primary rounded-2xl p-6 ${activeTab === 'profile' ? 'xl:hidden' : ''}`}>
-            <h3 className="text-lg font-semibold text-white mb-4">{t('profile.accountBalances')}</h3>
-            
-            <div className="space-y-4">
-              <div className="app-surface-muted rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center">
-                      <span className="text-green-400 font-bold">€</span>
-                    </div>
-                    <span className="text-white font-medium">EUR</span>
-                  </div>
-                  <span className="text-white font-mono">{formatFiat(usdtBalance || 0)}</span>
-                </div>
-                <div className="text-xs text-slate-400 text-right">
-                  Primary fiat balance
-                </div>
-              </div>
-              
-              <div className="app-surface-muted rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-orange-500/20 rounded-full flex items-center justify-center">
-                      <span className="text-orange-400 font-bold">₿</span>
-                    </div>
-                    <span className="text-white font-medium">BTC</span>
-                  </div>
-                  <span className="text-white font-mono">{(btcBalance || 0).toFixed(8)}</span>
-                </div>
-                <div className="text-xs text-slate-400 text-right">
-                  ≈ {formatFiat((btcBalance || 0) * (currentPrice || 0))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+          <AccountBalancesCard
+            title={t('profile.accountBalances')}
+            usdtBalance={usdtBalance || 0}
+            btcBalance={btcBalance || 0}
+            currentPrice={currentPrice || 0}
+          />
+        </div>}
       </div>
 
       {/* KYC Document Upload Modal */}

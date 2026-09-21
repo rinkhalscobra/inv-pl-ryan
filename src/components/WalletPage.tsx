@@ -19,7 +19,6 @@ import {
   Layers,
   CreditCard as Card,
   ArrowRight,
-  Landmark,
   BarChart3,
   Euro
 } from 'lucide-react';
@@ -50,6 +49,20 @@ interface WalletPageProps {
   walletBreakdown: WalletBreakdown & { refreshBreakdown: () => Promise<void> };
 }
 
+interface BankTransferDetails {
+  bank_name?: string | null;
+  account_number?: string | null;
+  routing_number?: string | null;
+  swift_code?: string | null;
+  beneficiary_name?: string | null;
+  iban?: string | null;
+}
+
+const errorMessage = (error: unknown, fallback: string) =>
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : fallback;
+
 const WalletPage: React.FC<WalletPageProps> = ({
   usdtBalance,
   btcBalance,
@@ -75,7 +88,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'N/A';
       return date.toLocaleDateString();
-    } catch (error) {
+    } catch {
       return 'N/A';
     }
   };
@@ -132,7 +145,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   }, [getBybitPrice, getSnapshotPriceBySymbol, contextMarketData]);
 
   // State for bank transfer details
-  const [bankDetails, setBankDetails] = useState<any>(null);
+  const [bankDetails, setBankDetails] = useState<BankTransferDetails | null>(null);
   const [loadingBankDetails, setLoadingBankDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,8 +185,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
         throw error;
       }
       setBankDetails(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load bank details.');
+    } catch (err: unknown) {
+      setError(errorMessage(err, 'Failed to load bank details.'));
       setBankDetails(null);
     } finally {
       setLoadingBankDetails(false);
@@ -209,9 +222,9 @@ const WalletPage: React.FC<WalletPageProps> = ({
       setMessage({ type: 'success', text: 'Bank withdrawal initiated successfully' });
       setShowBankWithdrawalModal(false);
       return transactionId;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error processing bank withdrawal:', error);
-      const reason = error?.message || 'Withdrawal failed. Please try again.';
+      const reason = errorMessage(error, 'Withdrawal failed. Please try again.');
       setMessage({ type: 'error', text: reason });
       throw new Error(reason);
     }
@@ -232,9 +245,9 @@ const WalletPage: React.FC<WalletPageProps> = ({
       setMessage({ type: 'success', text: 'BTC withdrawal initiated successfully' });
       setShowCryptoWithdrawalModal(false);
       return transactionId;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error processing crypto withdrawal:', error);
-      const reason = error?.message || 'Withdrawal failed. Please try again.';
+      const reason = errorMessage(error, 'Withdrawal failed. Please try again.');
       setMessage({ type: 'error', text: reason });
       throw new Error(reason);
     }
@@ -361,18 +374,18 @@ const WalletPage: React.FC<WalletPageProps> = ({
         </div>
       )}
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="w-full px-4 py-5 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mb-8 flex flex-col items-stretch gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25">
-              <Wallet size={24} className="text-white" />
+        <div className="mb-5 flex flex-col items-stretch gap-4 border-b border-white/[0.08] pb-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-violet-400/20 bg-violet-500/15">
+              <Wallet size={21} className="text-violet-200" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+              <h1 className="text-2xl font-bold text-white">
                 {t('wallet.title')}
               </h1>
-              <p className="text-slate-400">
+              <p className="mt-0.5 text-sm text-slate-400">
                 {t('wallet.subtitle')}
               </p>
             </div>
@@ -381,7 +394,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
           <div className="flex items-center gap-3 md:shrink-0">
             <button
               onClick={() => navigate('/trading-fees')}
-              className="flex flex-1 items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 px-4 py-2 rounded-xl transition-colors border border-blue-500/30 text-blue-400 hover:text-blue-300 md:flex-none"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/[0.07] hover:text-white md:flex-none"
             >
               <Info size={18} />
               <span className="text-sm">Trading Fees</span>
@@ -389,7 +402,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
 
             <button
               onClick={() => setShowBalance(!showBalance)}
-              className="flex flex-1 items-center justify-center gap-2 bg-slate-800/50 hover:bg-slate-700/50 px-4 py-2 rounded-xl transition-colors border border-slate-700/50 md:flex-none"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/[0.07] hover:text-white md:flex-none"
             >
               {showBalance ? <Eye size={18} /> : <EyeOff size={18} />}
               <span className="text-sm">{showBalance ? 'Hide' : 'Show'} Balance</span>
@@ -398,11 +411,11 @@ const WalletPage: React.FC<WalletPageProps> = ({
         </div>
 
         {/* Portfolio Overview */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div className="mb-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)]">
           {/* Total Portfolio Value */}
-          <div className="lg:col-span-2 app-surface-primary rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-300">Total Portfolio Value</h3>
+          <div className="app-surface-primary rounded-xl p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-300">Total Portfolio Value</h2>
               <div className="flex items-center gap-2">
                 {portfolioChange24h >= 0 ? (
                   <TrendingUp size={18} className="text-green-400" />
@@ -410,13 +423,13 @@ const WalletPage: React.FC<WalletPageProps> = ({
                   <TrendingDown size={18} className="text-red-400" />
                 )}
                 <span className={`text-sm font-medium ${portfolioChange24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {portfolioChange24h >= 0 ? '+' : ''}{formatCurrency(portfolioChange24h)}
+                  {showBalance ? `${portfolioChange24h >= 0 ? '+' : ''}${formatCurrency(portfolioChange24h)}` : '••••••'}
                 </span>
               </div>
             </div>
             
-            <div className="mb-6">
-              <div className="text-4xl font-bold text-white mb-2">
+            <div className="mb-5">
+              <div className="mb-1 font-mono text-3xl font-bold tracking-tight text-white sm:text-4xl">
                 {showBalance ? formatCurrency(walletBreakdownData?.totalBalance || 0) : '••••••'}
               </div>
               <div className="text-slate-400 text-sm">
@@ -425,8 +438,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
             </div>
 
             {/* Asset Breakdown */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="app-surface-muted rounded-xl p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="app-surface-muted min-w-0 rounded-xl border border-white/[0.06] p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
                     <span className="text-xs font-bold text-white">€</span>
@@ -441,22 +454,22 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mt-4">
                   <button
-                    onClick={() => setActiveTab('deposit')}
-                    className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-300 shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-1 md:gap-2"
+                    onClick={() => { setDepositMethod('bank_transfer'); setActiveTab('deposit'); }}
+                    className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 md:gap-2 md:text-sm"
                   >
                     <ArrowDownLeft size={16} />
                     Deposit
                   </button>
                   <button 
                     onClick={() => setShowBankWithdrawalModal(true)}
-                    className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-300 shadow-lg shadow-red-500/25 flex items-center justify-center gap-1 md:gap-2">
+                    className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 md:gap-2 md:text-sm">
                       <ArrowUpRight size={16} />
                       Withdraw
                     </button>
                 </div>
               </div>
 
-              <div className="app-surface-muted rounded-xl p-4">
+              <div className="app-surface-muted min-w-0 rounded-xl border border-white/[0.06] p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <Bitcoin size={20} className="text-orange-400" />
                   <span className="text-slate-300 font-medium">BTC</span>
@@ -469,15 +482,15 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mt-4">
                   <button
-                    onClick={() => setActiveTab('deposit')}
-                    className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-300 shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-1 md:gap-2"
+                    onClick={() => { setDepositMethod('btc_direct'); setActiveTab('deposit'); }}
+                    className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 md:gap-2 md:text-sm"
                   >
                     <ArrowDownLeft size={16} />
                     Deposit
                   </button>
                   <button 
                     onClick={() => setShowCryptoWithdrawalModal(true)}
-                    className="flex-1 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-300 shadow-lg shadow-red-500/25 flex items-center justify-center gap-1 md:gap-2">
+                    className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 md:gap-2 md:text-sm">
                       <ArrowUpRight size={16} />
                       Withdraw
                     </button>
@@ -487,7 +500,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
           </div>
 
           {/* Wallet Breakdown */}
-          <div className="space-y-6">
+          <div>
             {walletBreakdownData && !walletBreakdownData.loading ? (
               <WalletBreakdownCard
                 totalBalance={walletBreakdownData.totalBalance}
@@ -499,6 +512,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 robotAllocatedBalance={walletBreakdownData.robotAllocatedBalance}
                 stakedAmount={walletBreakdownData.stakedAmount}
                 loading={walletBreakdownData.loading}
+                showBalance={showBalance}
               />
             ) : (
               <div className="app-surface-primary rounded-2xl p-6">
@@ -516,41 +530,11 @@ const WalletPage: React.FC<WalletPageProps> = ({
               </div>
             )}
 
-            {/* Quick Actions */}
-            <div className="app-surface-primary rounded-2xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-6">Quick Actions</h3>
-              
-              <div className="space-y-3">
-                <button
-                  onClick={() => setActiveTab('deposit')}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-green-500/25"
-                >
-                  <ArrowDownLeft size={18} />
-                  Deposit
-                </button>
-                
-                <button
-                  onClick={() => setShowBankWithdrawalModal(true)}
-                  className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-red-500/25"
-                >
-                  <Landmark size={16} />
-                  Bank Withdrawal
-                </button>
-                
-                <button
-                  onClick={() => setTradingMode && setTradingMode('staking')}
-                  className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-purple-500/25"
-                >
-                  <Layers size={18} />
-                  Staking
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-2 mb-8 bg-slate-800/50 p-2 rounded-2xl border border-slate-700/50">
+        <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-white/[0.1]" aria-label="Wallet sections">
           {[
             { id: 'overview', label: 'Overview', icon: Wallet },
             { id: 'deposit', label: 'Deposit', icon: ArrowDownLeft },
@@ -562,25 +546,26 @@ const WalletPage: React.FC<WalletPageProps> = ({
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all duration-300 ${
+              aria-current={activeTab === id ? 'page' : undefined}
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
                 activeTab === id
-                  ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                  ? 'border-violet-400 text-white'
+                  : 'border-transparent text-slate-400 hover:border-white/[0.18] hover:text-white'
               }`}
             >
               <Icon size={16} />
-              <span className="hidden sm:inline">{label}</span>
+              <span>{label}</span>
             </button>
           ))}
-        </div>
+        </nav>
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
             {/* Recent Transactions */}
-            <div className="app-surface-primary rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-white">Recent Transactions</h3>
+            <div className="app-surface-primary rounded-xl p-5 sm:p-6">
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-white">Recent Transactions</h3>
                 <button
                   onClick={() => setActiveTab('transactions')}
                   className="text-blue-400 hover:text-blue-300 text-sm font-medium flex items-center gap-1"
@@ -612,8 +597,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                           ? 'text-red-400'
                           : 'text-white'
                       }`}>
-                        {isPositiveTransaction(transaction.type) ? '+' : ''}
-                        {formatTransactionAmount(transaction)}
+                        {showBalance ? `${isPositiveTransaction(transaction.type) ? '+' : ''}${formatTransactionAmount(transaction)}` : '••••••'}
                       </div>
                       <div className="flex items-center gap-1">
                         {getStatusIcon(transaction.status)}
@@ -635,8 +619,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
             </div>
 
             {/* Portfolio Performance */}
-            <div className="app-surface-primary rounded-2xl p-6">
-              <h3 className="text-xl font-semibold text-white mb-6">Portfolio Performance</h3>
+            <div className="app-surface-primary rounded-xl p-5 sm:p-6">
+              <h3 className="mb-5 text-lg font-semibold text-white">Portfolio Performance</h3>
               
               <div className="space-y-4">
                 <div className="flex justify-between items-center p-4 app-surface-muted rounded-xl">
@@ -672,10 +656,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
         )}
 
         {activeTab === 'deposit' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2">
-              <div className="app-surface-primary rounded-2xl p-8">
-                <div className="flex items-center gap-3 mb-8">
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)]">
+            <div className="min-w-0">
+              <div className="app-surface-primary rounded-xl p-5 sm:p-6">
+                <div className="mb-5 flex items-center gap-3">
                   <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-lg shadow-green-500/25">
                     <ArrowDownLeft size={20} className="text-white" />
                   </div>
@@ -823,7 +807,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
             </div>
 
             {/* Info Section */}
-            <div className="app-surface-primary rounded-2xl p-6">
+            <div className="app-surface-primary rounded-xl p-5 sm:p-6">
               <div className="flex items-start gap-3">
                 <Info size={20} className="text-blue-400 mt-0.5 flex-shrink-0" />
                 <div>
@@ -854,8 +838,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
         )}
 
         {activeTab === 'transactions' && (
-          <div className="app-surface-primary rounded-2xl p-8">
-            <div className="flex items-center gap-3 mb-8">
+          <div className="app-surface-primary rounded-xl p-5 sm:p-6">
+            <div className="mb-5 flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/25">
                 <Clock size={20} className="text-white" />
               </div>
@@ -884,8 +868,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         ? 'text-red-400'
                         : 'text-white'
                     }`}>
-                      {isPositiveTransaction(transaction.type) ? '+' : ''}
-                      {formatTransactionAmount(transaction)}
+                      {showBalance ? `${isPositiveTransaction(transaction.type) ? '+' : ''}${formatTransactionAmount(transaction)}` : '••••••'}
                     </div>
                     <div className="flex items-center gap-1">
                       {getStatusIcon(transaction.status)}
@@ -945,13 +928,13 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         <div>
                           <div className="text-slate-400 text-xs">Staked Amount</div>
                           <div className="text-white font-medium">
-                            {stake.asset_symbol === 'USDT' ? formatFiat(Number(stake.staked_amount)) : formatCrypto(Number(stake.staked_amount), stake.asset_symbol)}
+                            {showBalance ? (stake.asset_symbol === 'USDT' ? formatFiat(Number(stake.staked_amount)) : formatCrypto(Number(stake.staked_amount), stake.asset_symbol)) : '••••••'}
                           </div>
                         </div>
                         <div>
                           <div className="text-slate-400 text-xs">Current Earnings</div>
                           <div className="text-green-400 font-medium">
-                            +{stake.asset_symbol === 'USDT' ? formatFiat(currentEarnings) : formatCrypto(currentEarnings, stake.asset_symbol)}
+                            {showBalance ? `+${stake.asset_symbol === 'USDT' ? formatFiat(currentEarnings) : formatCrypto(currentEarnings, stake.asset_symbol)}` : '••••••'}
                           </div>
                         </div>
                       </div>

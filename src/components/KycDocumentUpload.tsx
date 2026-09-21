@@ -13,7 +13,10 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [step, setStep] = useState<'id' | 'selfie' | 'review'>('id');
+  const [step, setStep] = useState<'id' | 'selfie' | 'tax' | 'review'>('id');
+  const [taxId, setTaxId] = useState('');
+  const validTaxId = taxId.trim().length >= 4 && taxId.trim().length <= 64 &&
+    !Array.from(taxId).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
   
   // Camera state
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -55,9 +58,11 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
     if (step === 'id' && idDocument) {
       setStep('selfie');
     } else if (step === 'selfie' && (selfieDocument || capturedImage)) {
-      setStep('review');
+      setStep('tax');
       // Stop camera if it's still active
       stopCamera();
+    } else if (step === 'tax' && validTaxId) {
+      setStep('review');
     }
   };
 
@@ -66,8 +71,10 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
       setStep('id');
       // Stop camera if it's active
       stopCamera();
-    } else if (step === 'review') {
+    } else if (step === 'tax') {
       setStep('selfie');
+    } else if (step === 'review') {
+      setStep('tax');
     }
   };
 
@@ -101,9 +108,9 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
       setIsCapturingLive(true);
       setCapturedImage(null);
       setSelfieDocument(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error accessing camera:', err);
-      setError(err.message || 'Failed to access camera. Please try uploading a selfie instead.');
+      setError(err instanceof Error ? err.message : 'Failed to access camera. Please try uploading a selfie instead.');
       setIsCameraAvailable(false);
       setIsCapturingLive(false);
     }
@@ -158,8 +165,8 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
   };
 
   const handleSubmit = async () => {
-  if (!idDocument || !selfieDocument) {
-    setError('Please upload both ID document and selfie');
+  if (!idDocument || !selfieDocument || !validTaxId) {
+    setError('Provide both identity documents and a valid Tax ID');
     return;
   }
 
@@ -202,34 +209,19 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
       });
     if (selfieUploadError) throw new Error(`Error uploading selfie: ${selfieUploadError.message}`);
 
-    // --- Optional: create short-lived signed URLs (if you still want to store URLs) ---
-    const { data: idSigned } = await supabase
-      .storage.from('kyc-documents')
-      .createSignedUrl(idPath, 60 * 60 * 24 * 7); // 7 days
-    const { data: selfieSigned } = await supabase
-      .storage.from('kyc-documents')
-      .createSignedUrl(selfiePath, 60 * 60 * 24 * 7);
-
-    // --- Update DB (prefer storing paths; keep URLs if your schema expects them) ---
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        document_id_path: idPath,           // add these columns in your schema
-        document_selfie_path: selfiePath,   // (recommended)
-        document_id_url: idSigned?.signedUrl,           // keep if needed
-        document_selfie_url: selfieSigned?.signedUrl,   // keep if needed
-        kyc_status: 'pending',
-      })
-      .eq('id', uid);
-
-    if (updateError) throw new Error(`Error updating user record: ${updateError.message}`);
+    const { error: submitError } = await supabase.rpc('submit_kyc_application', {
+      p_tax_id: taxId.trim(),
+      p_id_path: idPath,
+      p_selfie_path: selfiePath,
+    });
+    if (submitError) throw new Error(`Could not submit KYC application: ${submitError.message}`);
 
     setSuccess(true);
     onKycStatusChange('pending');
     setTimeout(() => onClose(), 3000);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error uploading KYC documents:', err);
-    setError(err.message || 'An unexpected error occurred');
+    setError(err instanceof Error ? err.message : 'An unexpected error occurred');
   } finally {
     setLoading(false);
   }
@@ -466,12 +458,40 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
           </div>
         );
 
+      case 'tax':
+        return (
+          <div className="space-y-5">
+            <div>
+              <h3 className="text-xl font-semibold text-white">Tax identification</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                Enter the Tax ID issued for your tax jurisdiction. An administrator will review it together with your identity documents.
+              </p>
+            </div>
+            <label htmlFor="kyc-tax-id" className="block text-sm font-medium text-slate-200">Tax ID <span className="text-red-400">*</span></label>
+            <input
+              id="kyc-tax-id"
+              type="text"
+              value={taxId}
+              onChange={event => setTaxId(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={64}
+              placeholder="Enter your Tax ID exactly as issued"
+              className="w-full rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-500 focus:border-violet-400"
+            />
+            <p className="text-xs text-slate-500">4 to 64 characters. Your Tax ID will only be shown to authorized reviewers.</p>
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] p-4 text-sm text-amber-100">
+              Your Tax ID will be marked pending after submission. Only an administrator can approve your KYC application.
+            </div>
+          </div>
+        );
+
       case 'review':
         return (
           <div className="space-y-6">
-            <h3 className="text-xl font-semibold text-white mb-4">Review Documents</h3>
+            <h3 className="text-xl font-semibold text-white mb-4">Review your application</h3>
             <p className="text-slate-300 mb-6">
-              Please review your documents before submission. Make sure both images are clear and meet the requirements.
+              Confirm your documents and Tax ID before sending them for administrator review.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -498,13 +518,19 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
               </div>
             </div>
 
+            <div className="rounded-xl border border-white/[0.08] bg-slate-900/70 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-400">Tax ID</div>
+              <div className="mt-1 break-all font-mono text-sm text-white">{taxId.trim()}</div>
+              <div className="mt-2 text-xs text-amber-300">Status after submission: Pending review</div>
+            </div>
+
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
               <Info size={18} className="text-amber-400 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-amber-400 text-sm font-medium">Important Information</p>
                 <p className="text-slate-300 text-xs mt-1">
                   By submitting these documents, you confirm that all information provided is accurate and authentic. 
-                  Verification typically takes 1-3 business days. You'll receive an email notification once the process is complete.
+                  An administrator will review your documents and Tax ID. You can check the decision in your profile.
                 </p>
               </div>
             </div>
@@ -518,7 +544,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-slate-800 rounded-xl max-w-md w-full p-6 border border-slate-700 shadow-2xl">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-white/[0.1] bg-[#11151b] p-5 shadow-2xl shadow-black/50 sm:p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-white">Identity Verification</h2>
@@ -528,6 +554,14 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
           >
             <X size={20} />
           </button>
+        </div>
+
+        <div className="mb-6 grid grid-cols-4 gap-2" aria-label="Verification progress">
+          {(['id', 'selfie', 'tax', 'review'] as const).map((stage, index) => (
+            <div key={stage} className={`rounded-md border px-2 py-2 text-center text-xs font-medium ${step === stage ? 'border-violet-400/50 bg-violet-500/15 text-violet-100' : 'border-white/[0.07] bg-white/[0.03] text-slate-400'}`}>
+              <span className="hidden sm:inline">{index + 1}. </span>{stage === 'id' ? 'ID' : stage === 'selfie' ? 'Selfie' : stage === 'tax' ? 'Tax ID' : 'Review'}
+            </div>
+          ))}
         </div>
 
         {/* Error Message */}
@@ -544,9 +578,9 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
             <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle size={32} className="text-green-400" />
             </div>
-            <h3 className="text-xl font-semibold text-white mb-3">Documents Submitted</h3>
+            <h3 className="text-xl font-semibold text-white mb-3">Application submitted</h3>
             <p className="text-slate-300 mb-6">
-              Your identity verification documents have been submitted successfully. We'll review them and update your account status within 1-3 business days.
+              Your identity documents and Tax ID are pending administrator review. Your account status will update after a decision is made.
             </p>
           </div>
         ) : (
@@ -576,7 +610,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
-                    'Submit Documents'
+                    'Submit for review'
                   )}
                 </button>
               ) : (
@@ -584,7 +618,8 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
                   onClick={handleNextStep}
                   disabled={
                     (step === 'id' && !idDocument) || 
-                    (step === 'selfie' && !selfieDocument && !capturedImage)
+                    (step === 'selfie' && !selfieDocument && !capturedImage) ||
+                    (step === 'tax' && !validTaxId)
                   }
                   className="app-action-primary disabled:from-slate-700 disabled:to-slate-800 text-white px-6 py-2 rounded-lg font-medium transition-all duration-300 shadow-lg shadow-blue-500/20"
                 >

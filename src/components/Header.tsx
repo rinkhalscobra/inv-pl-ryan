@@ -9,27 +9,19 @@ import {
   Bot,
   Wallet,
   User,
-  Settings,
   LogOut,
   Menu,
   X,
   ChevronDown,
+  ChevronRight,
   Search,
   Star,
   BarChart3,
   Layers,
-  Info,
-  Globe,
-  Bell,
-  Shield,
   ShieldCheck,
-  Zap,
-  DollarSign,
-  Bitcoin,
   Eye,
   EyeOff,
-  Gift,
-  CreditCard
+  Gift
 } from 'lucide-react';
 import { TradingMode } from '../App';
 import { MarketData } from '../hooks/useDatabase';
@@ -62,20 +54,17 @@ const Header: React.FC<HeaderProps> = ({
   selectedPair,
   setSelectedPair,
   currentPrice,
-  marketData: selectedMarketData,
   usdtBalance,
-  btcBalance,
   totalPortfolioValue,
   user,
   signOut,
-  marketDataList,
   isAdmin
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { formatFiat, formatFiatPrice, formatTradingPair } = useFiatCurrency();
-  const { marketData: cfdMarketData, isConnected: cfdConnected, getPriceBySymbol: getCfdPrice } = useMarketData();
-  const { getPriceBySymbol: getCryptoPrice, isConnected: cryptoConnected } = useBybitData();
+  const { marketData: cfdMarketData, getPriceBySymbol: getCfdPrice } = useMarketData();
+  const { getPriceBySymbol: getCryptoPrice } = useBybitData();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const getPriceBySymbol = (symbol: string): number => {
@@ -94,13 +83,11 @@ const Header: React.FC<HeaderProps> = ({
     }))
     : cfdMarketData;
   const [showBalances, setShowBalances] = useState(true);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Refs for dropdown handling
-  const notificationsRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const pairSelectorRef = useRef<HTMLDivElement>(null);
 
@@ -115,14 +102,10 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const currentPairPrice = getCurrentPairPrice();
-  const currentBtcPrice = getPriceBySymbol('BTCUSDT') || 0;
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setShowUserMenu(false);
       }
@@ -135,6 +118,15 @@ const Header: React.FC<HeaderProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowUserMenu(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [showUserMenu]);
 
   // Navigation items
   const navigationItems = [
@@ -408,10 +400,12 @@ const Header: React.FC<HeaderProps> = ({
             {/* User Menu */}
             <div className="relative" ref={userMenuRef}>
               <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
+                type="button"
+                onClick={() => setShowUserMenu(current => !current)}
                 aria-label="Account menu"
                 aria-expanded={showUserMenu}
-                className={`flex items-center gap-1.5 rounded-md p-1.5 text-slate-400 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+                aria-controls="account-menu"
+                className={`flex items-center gap-1.5 rounded-lg border p-1.5 transition-colors ${showUserMenu ? 'border-violet-400/35 bg-violet-500/10 text-white' : `border-transparent text-slate-400 ${headerSurfaceHoverBackgroundClass} hover:text-white`}`}
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-full border border-violet-400/20 bg-violet-500/15">
                   <User size={16} className="text-violet-200" />
@@ -420,59 +414,87 @@ const Header: React.FC<HeaderProps> = ({
               </button>
 
               {showUserMenu && (
-                <div className={`absolute right-0 top-full z-50 mt-2 w-60 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-slate-700 ${headerDropdownBackgroundClass} shadow-2xl shadow-black/50 sm:max-w-[calc(100vw-2rem)]`}>
-                  <div className="border-b border-slate-700 p-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-white">{user.email}</div>
-                      </div>
+                <div id="account-menu" aria-label="Account options" className={`absolute right-0 top-full z-50 mt-2 max-h-[calc(100vh-5rem)] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-2xl border border-white/[0.12] ${headerDropdownBackgroundClass} p-2 shadow-[0_24px_70px_rgba(0,0,0,0.55)]`}>
+                  <div className="flex min-w-0 items-center gap-3 px-2 py-2.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-400/25 bg-violet-500/15 text-violet-200">
+                      <User size={19} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-white" title={user.email || undefined}>{user.email}</div>
+                      <div className="mt-0.5 text-xs text-slate-400">Trading account</div>
+                    </div>
+                    {isAdmin && <span className="shrink-0 rounded-md border border-violet-400/20 bg-violet-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-200">Admin</span>}
+                  </div>
+
+                  <div className="mt-1 rounded-xl border border-white/[0.08] bg-[#101720] px-3.5 py-3">
+                    <div className="flex items-center justify-between gap-3 text-[11px] text-slate-400">
+                      <span>{t('header.portfolioValue')}</span><span className="font-semibold text-slate-500">EUR</span>
+                    </div>
+                    <div className="mt-1 truncate font-mono text-lg font-semibold tracking-tight text-white" title={showBalances ? formatFiat(totalPortfolioValue) : undefined}>
+                      {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.07] pt-2.5 text-xs">
+                      <span className="text-slate-400">Cash balance</span>
+                      <span className="truncate font-mono font-medium text-slate-200">{showBalances ? formatFiat(usdtBalance) : '••••••'}</span>
                     </div>
                   </div>
 
-                  <div className="p-2">
+                  <div className="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Account</div>
+                  <div className="space-y-1">
                     <button
+                      type="button"
                       onClick={() => {
                         setTradingMode('wallet');
                         setShowUserMenu(false);
+                        setIsMobileMenuOpen(false);
                       }}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-slate-300 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+                      className={`group flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${tradingMode === 'wallet' ? 'bg-violet-500/10 text-white' : `text-slate-300 ${headerSurfaceHoverBackgroundClass} hover:text-white`}`}
                     >
-                      <Wallet size={15} />
-                      <span>{t('navigation.wallet')}</span>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-violet-300"><Wallet size={17} /></span>
+                      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{t('navigation.wallet')}</span><span className="block text-xs text-slate-500">Balances and funding</span></span>
+                      <ChevronRight size={15} className="shrink-0 text-slate-600 transition-colors group-hover:text-slate-300" />
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => {
                         setTradingMode('profile');
                         setShowUserMenu(false);
+                        setIsMobileMenuOpen(false);
                       }}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-slate-300 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+                      className={`group flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${tradingMode === 'profile' ? 'bg-violet-500/10 text-white' : `text-slate-300 ${headerSurfaceHoverBackgroundClass} hover:text-white`}`}
                     >
-                      <User size={15} />
-                      <span>{t('navigation.profile')}</span>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-violet-300"><User size={17} /></span>
+                      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{t('navigation.profile')}</span><span className="block text-xs text-slate-500">Account and verification</span></span>
+                      <ChevronRight size={15} className="shrink-0 text-slate-600 transition-colors group-hover:text-slate-300" />
                     </button>
 
                     {isAdmin && (
                       <button
+                        type="button"
                         onClick={() => {
                           navigate('/admin');
                           setShowUserMenu(false);
+                          setIsMobileMenuOpen(false);
                         }}
-                        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-purple-300 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+                        className={`group flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left text-slate-300 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
                       >
-                        <ShieldCheck size={15} />
-                        <span>Administration CRM</span>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-violet-300"><ShieldCheck size={17} /></span>
+                        <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Administration CRM</span><span className="block text-xs text-slate-500">Customer management</span></span>
+                        <ChevronRight size={15} className="shrink-0 text-slate-600 transition-colors group-hover:text-slate-300" />
                       </button>
                     )}
-
+                  </div>
+                  <div className="mt-2 border-t border-white/[0.08] pt-2">
                     <button
+                      type="button"
                       onClick={() => {
                         signOut();
                         setShowUserMenu(false);
                       }}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-slate-300 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-400 transition-colors hover:bg-red-500/[0.08] hover:text-red-300"
                     >
-                      <LogOut size={15} />
+                      <LogOut size={17} />
                       <span>{t('navigation.signOut')}</span>
                     </button>
                   </div>

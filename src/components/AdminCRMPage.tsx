@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -10,6 +10,8 @@ import {
   CreditCard,
   Database,
   FileText,
+  Eye,
+  EyeOff,
   Gift,
   Headphones,
   Landmark,
@@ -56,6 +58,14 @@ interface CRMStats {
   active_robots: number;
   total_usdt: number;
   total_robot_allocated: number;
+}
+
+interface TaxIdSubmission {
+  tax_id: string;
+  status: 'pending' | 'verified' | 'rejected';
+  submitted_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
 }
 
 interface UserWorkspace {
@@ -113,6 +123,12 @@ const asNumber = (value: unknown): number => {
 };
 
 const asText = (value: unknown): string => value === null || value === undefined ? '' : String(value);
+
+const errorText = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
+  return 'The CRM request failed';
+};
 
 const money = (value: unknown, digits = 2) => asNumber(value).toLocaleString('en-US', {
   minimumFractionDigits: digits,
@@ -200,6 +216,8 @@ const RecordSection: React.FC<{
 const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const navigate = useNavigate();
   const { convertEurToUsd, convertUsdToEur, formatFiat } = useFiatCurrency();
+  const convertUsdToEurRef = useRef(convertUsdToEur);
+  convertUsdToEurRef.current = convertUsdToEur;
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState<CRMStats>(emptyStats);
   const [search, setSearch] = useState('');
@@ -208,10 +226,17 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [tab, setTab] = useState<CRMTab>('dashboard');
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [taxSubmissionError, setTaxSubmissionError] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [reason, setReason] = useState('CRM account update');
+  const [kycReviewReason, setKycReviewReason] = useState('');
+  const workspaceRequestId = useRef(0);
   const [profileForm, setProfileForm] = useState<Record<string, string | boolean>>({});
+  const [taxSubmission, setTaxSubmission] = useState<TaxIdSubmission | null>(null);
+  const [showTaxId, setShowTaxId] = useState(false);
+  const [kycDocumentUrls, setKycDocumentUrls] = useState<{ id?: string; selfie?: string }>({});
   const [balanceForm, setBalanceForm] = useState({ usdt: '0', btc: '0' });
   const [robotForm, setRobotForm] = useState<Record<string, string | boolean>>({});
   const [assetForm, setAssetForm] = useState({ symbol: '', balance: '0' });
@@ -226,10 +251,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [newPassword, setNewPassword] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
-  const showError = (error: unknown) => {
-    const text = error instanceof Error ? error.message : 'The CRM request failed';
-    setMessage({ type: 'error', text });
-  };
+  const showError = useCallback((error: unknown) => setMessage({ type: 'error', text: errorText(error) }), []);
 
   const loadUsers = useCallback(async (query = '') => {
     if (!isAdmin) return;
@@ -251,61 +273,95 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setSelectedUserId(current => current && nextUsers.some(user => user.id === current)
       ? current
       : nextUsers[0]?.id || null);
-  }, [isAdmin]);
+  }, [isAdmin, showError]);
 
   const loadWorkspace = useCallback(async (userId: string) => {
+    const requestId = ++workspaceRequestId.current;
     setLoadingWorkspace(true);
-    const { data, error } = await supabase.rpc('admin_get_user_workspace', {
-      p_target_user_id: userId
-    });
-    setLoadingWorkspace(false);
-    if (error) {
-      showError(error);
-      return;
+    setWorkspace(null);
+    setWorkspaceError(null);
+    setTaxSubmission(null);
+    setTaxSubmissionError(false);
+    setKycDocumentUrls({});
+    setShowTaxId(false);
+    setKycReviewReason('');
+    setMessage(current => current?.type === 'error' ? null : current);
+    try {
+      const [{ data, error }, { data: taxData, error: taxError }] = await Promise.all([
+        supabase.rpc('admin_get_user_workspace', { p_target_user_id: userId }),
+        supabase.rpc('admin_get_kyc_tax_id', { p_target_user_id: userId })
+      ]);
+      if (requestId !== workspaceRequestId.current) return;
+      if (error || !data) {
+        const detail = errorText(error || new Error('The customer workspace returned no data'));
+        setWorkspaceError(detail);
+        setMessage({ type: 'error', text: `Customer workspace: ${detail}` });
+        return;
+      }
+      if (taxError) {
+        setTaxSubmissionError(true);
+        setMessage({ type: 'error', text: `Tax ID review: ${errorText(taxError)}` });
+      } else {
+        setTaxSubmission((taxData as TaxIdSubmission | null) || null);
+      }
+      const next = data as UserWorkspace;
+      setWorkspace(next);
+      const profile = next.profile || ({} as AdminUser);
+      const balance = next.balance || {};
+      const robot = next.robot || {};
+      setProfileForm({
+        first_name: asText(profile.first_name),
+        last_name: asText(profile.last_name),
+        country: asText(profile.country),
+        phone_number: asText(profile.phone_number),
+        is_admin: Boolean(profile.is_admin),
+        referral_code: asText(profile.referral_code),
+        referred_by: asText(profile.referred_by),
+        referral_count: asText(profile.referral_count || 0),
+        total_referral_earnings: convertUsdToEurRef.current(asNumber(profile.total_referral_earnings)).toFixed(2),
+        referral_commission_rate: asText(profile.referral_commission_rate || 0.01),
+        min_leverage_forex: asText(profile.min_leverage_forex),
+        max_leverage_forex: asText(profile.max_leverage_forex),
+        min_leverage_commodities: asText(profile.min_leverage_commodities),
+        max_leverage_commodities: asText(profile.max_leverage_commodities),
+        min_leverage_stocks: asText(profile.min_leverage_stocks),
+        max_leverage_stocks: asText(profile.max_leverage_stocks),
+        min_leverage_futures: asText(profile.min_leverage_futures),
+        max_leverage_futures: asText(profile.max_leverage_futures)
+      });
+      setBalanceForm({ usdt: convertUsdToEurRef.current(asNumber(balance.usdt_balance)).toFixed(2), btc: asText(balance.btc_balance || 0) });
+      setRobotForm({
+        is_active: Boolean(robot.is_active),
+        strategy: asText(robot.strategy || 'triangular'),
+        allocated_balance: convertUsdToEurRef.current(asNumber(robot.allocated_balance)).toFixed(2),
+        todays_profit: convertUsdToEurRef.current(asNumber(robot.todays_profit)).toFixed(2),
+        custom_daily_profit_percentage: asText(robot.custom_daily_profit_percentage),
+        min_profit_threshold: asText(robot.min_profit_threshold || 0.5),
+        max_trade_amount: convertUsdToEurRef.current(asNumber(robot.max_trade_amount || 1000)).toFixed(2)
+      });
+      setSupportConversationId(current => current && (next.conversations || []).some(item => asText(item.id) === current)
+        ? current
+        : asText(next.conversations?.[0]?.id));
+      setLoadingWorkspace(false);
+      try {
+        const [idLink, selfieLink] = await Promise.all([
+          profile.document_id_path ? supabase.storage.from('kyc-documents').createSignedUrl(asText(profile.document_id_path), 600) : Promise.resolve(null),
+          profile.document_selfie_path ? supabase.storage.from('kyc-documents').createSignedUrl(asText(profile.document_selfie_path), 600) : Promise.resolve(null)
+        ]);
+        if (requestId !== workspaceRequestId.current) return;
+        setKycDocumentUrls({ id: idLink?.data?.signedUrl, selfie: selfieLink?.data?.signedUrl });
+      } catch (documentError) {
+        if (requestId === workspaceRequestId.current) setMessage({ type: 'error', text: `KYC documents: ${errorText(documentError)}` });
+      }
+    } catch (error) {
+      if (requestId !== workspaceRequestId.current) return;
+      const detail = errorText(error);
+      setWorkspaceError(detail);
+      setMessage({ type: 'error', text: `Customer workspace: ${detail}` });
+    } finally {
+      if (requestId === workspaceRequestId.current) setLoadingWorkspace(false);
     }
-    const next = data as UserWorkspace;
-    setWorkspace(next);
-    const profile = next.profile || ({} as AdminUser);
-    const balance = next.balance || {};
-    const robot = next.robot || {};
-    setProfileForm({
-      first_name: asText(profile.first_name),
-      last_name: asText(profile.last_name),
-      country: asText(profile.country),
-      phone_number: asText(profile.phone_number),
-      kyc_status: asText(profile.kyc_status || 'not_verified'),
-      is_admin: Boolean(profile.is_admin),
-      document_id_url: asText(profile.document_id_url),
-      document_selfie_url: asText(profile.document_selfie_url),
-      referral_code: asText(profile.referral_code),
-      referred_by: asText(profile.referred_by),
-      referral_count: asText(profile.referral_count || 0),
-      total_referral_earnings: convertUsdToEur(asNumber(profile.total_referral_earnings)).toFixed(2),
-      referral_commission_rate: asText(profile.referral_commission_rate || 0.01),
-      two_factor_required: Boolean(profile.two_factor_required),
-      min_leverage_forex: asText(profile.min_leverage_forex),
-      max_leverage_forex: asText(profile.max_leverage_forex),
-      min_leverage_commodities: asText(profile.min_leverage_commodities),
-      max_leverage_commodities: asText(profile.max_leverage_commodities),
-      min_leverage_stocks: asText(profile.min_leverage_stocks),
-      max_leverage_stocks: asText(profile.max_leverage_stocks),
-      min_leverage_futures: asText(profile.min_leverage_futures),
-      max_leverage_futures: asText(profile.max_leverage_futures)
-    });
-    setBalanceForm({ usdt: convertUsdToEur(asNumber(balance.usdt_balance)).toFixed(2), btc: asText(balance.btc_balance || 0) });
-    setRobotForm({
-      is_active: Boolean(robot.is_active),
-      strategy: asText(robot.strategy || 'triangular'),
-      allocated_balance: convertUsdToEur(asNumber(robot.allocated_balance)).toFixed(2),
-      todays_profit: convertUsdToEur(asNumber(robot.todays_profit)).toFixed(2),
-      custom_daily_profit_percentage: asText(robot.custom_daily_profit_percentage),
-      min_profit_threshold: asText(robot.min_profit_threshold || 0.5),
-      max_trade_amount: convertUsdToEur(asNumber(robot.max_trade_amount || 1000)).toFixed(2)
-    });
-    setSupportConversationId(current => current && (next.conversations || []).some(item => asText(item.id) === current)
-      ? current
-      : asText(next.conversations?.[0]?.id));
-  }, [convertUsdToEur]);
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadUsers(search), 250);
@@ -320,7 +376,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setNewPassword('');
     setDeleteConfirmation('');
     if (selectedUserId) void loadWorkspace(selectedUserId);
-    else setWorkspace(null);
+    else { workspaceRequestId.current += 1; setWorkspace(null); setWorkspaceError(null); setTaxSubmission(null); setKycDocumentUrls({}); setLoadingWorkspace(false); }
   }, [loadWorkspace, selectedUserId]);
 
   const refreshAll = async () => {
@@ -355,6 +411,15 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     });
     return { error };
   }, 'User profile updated');
+
+  const reviewKyc = (decision: 'approve' | 'reject') => runMutation('kyc-review', async () => {
+    const { error } = await supabase.rpc('admin_review_kyc_application', {
+      p_target_user_id: selectedUserId,
+      p_decision: decision,
+      p_reason: kycReviewReason.trim()
+    });
+    return { error };
+  }, decision === 'approve' ? 'KYC application approved' : 'KYC application returned for resubmission');
 
   const saveBalances = () => runMutation('balances', async () => {
     const { error } = await supabase.rpc('admin_set_user_balances', {
@@ -704,6 +769,13 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
           <main className="min-w-0">
             {!selectedUserId ? (
               <div className={`${panelClass} flex min-h-[420px] items-center justify-center p-8 text-center text-slate-500`}>Select a customer to open their CRM workspace.</div>
+            ) : workspaceError ? (
+              <div className={`${panelClass} flex min-h-[420px] flex-col items-center justify-center gap-3 p-8 text-center`}>
+                <XCircle size={28} className="text-red-400" />
+                <h2 className="font-semibold text-white">Customer workspace unavailable</h2>
+                <p className="max-w-xl text-sm text-slate-400">{workspaceError}</p>
+                <button type="button" onClick={() => void loadWorkspace(selectedUserId)} className="mt-2 rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-white hover:border-violet-400">Try again</button>
+              </div>
             ) : loadingWorkspace || !workspace || !profile ? (
               <div className={`${panelClass} flex min-h-[420px] items-center justify-center gap-2 text-slate-400`}><Loader2 className="animate-spin" />Loading customer workspace</div>
             ) : (
@@ -766,7 +838,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         {[['first_name', 'First name'], ['last_name', 'Last name'], ['country', 'Country'], ['phone_number', 'Phone number']].map(([key, label]) => (
                           <label key={key} className="text-xs text-slate-400">{label}<input value={String(profileForm[key] || '')} onChange={event => setProfileForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         ))}
-                        <label className="text-xs text-slate-400">KYC status<select value={String(profileForm.kyc_status)} onChange={event => setProfileForm(current => ({ ...current, kyc_status: event.target.value }))} className={`${fieldClass} mt-1.5`}><option value="not_verified">Not verified</option><option value="pending">Pending</option><option value="verified">Verified</option></select></label>
+                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">KYC status<div className="mt-1 text-sm font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
                         <div className="flex items-end rounded-xl border border-slate-700 p-3">
                           <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.is_admin)} onChange={event => setProfileForm(current => ({ ...current, is_admin: event.target.checked }))} />Administrator</label>
                         </div>
@@ -784,12 +856,35 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       </div>
                     </section>
                     <section className={`${panelClass} p-5 lg:col-span-2`}>
-                      <h3 className="mb-4 font-semibold text-white">KYC, security and referral controls</h3>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div><h3 className="flex items-center gap-2 font-semibold text-white"><ShieldCheck size={19} className="text-violet-300" />Identity verification</h3><p className="mt-1 text-xs text-slate-400">Review the Tax ID and uploaded documents before deciding.</p></div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${taxSubmission?.status === 'verified' ? 'bg-emerald-500/15 text-emerald-300' : taxSubmission?.status === 'pending' ? 'bg-amber-500/15 text-amber-300' : taxSubmission?.status === 'rejected' ? 'bg-red-500/15 text-red-300' : 'bg-slate-700 text-slate-300'}`}>{taxSubmission?.status === 'verified' ? 'Approved' : taxSubmission?.status === 'pending' ? 'Pending review' : taxSubmission?.status === 'rejected' ? 'Resubmission required' : 'No submission'}</span>
+                      </div>
+                      {taxSubmissionError ? (
+                        <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-200">Tax ID review could not load. Refresh CRM to try again.</div>
+                      ) : taxSubmission ? (
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Tax ID</div><div className="mt-2 flex items-center gap-3"><span className="min-w-0 break-all font-mono text-sm text-white">{showTaxId ? taxSubmission.tax_id : `•••• ${taxSubmission.tax_id.slice(-4)}`}</span><button type="button" onClick={() => setShowTaxId(value => !value)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label={showTaxId ? 'Hide Tax ID' : 'Reveal Tax ID'}>{showTaxId ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Submitted</div><div className="mt-2 text-sm text-white">{dateTime(taxSubmission.submitted_at)}</div>{taxSubmission.reviewed_at && <div className="mt-1 text-xs text-slate-400">Reviewed {dateTime(taxSubmission.reviewed_at)}</div>}</div>
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Identity document</div>{kycDocumentUrls.id ? <a href={kycDocumentUrls.id} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open document</a> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Selfie</div>{kycDocumentUrls.selfie ? <a href={kycDocumentUrls.selfie} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open selfie</a> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
+                        </div>
+                      ) : <div className="mt-5 rounded-xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-400">This customer has not submitted a Tax ID.</div>}
+                      {taxSubmission?.status === 'pending' && profile.kyc_status === 'pending' && (
+                        <div className="mt-5 flex flex-wrap gap-3 border-t border-slate-700/70 pt-5">
+                          <label className="w-full text-xs text-slate-400">Review note<input value={kycReviewReason} onChange={event => setKycReviewReason(event.target.value)} placeholder="Reason for approval or resubmission" className={`${fieldClass} mt-1.5`} /><span className="mt-1 block text-slate-500">A resubmission note will be shown to the customer.</span></label>
+                          <button type="button" onClick={() => void reviewKyc('approve')} disabled={saving !== null || kycReviewReason.trim().length < 3 || !kycDocumentUrls.id || !kycDocumentUrls.selfie} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">{saving === 'kyc-review' ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}Approve verification</button>
+                          <button type="button" onClick={() => void reviewKyc('reject')} disabled={saving !== null || kycReviewReason.trim().length < 3} className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 px-4 py-2.5 text-sm font-semibold text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"><XCircle size={16} />Request resubmission</button>
+                          <p className="w-full text-xs text-slate-500">Each decision and review note is recorded in the admin audit log.</p>
+                        </div>
+                      )}
+                    </section>
+                    <section className={`${panelClass} p-5 lg:col-span-2`}>
+                      <h3 className="mb-4 font-semibold text-white">Referral controls</h3>
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        {[['document_id_url', 'Identity document URL'], ['document_selfie_url', 'Selfie document URL'], ['referral_code', 'Referral code'], ['referred_by', 'Referrer user UUID'], ['referral_count', 'Referral count'], ['total_referral_earnings', 'Total referral earnings'], ['referral_commission_rate', 'Commission rate (0.01 = 1%)']].map(([key, label]) => (
+                        {[['referral_code', 'Referral code'], ['referred_by', 'Referrer user UUID'], ['referral_count', 'Referral count'], ['total_referral_earnings', 'Total referral earnings'], ['referral_commission_rate', 'Commission rate (0.01 = 1%)']].map(([key, label]) => (
                           <label key={key} className="text-xs text-slate-400">{label}<input value={String(profileForm[key] || '')} onChange={event => setProfileForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         ))}
-                        <label className="flex items-center gap-2 self-end rounded-xl border border-slate-700 p-3 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.two_factor_required)} onChange={event => setProfileForm(current => ({ ...current, two_factor_required: event.target.checked }))} />Require two-factor authentication</label>
                       </div>
                     </section>
                     <button onClick={saveProfile} disabled={saving !== null} className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 font-semibold text-white disabled:opacity-50 lg:col-span-2">{saving === 'profile' ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}Save profile controls</button>

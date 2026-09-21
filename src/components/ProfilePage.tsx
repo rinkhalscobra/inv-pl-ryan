@@ -54,6 +54,14 @@ interface ProfilePageProps {
   createPortfolioSnapshot?: () => Promise<void>;
 }
 
+interface TaxIdStatus {
+  status: 'pending' | 'verified' | 'rejected';
+  last_four: string;
+  submitted_at: string;
+  reviewed_at: string | null;
+  review_reason: string | null;
+}
+
 const ProfilePage: React.FC<ProfilePageProps> = ({
   user,
   usdtBalance,
@@ -85,6 +93,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [success, setSuccess] = useState<string | null>(null);
   const [showKycUpload, setShowKycUpload] = useState(false);
   const [kycStatus, setKycStatus] = useState<'not_verified' | 'pending' | 'verified'>(propKycStatus || 'not_verified');
+  const [taxIdStatus, setTaxIdStatus] = useState<TaxIdStatus | null>(null);
 
   // Profile information state
   const [firstName, setFirstName] = useState('');
@@ -135,6 +144,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     
     fetchUserProfile();
   }, [user.id]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchTaxIdStatus = async () => {
+      const { data, error } = await supabase.rpc('get_my_kyc_tax_id_status');
+      if (active && !error) setTaxIdStatus((data as TaxIdStatus | null) || null);
+    };
+    void fetchTaxIdStatus();
+    return () => { active = false; };
+  }, [user.id, kycStatus]);
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,6 +237,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
   const handleKycStatusChange = (status: 'not_verified' | 'pending' | 'verified') => {
     setKycStatus(status);
+    propUpdateKycStatus(status);
   };
 
   return (
@@ -585,20 +605,35 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/70 bg-slate-950/50 px-4 py-3">
+                    <div>
+                      <div className="text-sm font-medium text-white">Tax ID</div>
+                      <div className="mt-0.5 text-xs text-slate-400">{taxIdStatus ? `On file · ending ${taxIdStatus.last_four}` : 'Submitted with your identity documents'}</div>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${taxIdStatus?.status === 'verified' ? 'bg-emerald-500/15 text-emerald-300' : taxIdStatus?.status === 'pending' ? 'bg-amber-500/15 text-amber-300' : taxIdStatus?.status === 'rejected' ? 'bg-red-500/15 text-red-300' : 'bg-slate-700/70 text-slate-300'}`}>
+                      {taxIdStatus?.status === 'verified' ? 'Approved' : taxIdStatus?.status === 'pending' ? 'Pending admin review' : taxIdStatus?.status === 'rejected' ? 'Resubmission required' : 'Not submitted'}
+                    </span>
+                  </div>
+                  {taxIdStatus?.status === 'rejected' && taxIdStatus.review_reason && (
+                    <div className="mb-5 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                      <span className="font-semibold">Review note:</span> {taxIdStatus.review_reason}
+                    </div>
+                  )}
                   
-                  {kycStatus === 'not_verified' && (
+                  {(kycStatus === 'not_verified' || (kycStatus === 'pending' && !taxIdStatus)) && (
                     <button 
                       onClick={handleStartVerification}
                       className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
                     >
-                      {t('profile.startVerification')}
+                      {taxIdStatus?.status === 'rejected' ? 'Resubmit verification' : kycStatus === 'pending' ? 'Complete Tax ID verification' : t('profile.startVerification')}
                       <ChevronRight size={18} />
                     </button>
                   )}
                   
                   {kycStatus === 'pending' && (
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-amber-400 text-sm">
-                      {t('profile.verificationPending')}
+                      {taxIdStatus ? 'Your identity documents and Tax ID are awaiting administrator review.' : 'Your previous KYC submission needs a Tax ID. Complete the verification form to send it for administrator review.'}
                     </div>
                   )}
                   

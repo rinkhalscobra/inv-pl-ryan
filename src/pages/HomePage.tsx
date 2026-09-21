@@ -542,7 +542,7 @@ const HomePage: React.FC<HomePageProps> = ({
 
   return (
     <div className="trading-feature-page min-h-screen text-white">
-    <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+    <div className="w-full px-4 py-5 sm:px-5 sm:py-6 lg:px-6">
       {/* Giveaway Popups */}
       <GiveawayCampaignPopup forceShow={showCampaignPopup} />
       <GiveawayWinnerPopup forceShow={showWinnerPopup} />

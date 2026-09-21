@@ -914,7 +914,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   return (
     <div className="min-h-[calc(100vh-72px)] bg-[#0b0e11] text-slate-100">
       <SwapWorkspaceHeader fromSymbol={fromCurrency.symbol} toSymbol={toCurrency.symbol} />
-      <div className="mx-auto grid w-full max-w-[1440px] items-start gap-4 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)] lg:px-8">
+      <div className="grid w-full items-start gap-4 px-4 py-5 sm:gap-5 sm:px-5 sm:py-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)] lg:px-6">
         <main className="min-w-0">
           <SwapTradePanel
             fromField={{

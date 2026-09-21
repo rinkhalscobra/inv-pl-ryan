@@ -255,42 +255,44 @@ const Header: React.FC<HeaderProps> = ({
   const usesWideDesktopHeader = tradingMode === 'futures';
   const desktopHeaderBreakpoint = usesWideDesktopHeader ? '2xl:flex' : 'xl:flex';
   const compactHeaderBreakpoint = usesWideDesktopHeader ? '2xl:hidden' : 'xl:hidden';
-  const headerContainerClass = 'w-full px-3 sm:px-4 lg:px-8';
-  const headerShellBackgroundClass = 'app-shell-bg';
-  const headerPanelBackgroundClass = 'app-surface-secondary';
-  const headerDropdownBackgroundClass = 'app-dropdown';
-  const headerSurfaceBackgroundClass = 'app-control';
-  const headerSurfaceHoverBackgroundClass = 'app-surface-hover';
-  const headerSelectedBackgroundClass = 'app-action-soft';
+  const headerContainerClass = 'w-full px-3 sm:px-4 lg:px-6';
+  const headerPanelBackgroundClass = 'border border-white/[0.08] bg-[#141922]';
+  const headerDropdownBackgroundClass = 'bg-[#171d27]';
+  const headerSurfaceBackgroundClass = 'bg-[#202633]';
+  const headerSurfaceHoverBackgroundClass = 'hover:bg-white/[0.06]';
+  const headerSelectedBackgroundClass = 'bg-violet-500/10';
 
   return (
-    <header className={`sticky top-0 z-40 border-b border-slate-700/50 ${headerShellBackgroundClass} shadow-xl backdrop-blur-md`}>
+    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#0d1118]/95 text-slate-100 backdrop-blur-xl">
       <div className={headerContainerClass}>
-        <div className="flex min-h-16 items-center justify-between gap-3 py-2 sm:min-h-[72px]">
+        <div className="flex min-h-16 items-center justify-between gap-3">
 
           {/* Left Section - Logo and Navigation */}
-          <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3 lg:gap-5">
+          <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-5">
             {/* Logo */}
-            <div className="flex shrink-0 items-center">
-              <BrandLogo className="h-auto w-24 sm:w-36" />
+            <div className={`flex shrink-0 items-center pr-1 ${usesWideDesktopHeader ? '2xl:border-r 2xl:pr-5' : 'xl:border-r xl:pr-5'} border-white/[0.08]`}>
+              <BrandLogo className="h-auto w-24 sm:w-32" />
             </div>
 
             {/* Desktop Navigation */}
-            <nav className={`hidden min-w-0 flex-1 items-center justify-center gap-1 2xl:gap-2 ${desktopHeaderBreakpoint}`}>
-              {navigationItems.map((item) => {
+            <nav aria-label="Main navigation" className={`hidden min-w-0 flex-1 items-center gap-0.5 ${desktopHeaderBreakpoint}`}>
+              {navigationItems.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <button
-                    key={item.key}
-                    onClick={() => setTradingMode(item.key as TradingMode)}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-all duration-300 2xl:gap-2 2xl:px-2.5 2xl:text-[15px] ${tradingMode === item.key
-                      ? 'bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg shadow-purple-500/25'
-                      : `text-slate-400 hover:text-white ${headerSurfaceHoverBackgroundClass}`
-                      }`}
-                  >
-                    <Icon size={17} />
-                    <span>{item.label}</span>
-                  </button>
+                  <React.Fragment key={item.key}>
+                    {index === 4 && <span aria-hidden="true" className="mx-2 h-5 w-px shrink-0 bg-white/[0.1] 2xl:mx-3" />}
+                    <button
+                      onClick={() => setTradingMode(item.key as TradingMode)}
+                      aria-current={tradingMode === item.key ? 'page' : undefined}
+                      className={`flex h-16 shrink-0 items-center gap-1.5 border-b-2 px-2 text-[13px] font-medium transition-colors 2xl:gap-2 2xl:px-3 2xl:text-sm ${tradingMode === item.key
+                        ? 'border-violet-400 bg-white/[0.04] text-white'
+                        : `border-transparent text-slate-400 hover:border-white/[0.18] hover:text-white ${headerSurfaceHoverBackgroundClass}`
+                        }`}
+                    >
+                      <Icon size={16} className={tradingMode === item.key ? 'text-violet-300' : 'text-slate-500'} />
+                      <span>{item.label}</span>
+                    </button>
+                  </React.Fragment>
                 );
               })}
             </nav>
@@ -303,7 +305,7 @@ const Header: React.FC<HeaderProps> = ({
               <div className="relative" ref={pairSelectorRef}>
                 <button
                   onClick={() => setShowPairSelector(!showPairSelector)}
-                  className={`flex items-center gap-2 rounded-xl border border-slate-600/50 ${headerSurfaceBackgroundClass} px-2.5 py-1.5 text-sm transition-all hover:border-slate-500/50 ${headerSurfaceHoverBackgroundClass} 2xl:px-3.5`}
+                  className={`flex items-center gap-2 rounded-md border border-white/[0.08] ${headerSurfaceBackgroundClass} px-2.5 py-1.5 text-sm transition-colors hover:border-white/[0.18] ${headerSurfaceHoverBackgroundClass} 2xl:px-3`}
                 >
                   <span className="max-w-[132px] truncate font-semibold text-white 2xl:max-w-none">{formatPairDisplay(selectedPair)}</span>
                   <ChevronDown size={14} className="text-slate-400" />
@@ -366,7 +368,7 @@ const Header: React.FC<HeaderProps> = ({
               </div>
 
               {/* Current Price */}
-              <div className={`flex w-fit items-center justify-between rounded-xl border border-slate-600/50 ${headerPanelBackgroundClass} px-2.5 py-2.5 text-white 2xl:px-3.5`}>
+              <div className={`flex w-fit items-center justify-between rounded-md ${headerPanelBackgroundClass} px-2.5 py-2 text-white 2xl:px-3`}>
                 <div className="flex items-center gap-2.5">
                   <span className="text-xs font-medium">{t('header.price')}</span>
                 </div>
@@ -376,26 +378,27 @@ const Header: React.FC<HeaderProps> = ({
           )}
 
           {/* Right Section - Portfolio + User Menu */}
-          <div className="flex min-w-0 items-center gap-2 sm:gap-2.5 lg:gap-3 2xl:gap-5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-2.5 lg:gap-3">
             {/* Portfolio value in the platform fiat currency */}
             <div className={`hidden min-w-0 items-center gap-2 2xl:gap-4 ${desktopHeaderBreakpoint}`}>
-              <div className={`flex min-w-0 max-w-[220px] items-center justify-between rounded-xl ${headerPanelBackgroundClass} px-3 py-2.5 text-white xl:max-w-none xl:px-3.5 2xl:px-4 2xl:py-3`}>
+              <div className={`flex min-w-0 max-w-[220px] items-center justify-between rounded-md ${headerPanelBackgroundClass} px-3 py-1.5 text-white xl:max-w-none 2xl:px-3.5`}>
                 <div className="flex min-w-0 items-center gap-2 xl:gap-2.5 2xl:gap-3">
                   <button
                     onClick={() => setShowBalances(!showBalances)}
-                    className="text-slate-400 hover:text-white transition-colors"
+                    className="text-slate-400 transition-colors hover:text-white"
+                    aria-label={showBalances ? 'Hide portfolio value' : 'Show portfolio value'}
                   >
                     {showBalances ? <Eye size={17} /> : <EyeOff size={17} />}
                   </button>
                   <div className="min-w-0">
-                    <div className="text-[13px] text-slate-400 2xl:text-sm">{t('header.portfolioValue')}</div>
-                    <div className="truncate text-sm font-mono text-white 2xl:text-[15px]">
+                    <div className="text-[10px] text-slate-400 2xl:text-xs">{t('header.portfolioValue')}</div>
+                    <div className="truncate font-mono text-sm font-semibold text-white">
                       {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
                     </div>
                   </div>
                 </div>
 
-                <span className={`ml-2 rounded-lg ${headerSurfaceBackgroundClass} px-2 py-1 text-xs text-white xl:ml-2.5 2xl:px-2.5 2xl:py-1.5 2xl:text-sm`}>
+                <span className={`ml-2 rounded border border-white/[0.08] ${headerSurfaceBackgroundClass} px-2 py-1 text-[11px] text-slate-300`}>
                   EUR
                 </span>
               </div>
@@ -406,10 +409,12 @@ const Header: React.FC<HeaderProps> = ({
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className={`flex items-center gap-1.5 rounded-lg p-1.5 text-slate-400 transition-colors 2xl:p-2 ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+                aria-label="Account menu"
+                aria-expanded={showUserMenu}
+                className={`flex items-center gap-1.5 rounded-md p-1.5 text-slate-400 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
               >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-violet-500 2xl:h-9 2xl:w-9">
-                  <User size={16} className="text-white" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-violet-400/20 bg-violet-500/15">
+                  <User size={16} className="text-violet-200" />
                 </div>
                 <ChevronDown size={16} className="hidden sm:block" />
               </button>
@@ -478,7 +483,9 @@ const Header: React.FC<HeaderProps> = ({
             {/* Mobile Menu Toggle */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={`${compactHeaderBreakpoint} rounded-lg p-1.5 text-slate-400 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
+              aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={isMobileMenuOpen}
+              className={`${compactHeaderBreakpoint} rounded-md border border-white/[0.08] p-2 text-slate-400 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
             >
               {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
@@ -488,51 +495,56 @@ const Header: React.FC<HeaderProps> = ({
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div className={`border-t border-slate-700/50 py-3 ${compactHeaderBreakpoint}`}>
+        <div className={`max-h-[calc(100vh-64px)] overflow-y-auto border-t border-white/[0.08] bg-[#0d1118] py-4 ${compactHeaderBreakpoint}`}>
           <div className={headerContainerClass}>
             {/* Mobile Portfolio Value */}
-            <div className={`mb-4 rounded-xl border border-slate-600/50 ${headerPanelBackgroundClass} p-3.5`}>
-              <div className="mb-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+            <div className={`mb-4 rounded-lg ${headerPanelBackgroundClass} p-3.5`}>
+              <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-slate-400 text-xs">{t('header.portfolioValue')}</div>
                   <div className="truncate text-base font-mono text-white">
                     {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
                   </div>
                 </div>
-                <div className="flex items-center justify-between gap-2 sm:justify-end">
-                  <button
-                    onClick={() => setShowBalances(!showBalances)}
-                    className="p-1 text-slate-400 transition-colors hover:text-white"
-                  >
-                    {showBalances ? <Eye size={15} /> : <EyeOff size={15} />}
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowBalances(!showBalances)}
+                  aria-label={showBalances ? 'Hide portfolio value' : 'Show portfolio value'}
+                  className="rounded-md p-2 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-white"
+                >
+                  {showBalances ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
               </div>
-
             </div>
 
             {/* Mobile Navigation */}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {navigationItems.map((item) => {
+            <nav aria-label="Main navigation" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {navigationItems.map((item, index) => {
                 const Icon = item.icon;
                 return (
-                  <button
-                    key={item.key}
-                    onClick={() => {
-                      setTradingMode(item.key as TradingMode);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-300 ${tradingMode === item.key
-                      ? 'bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg shadow-purple-500/25'
-                      : `text-slate-400 hover:text-white ${headerSurfaceHoverBackgroundClass} border border-slate-600/30`
-                      }`}
-                  >
-                    <Icon size={15} />
-                    <span className="truncate">{item.label}</span>
-                  </button>
+                  <React.Fragment key={item.key}>
+                    {(index === 0 || index === 4) && (
+                      <div className={`col-span-full text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${index === 4 ? 'mt-2 border-t border-white/[0.08] pt-4' : ''}`}>
+                        {index === 0 ? 'Trading' : 'Products'}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        setTradingMode(item.key as TradingMode);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      aria-current={tradingMode === item.key ? 'page' : undefined}
+                      className={`flex min-w-0 items-center gap-2 rounded-md border px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${tradingMode === item.key
+                        ? 'border-violet-400/40 bg-violet-500/10 text-white'
+                        : `border-white/[0.07] bg-[#141922] text-slate-400 hover:text-white ${headerSurfaceHoverBackgroundClass}`
+                        }`}
+                    >
+                      <Icon size={15} className={tradingMode === item.key ? 'shrink-0 text-violet-300' : 'shrink-0 text-slate-500'} />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  </React.Fragment>
                 );
               })}
-            </div>
+            </nav>
 
             {/* Mobile Pair Selector */}
             {(tradingMode === 'futures' || tradingMode === 'cfd') && (

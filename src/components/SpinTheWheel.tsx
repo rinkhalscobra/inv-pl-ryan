@@ -96,7 +96,7 @@ const SpinTheWheel: React.FC = () => {
 
   return (
     <div className="trading-feature-page min-h-screen text-white">
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      <div className="w-full px-4 py-5 sm:px-5 sm:py-6 lg:px-6">
         <div className="mb-5 border-b border-white/[0.08] pb-5">
           <h1 className="text-xl font-semibold text-white sm:text-2xl">
             {t('spinWheel.title')}
@@ -106,8 +106,8 @@ const SpinTheWheel: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
-          <div className="order-2 min-w-0 space-y-5 lg:col-start-2 lg:row-start-1">
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] 2xl:grid-cols-[minmax(280px,1fr)_minmax(500px,1.3fr)_minmax(320px,1fr)]">
+          <div className="order-2 min-w-0 space-y-5 lg:col-start-2 lg:row-start-1 2xl:col-start-1">
             <div className="app-surface-primary rounded-2xl p-6 border border-cyan-500/30">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
@@ -146,7 +146,7 @@ const SpinTheWheel: React.FC = () => {
             </div>
           </div>
 
-          <div className="order-1 flex min-w-0 flex-col items-center gap-5 rounded-xl border border-white/[0.08] bg-[#11151b] p-4 sm:p-6 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          <div className="order-1 flex min-w-0 flex-col items-center gap-5 rounded-xl border border-white/[0.08] bg-[#11151b] p-4 sm:p-6 lg:col-start-1 lg:row-span-2 lg:row-start-1 2xl:col-start-2 2xl:row-span-1">
           <div className="relative flex aspect-square w-full max-w-[520px] items-center justify-center">
 
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4 z-20">
@@ -292,7 +292,7 @@ const SpinTheWheel: React.FC = () => {
           </button>
         </div>
 
-        <div className="order-3 min-w-0 space-y-5 lg:col-start-2 lg:row-start-2">
+        <div className="order-3 min-w-0 space-y-5 lg:col-start-2 lg:row-start-2 2xl:col-start-3 2xl:row-start-1">
           <div className="app-surface-primary rounded-2xl p-6 border border-cyan-500/30">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">

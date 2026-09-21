@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 export default function SwapAboutPanel() {
   const { t } = useTranslation();
   return (
-    <section className="mx-auto w-full max-w-[1440px] px-4 pb-6 sm:px-6 lg:px-8" aria-label="About asset swaps">
+    <section className="w-full px-4 pb-6 sm:px-5 lg:px-6" aria-label="About asset swaps">
       <div className="rounded-xl border border-white/[0.08] bg-[#11151b] p-4 sm:p-6">
         <div className="mb-4 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg app-icon-tile"><Info size={16} className="text-white" /></span><h2 className="text-lg font-semibold text-white">About asset swaps</h2></div>
         <p className="mb-4 text-sm leading-relaxed text-slate-300">{t('swap.aboutDescription')}</p>

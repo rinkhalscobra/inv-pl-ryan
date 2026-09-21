@@ -547,7 +547,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
 
   return (
     <div className="trading-feature-page min-h-screen text-white">
-      <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      <div className="w-full px-4 py-5 sm:px-5 sm:py-6 lg:px-6">
       {/* Header */}
       <div className="mb-5 border-b border-white/[0.08] pb-5">
         <div className="flex items-center justify-between">

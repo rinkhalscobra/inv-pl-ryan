@@ -344,16 +344,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         ? current
         : asText(next.conversations?.[0]?.id));
       setLoadingWorkspace(false);
-      try {
-        const [idLink, selfieLink] = await Promise.all([
-          profile.document_id_path ? supabase.storage.from('kyc-documents').createSignedUrl(asText(profile.document_id_path), 600) : Promise.resolve(null),
-          profile.document_selfie_path ? supabase.storage.from('kyc-documents').createSignedUrl(asText(profile.document_selfie_path), 600) : Promise.resolve(null)
-        ]);
-        if (requestId !== workspaceRequestId.current) return;
-        setKycDocumentUrls({ id: idLink?.data?.signedUrl, selfie: selfieLink?.data?.signedUrl });
-      } catch (documentError) {
-        if (requestId === workspaceRequestId.current) setMessage({ type: 'error', text: `KYC documents: ${errorText(documentError)}` });
-      }
+      setKycDocumentUrls({ id: asText(profile.document_id_path), selfie: asText(profile.document_selfie_path) });
     } catch (error) {
       if (requestId !== workspaceRequestId.current) return;
       const detail = errorText(error);
@@ -363,6 +354,22 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       if (requestId === workspaceRequestId.current) setLoadingWorkspace(false);
     }
   }, []);
+
+  const openKycDocument = useCallback(async (path: string) => {
+    const viewer = window.open('about:blank', '_blank');
+    if (!viewer) { showError(new Error('Allow pop-ups to open the document')); return; }
+    viewer.opener = null;
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-kyc-document', { body: { path } });
+      if (error || !(data instanceof Blob)) throw error || new Error('Document unavailable');
+      const url = URL.createObjectURL(data);
+      viewer.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 300_000);
+    } catch (error) {
+      viewer.close();
+      showError(error);
+    }
+  }, [showError]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadUsers(search), 250);
@@ -870,8 +877,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         <div className="mt-5 grid gap-3 sm:grid-cols-2">
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Tax ID</div><div className="mt-2 flex items-center gap-3"><span className="min-w-0 break-all font-mono text-sm text-white">{showTaxId ? taxSubmission.tax_id : `â€¢â€¢â€¢â€¢ ${taxSubmission.tax_id.slice(-4)}`}</span><button type="button" onClick={() => setShowTaxId(value => !value)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label={showTaxId ? 'Hide Tax ID' : 'Reveal Tax ID'}>{showTaxId ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Submitted</div><div className="mt-2 text-sm text-white">{dateTime(taxSubmission.submitted_at)}</div>{taxSubmission.reviewed_at && <div className="mt-1 text-xs text-slate-400">Reviewed {dateTime(taxSubmission.reviewed_at)}</div>}</div>
-                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Identity document</div>{kycDocumentUrls.id ? <a href={kycDocumentUrls.id} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open document</a> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
-                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Selfie</div>{kycDocumentUrls.selfie ? <a href={kycDocumentUrls.selfie} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open selfie</a> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Identity document</div>{kycDocumentUrls.id ? <button type="button" onClick={() => void openKycDocument(kycDocumentUrls.id!)} className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open document</button> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Selfie</div>{kycDocumentUrls.selfie ? <button type="button" onClick={() => void openKycDocument(kycDocumentUrls.selfie!)} className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open selfie</button> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
                         </div>
                       ) : <div className="mt-5 rounded-xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-400">This customer has not submitted a Tax ID.</div>}
                       {taxSubmission?.status === 'pending' && profile.kyc_status === 'pending' && (

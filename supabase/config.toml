@@ -11,6 +11,9 @@ enable_confirmations = false
 # gateway verification off ensures unauthenticated browser OPTIONS preflight works.
 verify_jwt = false
 
+[functions.admin-kyc-document]
+verify_jwt = false
+
 [functions.cfd-market-data]
 # Browser preflight is public; the function validates the user JWT internally.
 verify_jwt = false

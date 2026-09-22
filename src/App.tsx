@@ -46,6 +46,7 @@ import SwapCryptoPage from './components/SwapCryptoPage';
 import SpinTheWheel from './components/SpinTheWheel';
 import PaymentSandbox from './components/PaymentSandbox';
 import AdminCRMPage from './components/AdminCRMPage';
+import AdminIpGate from './components/AdminIpGate';
 import CRMHierarchyPage from './components/CRMHierarchyPage';
 import CRMStaffPage from './components/CRMStaffPage';
 
@@ -830,7 +831,7 @@ const handleUpdatePassword = async (newPassword: string) => {
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
               ) : user ? (
-                isAdmin ? <AdminCRMPage isAdmin /> : <Navigate to="/dashboard" replace />
+                isAdmin ? <AdminIpGate><AdminCRMPage isAdmin /></AdminIpGate> : <Navigate to="/dashboard" replace />
               ) : (
                 <Navigate to="/auth" replace />
               )
@@ -840,7 +841,7 @@ const handleUpdatePassword = async (newPassword: string) => {
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
               ) : user ? (
-                isAdmin ? <CRMHierarchyPage /> : <Navigate to="/dashboard" replace />
+                isAdmin ? <AdminIpGate><CRMHierarchyPage /></AdminIpGate> : <Navigate to="/dashboard" replace />
               ) : <Navigate to="/auth" replace />
             } />
 

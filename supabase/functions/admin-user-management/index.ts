@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
+import { isAllowedAdminIp } from "../../../src/constants/adminIpAllowlist.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +16,9 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { status: 200, headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (!isAllowedAdminIp(request.headers.get("cf-connecting-ip"))) {
+    return json({ error: "Administrator network access required" }, 403);
+  }
 
   try {
     const authorization = request.headers.get("Authorization");

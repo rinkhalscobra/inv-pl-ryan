@@ -170,7 +170,24 @@ Deno.serve(async request => {
   }
   try {
     const body = await request.json().catch(() => ({})) as { action?: string; symbol?: string; force?: boolean };
-    if (scheduled && !["sync_all", "sync_selected"].includes(body.action || "")) return json({ error: "Invalid action" }, 400);
+    if (scheduled && !["sync_all", "sync_selected", "warm_history"].includes(body.action || "")) return json({ error: "Invalid action" }, 400);
+    if (body.action === "warm_history") {
+      if (!scheduled) return json({ error: "Service authorization required" }, 403);
+      const key = Deno.env.get("TWELVE_DATA_API_KEY") || "";
+      if (!key) throw new Error("Twelve Data API key is not configured");
+      const stable = (await fetchQuotes(["USDT/USD"], key))["USDT/USD"];
+      if (!usable(stable, "USDT/USD")) throw new Error("A current Twelve Data USDT/USD quote is unavailable");
+      let warmed = 0, failed = 0;
+      for (const group of chunks(mappings, 5)) {
+        const outcomes = await Promise.allSettled(group.map(item =>
+          refreshCandles(admin, item, Number(stable.close), key)));
+        for (const outcome of outcomes) {
+          if (outcome.status === "fulfilled") warmed++;
+          else { failed++; console.warn("Twelve Data chart warm failed", outcome.reason); }
+        }
+      }
+      return json({ success: true, warmed, failed, provider: "Twelve Data" });
+    }
     const selected = body.action === "sync_selected" ? String(body.symbol || "").toUpperCase() : "";
     if (!scheduled && body.action !== "sync_selected") return json({ error: "Invalid action" }, 400);
     const items = selected ? [bySymbol.get(selected)].filter((item): item is Mapping => Boolean(item)) : mappings;

@@ -87,6 +87,7 @@ export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
       if (error || data?.success !== true) throw error || new Error(data?.error || 'Twelve Data refresh failed');
       await loadQuotes(normalized);
+      window.dispatchEvent(new CustomEvent('twelve-crypto-history-updated', { detail: { symbol: normalized } }));
     } catch (error) {
       console.error('Selected Twelve Data crypto quote refresh failed', error);
       lastRefreshRef.current.set(normalized, Date.now() - 30_000);

@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabaseClient';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
 type Candle = { candle_time: string; open: number; high: number; low: number; close: number; volume: number };
+const historyCache = new Map<string, Candle[]>();
 
 export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { selectedPair: string; market?: 'cfd' | 'crypto' }) {
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -23,8 +24,10 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
 
   useEffect(() => {
     let active = true;
-    setCandles([]);
-    setLoading(true);
+    const cacheKey = `${market}:${selectedPair}`;
+    const cached = historyCache.get(cacheKey);
+    setCandles(cached || []);
+    setLoading(!cached);
     const load = async () => {
       const { data, error } = await supabase.from(market === 'crypto' ? 'crypto_market_candles' : 'cfd_market_candles')
         .select('candle_time,open,high,low,close,volume')
@@ -32,16 +35,28 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
         .order('candle_time', { ascending: false })
         .limit(180);
       if (!active) return;
-      if (!error && data) setCandles(data.reverse().map(row => ({
-        candle_time: row.candle_time,
-        open: Number(row.open), high: Number(row.high), low: Number(row.low),
-        close: Number(row.close), volume: Number(row.volume)
-      })));
+      if (!error && data) {
+        const next = data.reverse().map(row => ({
+          candle_time: row.candle_time,
+          open: Number(row.open), high: Number(row.high), low: Number(row.low),
+          close: Number(row.close), volume: Number(row.volume)
+        }));
+        if (next.length) {
+          historyCache.set(cacheKey, next);
+          setCandles(next);
+        }
+      }
       setLoading(false);
     };
     void load();
+    const onHistoryUpdated = (event: Event) => {
+      if (market === 'crypto' && (event as CustomEvent<{ symbol: string }>).detail?.symbol === selectedPair) {
+        void load();
+      }
+    };
+    window.addEventListener('twelve-crypto-history-updated', onHistoryUpdated);
     const timer = window.setInterval(() => void load(), 20_000);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('twelve-crypto-history-updated', onHistoryUpdated); };
   }, [selectedPair, market]);
 
   const points = useMemo(() => {
@@ -113,10 +128,16 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
       </div>
       <div className="relative min-h-0 flex-1 px-2 pb-2 pt-3">
         {points.length > 1 ? <Line data={chartData} options={options} /> : (
-          <div className="flex h-full items-center justify-center text-sm text-slate-500">
-            {loading ? 'Loading Twelve Data chart…' : market === 'cfd' && instrument?.tradable === false
-              ? 'Twelve Data chart unavailable for this instrument'
-              : 'Waiting for Twelve Data chart history'}
+          <div className="flex h-full items-center justify-center px-4">
+            {quote?.price ? <div className="w-full max-w-md rounded-xl border border-white/[0.08] bg-white/[0.025] p-5 text-slate-300">
+              <div className="text-[11px] uppercase tracking-widest text-slate-500">Twelve Data reference quote</div>
+              <div className="mt-2 font-mono text-3xl font-semibold text-white">{quote.price.toFixed(pricePrecision)}</div>
+              <div className="mt-4 grid grid-cols-2 gap-4 border-t border-white/[0.08] pt-4 text-xs">
+                <div><span className="text-slate-500">24h high</span><div className="mt-1 font-mono">{quote.high_price_24h > 0 ? quote.high_price_24h.toFixed(pricePrecision) : '--'}</div></div>
+                <div><span className="text-slate-500">24h low</span><div className="mt-1 font-mono">{quote.low_price_24h > 0 ? quote.low_price_24h.toFixed(pricePrecision) : '--'}</div></div>
+              </div>
+              <div className="mt-4 text-xs text-slate-500">{loading ? 'Loading chart history…' : 'Chart history will appear when the market feed returns it.'}</div>
+            </div> : <div className="text-sm text-slate-500">{loading ? 'Loading market data…' : 'Market data unavailable'}</div>}
           </div>
         )}
       </div>

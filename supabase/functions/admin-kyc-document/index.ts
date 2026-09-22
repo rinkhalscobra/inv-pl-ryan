@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
-import { isAllowedAdminIp } from "../../../src/constants/adminIpAllowlist.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -15,14 +14,15 @@ const errorResponse = (message: string, status: number) => new Response(JSON.str
 Deno.serve(async request => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (request.method !== "POST") return errorResponse("Method not allowed", 405);
-  if (!isAllowedAdminIp(request.headers.get("cf-connecting-ip"))) {
-    return errorResponse("Administrator network access required", 403);
-  }
-  const token = request.headers.get("Authorization")?.replace(/^Bearer /i, "");
-  if (!token) return errorResponse("Authentication required", 401);
   const url = Deno.env.get("SUPABASE_URL"), key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) return errorResponse("Server configuration is incomplete", 500);
   const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const clientIp = request.headers.get("cf-connecting-ip") || "";
+  if (!clientIp) return errorResponse("Administrator network access required", 403);
+  const { data: ipAllowed, error: ipError } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
+  if (ipError || ipAllowed !== true) return errorResponse("Administrator network access required", 403);
+  const token = request.headers.get("Authorization")?.replace(/^Bearer /i, "");
+  if (!token) return errorResponse("Authentication required", 401);
   const { data: actor, error: authError } = await admin.auth.getUser(token);
   if (authError || !actor.user) return errorResponse("Invalid administrator session", 401);
   const { data: profile, error: profileError } = await admin.from("users")

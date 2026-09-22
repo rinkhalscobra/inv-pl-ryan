@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
-import { isAllowedAdminIp } from "../../../src/constants/adminIpAllowlist.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,14 +15,8 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { status: 200, headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
-  if (!isAllowedAdminIp(request.headers.get("cf-connecting-ip"))) {
-    return json({ error: "Administrator network access required" }, 403);
-  }
 
   try {
-    const authorization = request.headers.get("Authorization");
-    if (!authorization?.startsWith("Bearer ")) return json({ error: "Authentication required" }, 401);
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRoleKey) return json({ error: "Server configuration is incomplete" }, 500);
@@ -31,6 +24,13 @@ Deno.serve(async (request: Request) => {
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    const clientIp = request.headers.get("cf-connecting-ip") || "";
+    if (!clientIp) return json({ error: "Administrator network access required" }, 403);
+    const { data: ipAllowed, error: ipError } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
+    if (ipError || ipAllowed !== true) return json({ error: "Administrator network access required" }, 403);
+
+    const authorization = request.headers.get("Authorization");
+    if (!authorization?.startsWith("Bearer ")) return json({ error: "Authentication required" }, 401);
     const accessToken = authorization.slice("Bearer ".length);
     const { data: actorResult, error: actorError } = await admin.auth.getUser(accessToken);
     if (actorError || !actorResult.user) return json({ error: "Invalid or expired administrator session" }, 401);

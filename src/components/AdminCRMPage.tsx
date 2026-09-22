@@ -716,6 +716,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => navigate('/admin/hierarchy')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Team hierarchy</button>
+            <button onClick={() => navigate('/admin/ip-access')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><ShieldCheck size={16} />IP access</button>
             <button onClick={() => void refreshAll()} className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 hover:border-purple-500/50 hover:text-white">
               <RefreshCw size={16} className={loadingUsers || loadingWorkspace ? 'animate-spin' : ''} /> Refresh CRM
             </button>

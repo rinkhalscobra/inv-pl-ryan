@@ -47,6 +47,7 @@ import SpinTheWheel from './components/SpinTheWheel';
 import PaymentSandbox from './components/PaymentSandbox';
 import AdminCRMPage from './components/AdminCRMPage';
 import AdminIpGate from './components/AdminIpGate';
+import AdminIpAccessPage from './components/AdminIpAccessPage';
 import CRMHierarchyPage from './components/CRMHierarchyPage';
 import CRMStaffPage from './components/CRMStaffPage';
 
@@ -842,6 +843,14 @@ const handleUpdatePassword = async (newPassword: string) => {
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
               ) : user ? (
                 isAdmin ? <AdminIpGate><CRMHierarchyPage /></AdminIpGate> : <Navigate to="/dashboard" replace />
+              ) : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/admin/ip-access" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
+              ) : user ? (
+                isAdmin ? <AdminIpGate><AdminIpAccessPage /></AdminIpGate> : <Navigate to="/dashboard" replace />
               ) : <Navigate to="/auth" replace />
             } />
 

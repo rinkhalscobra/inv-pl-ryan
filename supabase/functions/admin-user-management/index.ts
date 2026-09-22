@@ -42,10 +42,82 @@ Deno.serve(async (request: Request) => {
     const body = await request.json().catch(() => ({})) as {
       action?: string;
       target_user_id?: string;
+      email?: string;
+      first_name?: string;
+      last_name?: string;
+      country?: string;
+      role?: string;
+      owner_role?: string | null;
+      owner_id?: string | null;
       password?: string;
       confirmation_email?: string;
       reason?: string;
     };
+    if (body.action === "create_user") {
+      const email = body.email?.trim().toLowerCase() || "";
+      const firstName = body.first_name?.trim() || "";
+      const lastName = body.last_name?.trim() || "";
+      const country = body.country?.trim() || "";
+      const password = body.password || "";
+      const role = body.role || "client";
+      const ownerRole = body.owner_role || null;
+      const ownerId = body.owner_id || null;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+        return json({ error: "Enter a valid email address" }, 400);
+      }
+      if (!firstName || !lastName || firstName.length > 100 || lastName.length > 100) {
+        return json({ error: "Enter a first and last name (up to 100 characters each)" }, 400);
+      }
+      if (country.length > 100) return json({ error: "Country is too long" }, 400);
+      if (password.length < 8 || password.length > 128) {
+        return json({ error: "Password must contain 8 to 128 characters" }, 400);
+      }
+      if (!["client", "agent", "retention", "admin"].includes(role)) {
+        return json({ error: "Select a valid account role" }, 400);
+      }
+      if ((ownerRole === null) !== (ownerId === null) ||
+        (ownerRole !== null && !["agent", "retention"].includes(ownerRole)) ||
+        (ownerId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ownerId)) ||
+        (role === "agent" && ownerRole !== null && ownerRole !== "retention") ||
+        (["admin", "retention"].includes(role) && ownerRole !== null)) {
+        return json({ error: "Select a valid manager or client owner" }, 400);
+      }
+
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { first_name: firstName, last_name: lastName, country },
+      });
+      if (createError || !created.user) {
+        return json({ error: createError?.message || "Account creation failed" }, 400);
+      }
+
+      const newUserId = created.user.id;
+      const { error: finalizeError } = await admin.rpc("crm_finalize_created_user", {
+        p_user_id: newUserId,
+        p_actor_id: actorId,
+        p_role: role,
+        p_owner_role: ownerRole,
+        p_owner_id: ownerId,
+      });
+      if (finalizeError) {
+        console.error("Account setup failed", { user_id: newUserId, error: finalizeError });
+        const { error: rollbackError } = await admin.auth.admin.deleteUser(newUserId, false);
+        if (rollbackError) {
+          console.error("Account cleanup failed", { user_id: newUserId, error: rollbackError });
+          return json({ error: `Account setup failed and cleanup needs administrator attention. User ID: ${newUserId}` }, 500);
+        }
+        const { error: profileCleanupError } = await admin.from("users").delete().eq("id", newUserId);
+        if (profileCleanupError) {
+          console.error("Profile cleanup failed", { user_id: newUserId, error: profileCleanupError });
+          return json({ error: `Account setup failed and profile cleanup needs administrator attention. User ID: ${newUserId}` }, 500);
+        }
+        return json({ error: `Account was not created: ${finalizeError.message}` }, 400);
+      }
+      return json({ success: true, user_id: newUserId, message: "Account created" });
+    }
+
     const targetUserId = body.target_user_id?.trim();
     const reason = body.reason?.trim();
     if (!targetUserId) return json({ error: "Target user is required" }, 400);

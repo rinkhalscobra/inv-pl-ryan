@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, RefreshCw, Search, ShieldCheck, Users } from 'lucide-react';
+import { ArrowLeft, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 type CRMRole = 'client' | 'agent' | 'retention' | 'admin';
@@ -23,7 +23,9 @@ interface Hierarchy {
 const emptyHierarchy: Hierarchy = { people: [], agent_assignments: [], client_assignments: [], retention_client_assignments: [] };
 const panel = 'rounded-xl border border-white/[0.1] bg-[#151b26]';
 const selectClass = 'rounded-lg border border-white/[0.13] bg-[#0f1520] px-3 py-2 text-sm text-slate-200 outline-none focus:border-violet-400 disabled:opacity-50';
+const fieldClass = `${selectClass} w-full`;
 const nameOf = (person: Person) => `${person.first_name || ''} ${person.last_name || ''}`.trim() || person.email;
+const emptyNewUser = { email: '', firstName: '', lastName: '', country: '', password: '', confirmPassword: '', role: 'client' as CRMRole, owner: '' };
 
 export default function CRMHierarchyPage() {
   const navigate = useNavigate();
@@ -37,6 +39,15 @@ export default function CRMHierarchyPage() {
   const [setupRole, setSetupRole] = useState<'agent' | 'retention' | null>(null);
   const [staffCandidateId, setStaffCandidateId] = useState('');
   const [staffManagerId, setStaffManagerId] = useState('');
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUser, setNewUser] = useState(emptyNewUser);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const closeCreateUser = () => {
+    setShowCreateUser(false);
+    setCreateError(null);
+    setNewUser(emptyNewUser);
+  };
 
   const refresh = useCallback(async (): Promise<boolean> => {
     setLoading(true);
@@ -127,6 +138,65 @@ export default function CRMHierarchyPage() {
     }, 'Client assignment updated.');
   };
 
+  const createUser = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCreateError(null);
+    const email = newUser.email.trim().toLowerCase();
+    if (!email || !newUser.firstName.trim() || !newUser.lastName.trim()) {
+      setCreateError('Email, first name and last name are required.');
+      return;
+    }
+    if (newUser.password.length < 8 || newUser.password.length > 128) {
+      setCreateError('Password must contain 8 to 128 characters.');
+      return;
+    }
+    if (newUser.password !== newUser.confirmPassword) {
+      setCreateError('Passwords do not match.');
+      return;
+    }
+    if (newUser.role === 'admin' && !window.confirm(`Create ${email} with full administrator access?`)) return;
+
+    setBusy('create-user');
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) throw new Error('Administrator session expired. Sign in again.');
+      const [ownerRole, ownerId] = newUser.owner ? newUser.owner.split(':') : [null, null];
+      const { data, error: requestError } = await supabase.functions.invoke('admin-user-management', {
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+        body: {
+          action: 'create_user',
+          email,
+          first_name: newUser.firstName.trim(),
+          last_name: newUser.lastName.trim(),
+          country: newUser.country.trim(),
+          password: newUser.password,
+          role: newUser.role,
+          owner_role: ownerRole,
+          owner_id: ownerId
+        }
+      });
+      if (requestError) {
+        let detail = requestError.message;
+        const response = (requestError as { context?: Response }).context;
+        if (response instanceof Response) {
+          const payload = await response.clone().json().catch(() => null) as { error?: string } | null;
+          detail = payload?.error || detail;
+        }
+        throw new Error(detail);
+      }
+      const payload = data as { error?: string; user_id?: string } | null;
+      if (payload?.error) throw new Error(payload.error);
+      if (!payload?.user_id) throw new Error('The server did not confirm account creation. Refresh the list before trying again.');
+      closeCreateUser();
+      setNotice(`${email} was created as ${newUser.role}. The account can sign in with the password you set.`);
+      await refresh();
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : 'Account creation failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0d1118] px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1700px]">
@@ -136,8 +206,38 @@ export default function CRMHierarchyPage() {
             <div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300"><ShieldCheck size={21} /></div>
             <div><h1 className="text-2xl font-bold">CRM hierarchy</h1><p className="text-sm text-slate-400">Assign clients to agents and agents to retention.</p></div>
           </div>
-          <button onClick={() => void refresh()} disabled={loading || busy !== null} className="flex items-center gap-2 rounded-lg border border-white/[0.12] px-3 py-2 text-sm text-slate-300 hover:text-white disabled:opacity-50"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => { setCreateError(null); setNewUser(emptyNewUser); setShowCreateUser(true); }} disabled={busy !== null} className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"><UserPlus size={16} />Create user</button>
+            <button onClick={() => void refresh()} disabled={loading || busy !== null} className="flex items-center gap-2 rounded-lg border border-white/[0.12] px-3 py-2 text-sm text-slate-300 hover:text-white disabled:opacity-50"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button>
+          </div>
         </div>
+
+        {showCreateUser && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onMouseDown={event => { if (event.target === event.currentTarget && busy === null) closeCreateUser(); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="create-user-title" className="w-full max-w-xl rounded-2xl border border-white/[0.13] bg-[#171e2b] shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-white/[0.09] p-5">
+              <div><h2 id="create-user-title" className="text-lg font-semibold">Create account</h2><p className="mt-1 text-sm text-slate-400">Set login details, access level and CRM ownership.</p></div>
+              <button type="button" aria-label="Close" onClick={closeCreateUser} disabled={busy !== null} className="rounded-lg p-1 text-slate-400 hover:text-white disabled:opacity-50"><X size={19} /></button>
+            </div>
+            <form onSubmit={createUser} className="max-h-[min(75vh,740px)] space-y-4 overflow-y-auto p-5">
+              {createError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{createError}</div>}
+              <label className="block text-xs font-medium text-slate-300">Email address<input autoFocus type="email" required maxLength={254} autoComplete="off" value={newUser.email} onChange={event => setNewUser(value => ({ ...value, email: event.target.value }))} className={`mt-1 ${fieldClass}`} placeholder="name@example.com" /></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-slate-300">First name<input required maxLength={100} value={newUser.firstName} onChange={event => setNewUser(value => ({ ...value, firstName: event.target.value }))} className={`mt-1 ${fieldClass}`} /></label>
+                <label className="block text-xs font-medium text-slate-300">Last name<input required maxLength={100} value={newUser.lastName} onChange={event => setNewUser(value => ({ ...value, lastName: event.target.value }))} className={`mt-1 ${fieldClass}`} /></label>
+              </div>
+              <label className="block text-xs font-medium text-slate-300">Country <span className="text-slate-500">(optional)</span><input maxLength={100} value={newUser.country} onChange={event => setNewUser(value => ({ ...value, country: event.target.value }))} className={`mt-1 ${fieldClass}`} /></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-slate-300">Initial password<input type="password" required minLength={8} maxLength={128} autoComplete="new-password" value={newUser.password} onChange={event => setNewUser(value => ({ ...value, password: event.target.value }))} className={`mt-1 ${fieldClass}`} /></label>
+                <label className="block text-xs font-medium text-slate-300">Confirm password<input type="password" required minLength={8} maxLength={128} autoComplete="new-password" value={newUser.confirmPassword} onChange={event => setNewUser(value => ({ ...value, confirmPassword: event.target.value }))} className={`mt-1 ${fieldClass}`} /></label>
+              </div>
+              <label className="block text-xs font-medium text-slate-300">Account role<select value={newUser.role} onChange={event => setNewUser(value => ({ ...value, role: event.target.value as CRMRole, owner: '' }))} className={`mt-1 ${fieldClass}`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Administrator</option></select></label>
+              {newUser.role === 'client' && <label className="block text-xs font-medium text-slate-300">Client owner <span className="text-slate-500">(optional)</span><select value={newUser.owner} onChange={event => setNewUser(value => ({ ...value, owner: event.target.value }))} className={`mt-1 ${fieldClass}`}><option value="">Unassigned</option>{agents.length > 0 && <optgroup label="Agents">{agents.map(agent => <option key={agent.id} value={`agent:${agent.id}`}>{nameOf(agent)} · {agent.email}</option>)}</optgroup>}{retention.length > 0 && <optgroup label="Direct retention">{retention.map(manager => <option key={manager.id} value={`retention:${manager.id}`}>{nameOf(manager)} · {manager.email}</option>)}</optgroup>}</select></label>}
+              {newUser.role === 'agent' && <label className="block text-xs font-medium text-slate-300">Retention manager <span className="text-slate-500">(optional)</span><select value={newUser.owner} onChange={event => setNewUser(value => ({ ...value, owner: event.target.value }))} className={`mt-1 ${fieldClass}`}><option value="">Unassigned</option>{retention.map(manager => <option key={manager.id} value={`retention:${manager.id}`}>{nameOf(manager)} · {manager.email}</option>)}</select></label>}
+              <p className="text-xs text-slate-400">The email is confirmed at creation so this account can sign in immediately. Share the initial password securely.</p>
+              <div className="flex justify-end gap-2 border-t border-white/[0.09] pt-4"><button type="button" onClick={closeCreateUser} disabled={busy !== null} className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm text-slate-300 disabled:opacity-50">Cancel</button><button type="submit" disabled={busy !== null} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">{busy === 'create-user' ? 'Creating account...' : 'Create account'}</button></div>
+            </form>
+          </section>
+        </div>}
 
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
         {notice && <div role="status" className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{notice}</div>}

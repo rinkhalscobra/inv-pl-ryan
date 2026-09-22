@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Percent, Euro, TrendingUp, TrendingDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -406,14 +407,14 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
 
               {allowLimitExecution && <div>
                 <label className="block text-sm text-slate-400 mb-2">Execution Type</label>
-                <select
+                <AppSelect
                   value={executionType}
                   onChange={(e) => setExecutionType(e.target.value as 'market' | 'limit')}
                   className={`w-full bg-slate-900/50 text-white px-4 py-3 rounded-lg border border-${colorClass}-500/30 focus:outline-none focus:ring-2 focus:ring-${colorClass}-500/50`}
                 >
                   <option value="market">Market</option>
                   <option value="limit">Limit</option>
-                </select>
+                </AppSelect>
                 {executionType === 'limit' && (
                   <input
                     type="text"
@@ -653,14 +654,14 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
 
         {allowLimitExecution && <div className="mb-6">
           <label className="block text-sm text-slate-400 mb-2">Execution Type</label>
-          <select
+          <AppSelect
             value={executionType}
             onChange={(e) => setExecutionType(e.target.value as 'market' | 'limit')}
             className={`w-full bg-slate-900/50 text-white px-4 py-3 rounded-lg border border-${colorClass}-500/30 focus:outline-none focus:ring-2 focus:ring-${colorClass}-500/50`}
           >
             <option value="market">Market</option>
             <option value="limit">Limit</option>
-          </select>
+          </AppSelect>
           {executionType === 'limit' && (
             <input
               type="text"

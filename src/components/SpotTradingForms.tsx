@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowDown, RefreshCw, Info, DollarSign, Bitcoin, AlertTriangle, Search, ChevronDown, X, CheckCircle } from 'lucide-react';
 import { MarketData } from '../hooks/useDatabase';
@@ -591,14 +592,14 @@ const SpotTradingForms: React.FC<SpotTradingFormsProps> = ({
                     className="w-full app-input px-3 py-2 rounded-lg border border-red-500/30 focus:outline-none focus:ring-1 focus:ring-red-500/50 text-sm font-mono"
                   />
                   <div className="flex gap-2">
-                    <select
+                    <AppSelect
                       value={buyStopLoss.type}
                       onChange={(e) => setBuyStopLoss(prev => ({ ...prev, type: e.target.value as 'market' | 'limit' }))}
                       className="flex-1 app-input px-2 py-1 rounded-lg border border-red-500/30 text-sm"
                     >
                       <option value="market">Market</option>
                       <option value="limit">Limit</option>
-                    </select>
+                    </AppSelect>
                     {buyStopLoss.type === 'limit' && (
                       <input
                         type="text"
@@ -634,14 +635,14 @@ const SpotTradingForms: React.FC<SpotTradingFormsProps> = ({
                     className="w-full app-input px-3 py-2 rounded-lg border border-emerald-500/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 text-sm font-mono"
                   />
                   <div className="flex gap-2">
-                    <select
+                    <AppSelect
                       value={buyTakeProfit.type}
                       onChange={(e) => setBuyTakeProfit(prev => ({ ...prev, type: e.target.value as 'market' | 'limit' }))}
                       className="flex-1 app-input px-2 py-1 rounded-lg border border-emerald-500/30 text-sm"
                     >
                       <option value="market">Market</option>
                       <option value="limit">Limit</option>
-                    </select>
+                    </AppSelect>
                     {buyTakeProfit.type === 'limit' && (
                       <input
                         type="text"
@@ -769,14 +770,14 @@ const SpotTradingForms: React.FC<SpotTradingFormsProps> = ({
                     className="w-full app-input px-3 py-2 rounded-lg border border-red-500/30 focus:outline-none focus:ring-1 focus:ring-red-500/50 text-sm font-mono"
                   />
                   <div className="flex gap-2">
-                    <select
+                    <AppSelect
                       value={sellStopLoss.type}
                       onChange={(e) => setSellStopLoss(prev => ({ ...prev, type: e.target.value as 'market' | 'limit' }))}
                       className="flex-1 app-input px-2 py-1 rounded-lg border border-red-500/30 text-sm"
                     >
                       <option value="market">Market</option>
                       <option value="limit">Limit</option>
-                    </select>
+                    </AppSelect>
                     {sellStopLoss.type === 'limit' && (
                       <input
                         type="text"
@@ -812,14 +813,14 @@ const SpotTradingForms: React.FC<SpotTradingFormsProps> = ({
                     className="w-full app-input px-3 py-2 rounded-lg border border-emerald-500/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 text-sm font-mono"
                   />
                   <div className="flex gap-2">
-                    <select
+                    <AppSelect
                       value={sellTakeProfit.type}
                       onChange={(e) => setSellTakeProfit(prev => ({ ...prev, type: e.target.value as 'market' | 'limit' }))}
                       className="flex-1 app-input px-2 py-1 rounded-lg border border-emerald-500/30 text-sm"
                     >
                       <option value="market">Market</option>
                       <option value="limit">Limit</option>
-                    </select>
+                    </AppSelect>
                     {sellTakeProfit.type === 'limit' && (
                       <input
                         type="text"

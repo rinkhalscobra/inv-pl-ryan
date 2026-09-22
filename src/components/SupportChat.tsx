@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MessageCircle, 
@@ -583,7 +584,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user }) => {
           </div>
 
           {/* Status Filter */}
-          <select
+          <AppSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
             className="w-full app-input px-3 py-2 rounded-lg border border-slate-600/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50 text-sm custom-select"
@@ -592,7 +593,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user }) => {
             <option value="open">Open</option>
             <option value="pending">Pending</option>
             <option value="closed">Closed</option>
-          </select>
+          </AppSelect>
         </div>
 
         {/* Conversations List */}
@@ -894,9 +895,9 @@ const SupportChat: React.FC<SupportChatProps> = ({ user }) => {
               <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 text-sm text-blue-400">
                 <p className="font-medium mb-1">Support Guidelines</p>
                 <ul className="text-xs space-y-1">
-                  <li>• Be specific about your issue</li>
-                  <li>• Include relevant details (transaction IDs, error messages)</li>
-                  <li>• Our team typically responds within 2-4 hours</li>
+                  <li>â€¢ Be specific about your issue</li>
+                  <li>â€¢ Include relevant details (transaction IDs, error messages)</li>
+                  <li>â€¢ Our team typically responds within 2-4 hours</li>
                 </ul>
               </div>
 

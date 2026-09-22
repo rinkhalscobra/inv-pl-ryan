@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -663,7 +664,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                           </span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-slate-400">{log.exchange} • {log.amount} @ ${log.price}</span>
+                          <span className="text-slate-400">{log.exchange} â€¢ {log.amount} @ ${log.price}</span>
                           <span className="text-emerald-400">+${log.profit}</span>
                         </div>
                       </div>
@@ -757,7 +758,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">{t('robot.tradingPair')}</label>
-                  <select
+                  <AppSelect
                     value={selectedPair}
                     onChange={(e) => setSelectedPair(e.target.value)}
                     className={`${robotFieldClass} custom-select`}
@@ -767,12 +768,12 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                         {symbol}
                       </option>
                     ))}
-                  </select>
+                  </AppSelect>
                 </div>
                 
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">{t('robot.tradingStrategy')}</label>
-                  <select
+                  <AppSelect
                     value={robotState?.strategy || 'triangular'}
                     onChange={(e) => updateRobotState({ strategy: e.target.value })}
                     className={`${robotFieldClass} custom-select`}
@@ -781,7 +782,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                     <option value="spatial" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{t('robot.strategies.spatial')}</option>
                     <option value="statistical" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{t('robot.strategies.statistical')}</option>
                     <option value="latency" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>{t('robot.strategies.latency')}</option>
-                  </select>
+                  </AppSelect>
                 </div>
                 
                 <div>
@@ -869,7 +870,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               {/* SHRIMP Tier */}
               <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
                 <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">🦐</span>
+                  <span className="text-4xl">ðŸ¦</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">SHRIMP</h3>
                 <div className="text-2xl font-bold text-emerald-400 mb-4">0.2 - 0.5%</div>
@@ -880,7 +881,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               {/* CRAB Tier */}
               <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
                 <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">🦀</span>
+                  <span className="text-4xl">ðŸ¦€</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">CRAB</h3>
                 <div className="text-2xl font-bold text-emerald-400 mb-4">0.35 - 0.7%</div>
@@ -891,7 +892,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               {/* OCTOPUS Tier */}
               <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
                 <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">🐙</span>
+                  <span className="text-4xl">ðŸ™</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">OCTOPUS</h3>
                 <div className="text-2xl font-bold text-emerald-400 mb-4">0.6 - 1%</div>
@@ -902,7 +903,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               {/* DOLPHIN Tier */}
               <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
                 <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">🐬</span>
+                  <span className="text-4xl">ðŸ¬</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">DOLPHIN</h3>
                 <div className="text-2xl font-bold text-emerald-400 mb-4">0.8 - 1.3%</div>
@@ -913,7 +914,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               {/* SHARK Tier */}
               <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
                 <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">🦈</span>
+                  <span className="text-4xl">ðŸ¦ˆ</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">SHARK</h3>
                 <div className="text-2xl font-bold text-emerald-400 mb-4">1.2 - 2.6%</div>
@@ -924,7 +925,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               {/* WHALE Tier */}
               <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
                 <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">🐋</span>
+                  <span className="text-4xl">ðŸ‹</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">WHALE</h3>
                 <div className="text-2xl font-bold text-emerald-400 mb-4">2.1 - 4.2%</div>

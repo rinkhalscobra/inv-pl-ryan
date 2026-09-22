@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { AlertTriangle, CheckCircle, Plus, CreditCard as Edit2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -476,15 +477,14 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
               <div>
                 <label className="mb-1.5 block text-[11px] text-slate-500">{t('common.leverage')}</label>
                 <div className="relative">
-                  <select
+                  <AppSelect
                     value={leverage}
                     onChange={(event) => setLeverage(Number(event.target.value))}
                     disabled={isLeverageLocked}
                     className="h-[38px] w-full appearance-none rounded-md border border-white/[0.08] bg-[#161a1e] px-3 font-mono text-xs font-semibold text-white outline-none transition focus:border-violet-400/50 disabled:cursor-not-allowed"
                   >
                     {leverageOptions.map((option) => <option key={option} value={option}>{option}x</option>)}
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-violet-300">{leverage}x</span>
+                  </AppSelect>
                 </div>
               </div>
             </div>

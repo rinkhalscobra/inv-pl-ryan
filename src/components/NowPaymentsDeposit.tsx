@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useState, useEffect, useRef } from 'react';
 import { Euro, Copy, RefreshCw, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -269,7 +270,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
 
           {!fixedPayCurrency && <div>
             <label className="block text-sm text-slate-400 mb-2">Pay With</label>
-            <select
+            <AppSelect
               value={payCurrency}
               onChange={(e) => setPayCurrency(e.target.value)}
               className="w-full app-input px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all custom-select"
@@ -279,7 +280,7 @@ const NowPaymentsDeposit: React.FC<NowPaymentsDepositProps> = ({
                   {currency.name} ({currency.symbol})
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </div>}
 
           {error && (

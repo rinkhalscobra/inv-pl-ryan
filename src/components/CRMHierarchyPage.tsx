@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
@@ -230,9 +231,9 @@ export default function CRMHierarchyPage() {
                 <label className="block text-xs font-medium text-slate-300">Initial password<input type="password" required minLength={8} maxLength={128} autoComplete="new-password" value={newUser.password} onChange={event => setNewUser(value => ({ ...value, password: event.target.value }))} className={`mt-1 ${fieldClass}`} /></label>
                 <label className="block text-xs font-medium text-slate-300">Confirm password<input type="password" required minLength={8} maxLength={128} autoComplete="new-password" value={newUser.confirmPassword} onChange={event => setNewUser(value => ({ ...value, confirmPassword: event.target.value }))} className={`mt-1 ${fieldClass}`} /></label>
               </div>
-              <label className="block text-xs font-medium text-slate-300">Account role<select value={newUser.role} onChange={event => setNewUser(value => ({ ...value, role: event.target.value as CRMRole, owner: '' }))} className={`mt-1 ${fieldClass}`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Administrator</option></select></label>
-              {newUser.role === 'client' && <label className="block text-xs font-medium text-slate-300">Client owner <span className="text-slate-500">(optional)</span><select value={newUser.owner} onChange={event => setNewUser(value => ({ ...value, owner: event.target.value }))} className={`mt-1 ${fieldClass}`}><option value="">Unassigned</option>{agents.length > 0 && <optgroup label="Agents">{agents.map(agent => <option key={agent.id} value={`agent:${agent.id}`}>{nameOf(agent)} · {agent.email}</option>)}</optgroup>}{retention.length > 0 && <optgroup label="Direct retention">{retention.map(manager => <option key={manager.id} value={`retention:${manager.id}`}>{nameOf(manager)} · {manager.email}</option>)}</optgroup>}</select></label>}
-              {newUser.role === 'agent' && <label className="block text-xs font-medium text-slate-300">Retention manager <span className="text-slate-500">(optional)</span><select value={newUser.owner} onChange={event => setNewUser(value => ({ ...value, owner: event.target.value }))} className={`mt-1 ${fieldClass}`}><option value="">Unassigned</option>{retention.map(manager => <option key={manager.id} value={`retention:${manager.id}`}>{nameOf(manager)} · {manager.email}</option>)}</select></label>}
+              <label className="block text-xs font-medium text-slate-300">Account role<AppSelect value={newUser.role} onChange={event => setNewUser(value => ({ ...value, role: event.target.value as CRMRole, owner: '' }))} className={`mt-1 ${fieldClass}`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Administrator</option></AppSelect></label>
+              {newUser.role === 'client' && <label className="block text-xs font-medium text-slate-300">Client owner <span className="text-slate-500">(optional)</span><AppSelect value={newUser.owner} onChange={event => setNewUser(value => ({ ...value, owner: event.target.value }))} className={`mt-1 ${fieldClass}`}><option value="">Unassigned</option>{agents.length > 0 && <optgroup label="Agents">{agents.map(agent => <option key={agent.id} value={`agent:${agent.id}`}>{nameOf(agent)} Â· {agent.email}</option>)}</optgroup>}{retention.length > 0 && <optgroup label="Direct retention">{retention.map(manager => <option key={manager.id} value={`retention:${manager.id}`}>{nameOf(manager)} Â· {manager.email}</option>)}</optgroup>}</AppSelect></label>}
+              {newUser.role === 'agent' && <label className="block text-xs font-medium text-slate-300">Retention manager <span className="text-slate-500">(optional)</span><AppSelect value={newUser.owner} onChange={event => setNewUser(value => ({ ...value, owner: event.target.value }))} className={`mt-1 ${fieldClass}`}><option value="">Unassigned</option>{retention.map(manager => <option key={manager.id} value={`retention:${manager.id}`}>{nameOf(manager)} Â· {manager.email}</option>)}</AppSelect></label>}
               <p className="text-xs text-slate-400">The email is confirmed at creation so this account can sign in immediately. Share the initial password securely.</p>
               <div className="flex justify-end gap-2 border-t border-white/[0.09] pt-4"><button type="button" onClick={closeCreateUser} disabled={busy !== null} className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm text-slate-300 disabled:opacity-50">Cancel</button><button type="submit" disabled={busy !== null} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50">{busy === 'create-user' ? 'Creating account...' : 'Create account'}</button></div>
             </form>
@@ -258,9 +259,9 @@ export default function CRMHierarchyPage() {
               {loading ? <div className="p-8 text-center text-sm text-slate-400">Loading hierarchy...</div> : visiblePeople.length === 0 ? <div className="p-8 text-center text-sm text-slate-400">No accounts found.</div> : visiblePeople.map(person => (
                 <div key={person.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0"><div className="truncate text-sm font-semibold">{nameOf(person)}</div><div className="truncate text-xs text-slate-400">{person.email}</div></div>
-                  <select aria-label={`Role for ${person.email}`} value={person.role} onChange={event => changeRole(person, event.target.value as CRMRole)} disabled={busy !== null || person.id === currentUserId} className={selectClass}>
+                  <AppSelect aria-label={`Role for ${person.email}`} value={person.role} onChange={event => changeRole(person, event.target.value as CRMRole)} disabled={busy !== null || person.id === currentUserId} className={selectClass}>
                     <option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option>
-                  </select>
+                  </AppSelect>
                 </div>
               ))}
             </div>
@@ -269,7 +270,7 @@ export default function CRMHierarchyPage() {
           <div className="min-w-0 space-y-5">
             <section className={`${panel} overflow-hidden`}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] p-4">
-                <div><h2 className="font-semibold">Retention → agents</h2><p className="text-xs text-slate-400">Each agent can belong to one retention manager.</p></div>
+                <div><h2 className="font-semibold">Retention â†’ agents</h2><p className="text-xs text-slate-400">Each agent can belong to one retention manager.</p></div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => openStaffSetup('retention')} disabled={busy !== null || clients.length === 0} className="flex items-center gap-1.5 rounded-lg border border-white/[0.12] px-3 py-2 text-xs font-semibold text-slate-200 hover:border-violet-400/50 disabled:opacity-50"><Plus size={14} />Add retention</button>
                   <button type="button" onClick={() => openStaffSetup('agent')} disabled={busy !== null || clients.length === 0} className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50"><Plus size={14} />Add agent</button>
@@ -280,12 +281,12 @@ export default function CRMHierarchyPage() {
                   <h3 className="text-sm font-semibold">Make an existing account {setupRole === 'agent' ? 'an agent' : 'a retention manager'}</h3>
                   <p className="mt-1 text-xs text-slate-400">Choose a client account. Any current client assignment will be removed when its role changes.</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <select aria-label="Account to promote" value={staffCandidateId} onChange={event => setStaffCandidateId(event.target.value)} className={selectClass}>
-                      <option value="">Select client account</option>{clients.map(client => <option key={client.id} value={client.id}>{nameOf(client)} · {client.email}</option>)}
-                    </select>
-                    {setupRole === 'agent' && <select aria-label="Retention manager for new agent" value={staffManagerId} onChange={event => setStaffManagerId(event.target.value)} className={selectClass}>
+                    <AppSelect aria-label="Account to promote" value={staffCandidateId} onChange={event => setStaffCandidateId(event.target.value)} className={selectClass}>
+                      <option value="">Select client account</option>{clients.map(client => <option key={client.id} value={client.id}>{nameOf(client)} Â· {client.email}</option>)}
+                    </AppSelect>
+                    {setupRole === 'agent' && <AppSelect aria-label="Retention manager for new agent" value={staffManagerId} onChange={event => setStaffManagerId(event.target.value)} className={selectClass}>
                       <option value="">No retention manager yet</option>{retention.map(manager => <option key={manager.id} value={manager.id}>{nameOf(manager)}</option>)}
-                    </select>}
+                    </AppSelect>}
                   </div>
                   <div className="mt-3 flex gap-2">
                     <button type="button" onClick={createStaffRole} disabled={busy !== null || !staffCandidateId} className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50">Create {setupRole} role</button>
@@ -297,11 +298,11 @@ export default function CRMHierarchyPage() {
                 {agents.length === 0 ? <div className="p-5 text-sm text-slate-400">No agents yet. Use <span className="font-semibold text-violet-200">Add agent</span> above to promote an existing account.</div> : agents.map(agent => (
                   <div key={agent.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0"><div className="truncate text-sm font-semibold">{nameOf(agent)}</div><div className="text-xs text-slate-400">{hierarchy.client_assignments.filter(item => item.agent_id === agent.id).length} clients</div></div>
-                    <select aria-label={`Retention manager for ${agent.email}`} value={agentManager.get(agent.id) || ''} disabled={busy !== null} onChange={event => void run(`agent-${agent.id}`, async () => {
+                    <AppSelect aria-label={`Retention manager for ${agent.email}`} value={agentManager.get(agent.id) || ''} disabled={busy !== null} onChange={event => void run(`agent-${agent.id}`, async () => {
                       const { error } = await supabase.rpc('crm_admin_assign_agent', { p_agent_id: agent.id, p_retention_id: event.target.value || null }); return { error };
                     }, 'Agent assignment updated.')} className={selectClass}>
                       <option value="">Unassigned</option>{retention.map(manager => <option key={manager.id} value={manager.id}>{nameOf(manager)}</option>)}
-                    </select>
+                    </AppSelect>
                   </div>
                 ))}
               </div>
@@ -313,11 +314,11 @@ export default function CRMHierarchyPage() {
                 {clients.length === 0 ? <div className="p-5 text-sm text-slate-400">No client accounts found.</div> : clients.map(client => (
                   <div key={client.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0"><div className="truncate text-sm font-semibold">{nameOf(client)}</div><div className="truncate text-xs text-slate-400">{client.email}</div></div>
-                    <select aria-label={`Owner for ${client.email}`} value={clientAgent.has(client.id) ? `agent:${clientAgent.get(client.id)}` : clientRetention.has(client.id) ? `retention:${clientRetention.get(client.id)}` : ''} disabled={busy !== null} onChange={event => assignClientOwner(client, event.target.value)} className={selectClass}>
+                    <AppSelect aria-label={`Owner for ${client.email}`} value={clientAgent.has(client.id) ? `agent:${clientAgent.get(client.id)}` : clientRetention.has(client.id) ? `retention:${clientRetention.get(client.id)}` : ''} disabled={busy !== null} onChange={event => assignClientOwner(client, event.target.value)} className={selectClass}>
                       <option value="">Unassigned</option>
                       {agents.length > 0 && <optgroup label="Agents">{agents.map(agent => <option key={agent.id} value={`agent:${agent.id}`}>{nameOf(agent)}</option>)}</optgroup>}
                       {retention.length > 0 && <optgroup label="Retention only">{retention.map(manager => <option key={manager.id} value={`retention:${manager.id}`}>{nameOf(manager)}</option>)}</optgroup>}
-                    </select>
+                    </AppSelect>
                   </div>
                 ))}
               </div>

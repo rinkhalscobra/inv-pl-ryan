@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useState, useEffect } from 'react';
 import { User as UserType } from '@supabase/supabase-js';
 import {
@@ -435,7 +436,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
                   <div>
                     <label className="mb-2 block text-sm text-slate-400">{t('auth.country')}</label>
-                    <select
+                    <AppSelect
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
                       className="app-input custom-select w-full rounded-xl px-4 py-3 transition-all"
@@ -465,7 +466,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                       <option value="RU">Russia</option>
                       <option value="ZA">South Africa</option>
                       <option value="AE">United Arab Emirates</option>
-                    </select>
+                    </AppSelect>
                   </div>
                 </div>
 
@@ -507,11 +508,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   {/* Tier Cards Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     {[
-                      { name: 'Starter', minEquity: formatFiatWhole(0), maxForex: 100, maxCommodities: 30, maxStocks: 20, icon: '📊' },
-                      { name: 'Plus', minEquity: formatFiatWhole(10000), maxForex: 200, maxCommodities: 50, maxStocks: 40, icon: '📈' },
-                      { name: 'Advanced', minEquity: formatFiatWhole(50000), maxForex: 300, maxCommodities: 75, maxStocks: 60, icon: '💹' },
-                      { name: 'Pro', minEquity: formatFiatWhole(100000), maxForex: 500, maxCommodities: 90, maxStocks: 80, icon: '🏆' },
-                      { name: 'Elite', minEquity: formatFiatWhole(250000), maxForex: 1000, maxCommodities: 100, maxStocks: 100, icon: '👑' },
+                      { name: 'Starter', minEquity: formatFiatWhole(0), maxForex: 100, maxCommodities: 30, maxStocks: 20, icon: 'ðŸ“Š' },
+                      { name: 'Plus', minEquity: formatFiatWhole(10000), maxForex: 200, maxCommodities: 50, maxStocks: 40, icon: 'ðŸ“ˆ' },
+                      { name: 'Advanced', minEquity: formatFiatWhole(50000), maxForex: 300, maxCommodities: 75, maxStocks: 60, icon: 'ðŸ’¹' },
+                      { name: 'Pro', minEquity: formatFiatWhole(100000), maxForex: 500, maxCommodities: 90, maxStocks: 80, icon: 'ðŸ†' },
+                      { name: 'Elite', minEquity: formatFiatWhole(250000), maxForex: 1000, maxCommodities: 100, maxStocks: 100, icon: 'ðŸ‘‘' },
                     ].map((tier) => (
                       <div
                         key={tier.name}
@@ -572,7 +573,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                   </div>
 
                   <div className="mt-4 text-center text-xs text-slate-500">
-                    💡 Your leverage limits are automatically adjusted based on your total portfolio value
+                    ðŸ’¡ Your leverage limits are automatically adjusted based on your total portfolio value
                   </div>
                 </div>
 
@@ -604,7 +605,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] px-1 pb-4 text-sm">
                     <span className="text-slate-400">Tax ID</span>
-                    <span className="font-mono text-slate-200">{taxIdStatus ? `•••• ${taxIdStatus.last_four}` : taxIdStatusError ? t('profile.unavailable') : taxIdStatusLoading ? t('profile.loading') : t('profile.notOnFile')}</span>
+                    <span className="font-mono text-slate-200">{taxIdStatus ? `â€¢â€¢â€¢â€¢ ${taxIdStatus.last_four}` : taxIdStatusError ? t('profile.unavailable') : taxIdStatusLoading ? t('profile.loading') : t('profile.notOnFile')}</span>
                   </div>
                   {taxIdStatus?.status === 'rejected' && taxIdStatus.review_reason && (
                     <div className="mt-4 rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">

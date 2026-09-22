@@ -1,3 +1,4 @@
+﻿import AppSelect from './AppSelect';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -136,9 +137,9 @@ const money = (value: unknown, digits = 2) => asNumber(value).toLocaleString('en
 });
 
 const dateTime = (value: unknown) => {
-  if (!value) return '—';
+  if (!value) return 'â€”';
   const valueDate = new Date(String(value));
-  return Number.isNaN(valueDate.getTime()) ? '—' : valueDate.toLocaleString();
+  return Number.isNaN(valueDate.getTime()) ? 'â€”' : valueDate.toLocaleString();
 };
 
 const displayName = (user: AdminUser) => {
@@ -147,7 +148,7 @@ const displayName = (user: AdminUser) => {
 };
 
 const compactValue = (value: unknown) => {
-  if (value === null || value === undefined || value === '') return '—';
+  if (value === null || value === undefined || value === '') return 'â€”';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
@@ -790,7 +791,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         <h2 className="truncate text-xl font-bold text-white">{displayName(profile)}</h2>
                         {profile.is_admin && <span className="rounded-full bg-purple-500/15 px-2 py-1 text-xs text-purple-300">Admin</span>}
                       </div>
-                      <p className="mt-1 truncate text-sm text-slate-400">{profile.email} · {profile.id}</p>
+                      <p className="mt-1 truncate text-sm text-slate-400">{profile.email} Â· {profile.id}</p>
                     </div>
                     <div className="grid grid-cols-3 gap-4 text-right text-sm">
                       <div><div className="text-xs text-slate-500">EUR</div><div className="font-semibold text-white">{formatFiat(asNumber(workspace.balance.usdt_balance))}</div></div>
@@ -867,7 +868,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-200">Tax ID review could not load. Refresh CRM to try again.</div>
                       ) : taxSubmission ? (
                         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Tax ID</div><div className="mt-2 flex items-center gap-3"><span className="min-w-0 break-all font-mono text-sm text-white">{showTaxId ? taxSubmission.tax_id : `•••• ${taxSubmission.tax_id.slice(-4)}`}</span><button type="button" onClick={() => setShowTaxId(value => !value)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label={showTaxId ? 'Hide Tax ID' : 'Reveal Tax ID'}>{showTaxId ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Tax ID</div><div className="mt-2 flex items-center gap-3"><span className="min-w-0 break-all font-mono text-sm text-white">{showTaxId ? taxSubmission.tax_id : `â€¢â€¢â€¢â€¢ ${taxSubmission.tax_id.slice(-4)}`}</span><button type="button" onClick={() => setShowTaxId(value => !value)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label={showTaxId ? 'Hide Tax ID' : 'Reveal Tax ID'}>{showTaxId ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Submitted</div><div className="mt-2 text-sm text-white">{dateTime(taxSubmission.submitted_at)}</div>{taxSubmission.reviewed_at && <div className="mt-1 text-xs text-slate-400">Reviewed {dateTime(taxSubmission.reviewed_at)}</div>}</div>
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Identity document</div>{kycDocumentUrls.id ? <a href={kycDocumentUrls.id} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open document</a> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Selfie</div>{kycDocumentUrls.selfie ? <a href={kycDocumentUrls.selfie} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open selfie</a> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
@@ -982,7 +983,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         <label className="text-xs text-slate-400">CRM daily profit %<input type="number" min="0" step="0.01" value={String(robotForm.custom_daily_profit_percentage ?? '')} placeholder="Blank = tier rate" onChange={event => setRobotForm(current => ({ ...current, custom_daily_profit_percentage: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         <label className="text-xs text-slate-400">Allocated EUR<input type="number" min="0" step="0.01" value={String(robotForm.allocated_balance)} onChange={event => setRobotForm(current => ({ ...current, allocated_balance: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         <label className="text-xs text-slate-400">Today's profit (EUR)<input type="number" min="0" step="0.01" value={String(robotForm.todays_profit)} onChange={event => setRobotForm(current => ({ ...current, todays_profit: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
-                        <label className="text-xs text-slate-400">Strategy<select value={String(robotForm.strategy)} onChange={event => setRobotForm(current => ({ ...current, strategy: event.target.value }))} className={`${fieldClass} mt-1.5`}><option value="triangular">Triangular</option><option value="spatial">Spatial</option><option value="statistical">Statistical</option><option value="latency">Latency</option></select></label>
+                        <label className="text-xs text-slate-400">Strategy<AppSelect value={String(robotForm.strategy)} onChange={event => setRobotForm(current => ({ ...current, strategy: event.target.value }))} className={`${fieldClass} mt-1.5`}><option value="triangular">Triangular</option><option value="spatial">Spatial</option><option value="statistical">Statistical</option><option value="latency">Latency</option></AppSelect></label>
                         <label className="text-xs text-slate-400">Minimum profit threshold %<input type="number" min="0" step="0.01" value={String(robotForm.min_profit_threshold)} onChange={event => setRobotForm(current => ({ ...current, min_profit_threshold: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         <label className="text-xs text-slate-400">Maximum trade amount (EUR)<input type="number" min="0" step="1" value={String(robotForm.max_trade_amount)} onChange={event => setRobotForm(current => ({ ...current, max_trade_amount: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                       </div>
@@ -1029,7 +1030,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                     <section className={`${panelClass} p-5`}>
                       <h3 className="font-semibold text-white">Reply to customer support</h3>
                       <div className="mt-4 grid gap-3 md:grid-cols-[minmax(220px,0.45fr)_1fr_auto]">
-                        <select value={supportConversationId} onChange={event => setSupportConversationId(event.target.value)} className={fieldClass}><option value="">Select conversation</option>{(workspace.conversations || []).map(item => <option key={asText(item.id)} value={asText(item.id)}>{asText(item.subject) || asText(item.id)}</option>)}</select>
+                        <AppSelect value={supportConversationId} onChange={event => setSupportConversationId(event.target.value)} className={fieldClass}><option value="">Select conversation</option>{(workspace.conversations || []).map(item => <option key={asText(item.id)} value={asText(item.id)}>{asText(item.subject) || asText(item.id)}</option>)}</AppSelect>
                         <input value={supportReply} onChange={event => setSupportReply(event.target.value)} placeholder="Write the administrator reply..." className={fieldClass} />
                         <button onClick={sendSupportReply} disabled={saving !== null || !supportConversationId || !supportReply.trim()} className="rounded-xl bg-purple-500 px-5 py-2.5 font-semibold text-white disabled:opacity-50">Send reply</button>
                       </div>

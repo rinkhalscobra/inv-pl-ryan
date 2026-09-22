@@ -9,6 +9,18 @@ type YahooResponse = {
   indicators?: { quote?: Array<{ close?: Array<number | null> }> };
 };
 type YahooSparkResult = { symbol: string; response?: YahooResponse[] };
+type TwelveQuote = {
+  symbol?: string;
+  status?: string;
+  close?: string | number;
+  percent_change?: string | number;
+  high?: string | number;
+  low?: string | number;
+  volume?: string | number;
+  timestamp?: number;
+  last_quote_at?: number;
+  is_market_open?: boolean;
+};
 type MarketRow = {
   symbol: string;
   price: number;
@@ -33,11 +45,30 @@ const SELECTED_CACHE_MS = 60 * 1000;
 const CATALOG_CACHE_MS = 5 * 60 * 1000;
 const MAX_INSTRUMENTS = 220;
 const YAHOO_BATCH_SIZE = 20;
+const TWELVE_BATCH_SIZE = 20;
 const warmCacheUntil = new Map<string, number>();
 const activeRefreshes = new Map<string, Promise<{ updated: number; sources: string[] }>>();
-const fallbackAttemptAt = new Map<string, number>();
-const FALLBACK_RETRY_MS = 5 * 60 * 1000;
 const forcedRefreshAt = new Map<string, number>();
+
+const twelveCommoditySymbols: Record<string, string> = {
+  "XAG/USD": "XAG/USD",
+  "BCO/USD": "XBR/USD",
+  "WTICO/USD": "WTI/USD",
+  "XPT/USD": "XPT/USD",
+  "XAU/USD": "XAU/USD",
+  "XPD/USD": "XPD/USD",
+};
+// These app symbols have a different meaning on Twelve Data or are exchange
+// proxies that must retain their existing index mapping.
+const twelveIndexExclusions = new Set(["CAC", "ASX", "NI225", "STOXX50", "KOSPI"]);
+
+const toTwelveSymbol = (instrument: RequestedInstrument): string | null => {
+  if (instrument.type === "commodity") return twelveCommoditySymbols[instrument.symbol] || null;
+  if (instrument.type === "forex") return /^[A-Z]{3}\/[A-Z]{3}$/.test(instrument.symbol) ? instrument.symbol : null;
+  if (instrument.type === "index" && twelveIndexExclusions.has(instrument.symbol)) return null;
+  if (instrument.symbol === "SAMSUNG") return null;
+  return /^[A-Z][A-Z0-9.]{0,11}$/.test(instrument.symbol) ? instrument.symbol : null;
+};
 
 const yahooOverrides: Record<string, string> = {
   "XAG/USD": "SI=F",
@@ -153,58 +184,46 @@ const quoteToRow = (instrument: RequestedInstrument, response: YahooResponse | u
   };
 };
 
-const forexSessionOpen = (): boolean => {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-  }).formatToParts(new Date());
-  const weekday = parts.find(part => part.type === "weekday")?.value;
-  const hour = Number(parts.find(part => part.type === "hour")?.value);
-  const minute = Number(parts.find(part => part.type === "minute")?.value);
-  const minutes = hour * 60 + minute;
-  if (weekday === "Sat" || (weekday === "Sun" && minutes < 17 * 60 + 5)
-    || (weekday === "Fri" && minutes >= 16 * 60 + 59)) return false;
-  return minutes < 16 * 60 + 59 || minutes >= 17 * 60 + 5;
+const fetchTwelveBatch = async (symbols: string[], apiKey: string): Promise<Record<string, TwelveQuote>> => {
+  const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbols.join(","))}`;
+  const response = await fetch(url, {
+    headers: { Accept: "application/json", Authorization: `apikey ${apiKey}` },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error(`Twelve Data returned ${response.status}`);
+  const data = await response.json() as TwelveQuote | Record<string, TwelveQuote>;
+  if (symbols.length === 1) return { [symbols[0]]: data as TwelveQuote };
+  if (!data || typeof data !== "object" || "status" in data) {
+    throw new Error("Twelve Data returned no batch quotes");
+  }
+  return data as Record<string, TwelveQuote>;
 };
 
-const fetchTwelveDataQuote = async (
+const twelveQuoteToRow = (
   instrument: RequestedInstrument,
-  apiKey: string,
+  providerSymbol: string,
+  quote: TwelveQuote | undefined,
   now: string,
-): Promise<MarketRow | null> => {
-  const isForex = instrument.type === "forex" && /^[A-Z]{3}\/[A-Z]{3}$/.test(instrument.symbol);
-  const isUsStock = instrument.type === "stock" && /^[A-Z]{1,5}$/.test(instrument.symbol);
-  if ((!isForex && !isUsStock) || (isForex && !forexSessionOpen())) return null;
-  const lastAttempt = fallbackAttemptAt.get(instrument.symbol) || 0;
-  if (Date.now() - lastAttempt < FALLBACK_RETRY_MS) return null;
-  fallbackAttemptAt.set(instrument.symbol, Date.now());
-  try {
-    const endpoint = isForex ? "exchange_rate" : "quote";
-    const url = `https://api.twelvedata.com/${endpoint}?symbol=${encodeURIComponent(instrument.symbol)}&apikey=${encodeURIComponent(apiKey)}`;
-    const data = await fetchJson(url) as {
-      symbol?: string; rate?: number | string; close?: number | string; timestamp?: number;
-      is_market_open?: boolean; percent_change?: number | string; high?: number | string;
-      low?: number | string; volume?: number | string;
-    };
-    const price = Number(isForex ? data.rate : data.close);
-    const quoteTime = Number(data.timestamp) * 1000;
-    if (String(data.symbol || "").toUpperCase() !== instrument.symbol || !Number.isFinite(price) || price <= 0
-      || (isUsStock && data.is_market_open !== true)
-      || !Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
-      || Date.now() - quoteTime >= 2 * 60_000) return null;
-    return {
-      symbol: instrument.symbol,
-      price,
-      change_24h: Number(data.percent_change) || 0,
-      high_price_24h: Number(data.high) || 0,
-      low_price_24h: Number(data.low) || 0,
-      volume_24h: Number(data.volume) || 0,
-      timestamp: new Date(quoteTime).toISOString(),
-      updated_at: now,
-    };
-  } catch (error) {
-    console.warn("Independent CFD quote fallback failed", error);
-    return null;
-  }
+): MarketRow | null => {
+  if (!quote || quote.status === "error" || String(quote.symbol || "").toUpperCase() !== providerSymbol) return null;
+  const price = Number(quote.close);
+  // /quote.timestamp is the start of the daily bar for several asset classes.
+  // last_quote_at is the actual time of the latest quote when available.
+  const quoteTime = Number(quote.last_quote_at || quote.timestamp) * 1000;
+  const age = Date.now() - quoteTime;
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(quoteTime)
+    || age < -60_000 || age > 7 * 24 * 60 * 60_000
+    || (quote.is_market_open === true && age > 15 * 60_000)) return null;
+  return {
+    symbol: instrument.symbol,
+    price,
+    change_24h: Number(quote.percent_change) || 0,
+    high_price_24h: Number(quote.high) || 0,
+    low_price_24h: Number(quote.low) || 0,
+    volume_24h: Number(quote.volume) || 0,
+    timestamp: new Date(quoteTime).toISOString(),
+    updated_at: now,
+  };
 };
 
 const refreshPrices = async (
@@ -214,8 +233,36 @@ const refreshPrices = async (
   const now = new Date().toISOString();
   const rows: MarketRow[] = [];
   const sources: string[] = [];
+  const apiKey = Deno.env.get("TWELVE_DATA_API_KEY") || "";
+  if (apiKey) {
+    const providerToInstrument = new Map<string, RequestedInstrument>();
+    for (const item of instruments) {
+      const providerSymbol = toTwelveSymbol(item);
+      if (providerSymbol) providerToInstrument.set(providerSymbol, item);
+    }
+    const batches = chunk(Array.from(providerToInstrument.keys()), TWELVE_BATCH_SIZE);
+    const batchResults: PromiseSettledResult<Record<string, TwelveQuote>>[] = [];
+    for (const group of chunk(batches, 3)) {
+      batchResults.push(...await Promise.allSettled(group.map(symbols => fetchTwelveBatch(symbols, apiKey))));
+    }
+    for (let index = 0; index < batchResults.length; index++) {
+      const result = batchResults[index];
+      if (result.status === "rejected") {
+        console.warn("Twelve Data quote batch failed", result.reason);
+        continue;
+      }
+      for (const providerSymbol of batches[index]) {
+        const instrument = providerToInstrument.get(providerSymbol)!;
+        const row = twelveQuoteToRow(instrument, providerSymbol, result.value[providerSymbol], now);
+        if (row) rows.push(row);
+      }
+    }
+    if (rows.length > 0) sources.push("Twelve Data");
+  }
+
+  const unresolved = instruments.filter(item => !rows.some(row => row.symbol === item.symbol));
   const providerToInstrument = new Map<string, RequestedInstrument>();
-  for (const item of instruments) providerToInstrument.set(toYahooSymbol(item), item);
+  for (const item of unresolved) providerToInstrument.set(toYahooSymbol(item), item);
 
   const batches = chunk(Array.from(providerToInstrument.keys()), YAHOO_BATCH_SIZE);
   const batchResults: PromiseSettledResult<YahooSparkResult[]>[] = [];
@@ -235,31 +282,17 @@ const refreshPrices = async (
       if (row) rows.push(row);
     }
   }
-  if (instruments.length === 1 && !rows.some(row => row.symbol === instruments[0].symbol)) {
+  if (instruments.length === 1 && rows.length === 0) {
     const chart = await fetchChartQuote(toYahooSymbol(instruments[0]));
     const row = quoteToRow(instruments[0], chart || undefined, now);
     if (row) rows.push(row);
-  }
-  if (instruments.length === 1) {
-    const existingRow = rows.find(row => row.symbol === instruments[0].symbol);
-    if (!existingRow || Date.now() - Date.parse(existingRow.timestamp) >= 2 * 60_000) {
-      const apiKey = Deno.env.get("TWELVE_DATA_API_KEY") || "";
-      if (apiKey) {
-        const fallbackRow = await fetchTwelveDataQuote(instruments[0], apiKey, now);
-        if (fallbackRow) {
-          if (existingRow) rows.splice(rows.indexOf(existingRow), 1, fallbackRow);
-          else rows.push(fallbackRow);
-          sources.push("Twelve Data quote");
-        }
-      }
-    }
   }
   if (rows.length === 0) throw new Error("Quote provider returned no usable prices");
   if (instruments.length === 1 && !rows.some(row => row.symbol === instruments[0].symbol)) {
     throw new Error(`No quote was returned for ${instruments[0].symbol}`);
   }
   if (batchResults.some((result) => result.status === "fulfilled")) sources.push("market spark quotes");
-  else if (sources.length === 0) sources.push("market chart quote");
+  else if (rows.length > 0 && sources.length === 0) sources.push("market chart quote");
 
   const existing = new Map<string, { timestamp: string; price: number }>();
   for (const batch of chunk(rows.map(row => row.symbol), 100)) {

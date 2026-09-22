@@ -13,69 +13,10 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.
 });
 
 type Side = "long" | "short";
-type BybitTicker = {
-  symbol?: string;
-  lastPrice?: string;
-  markPrice?: string;
-  bid1Price?: string;
-  ask1Price?: string;
-  volume24h?: string;
-  price24hPcnt?: string;
-  highPrice24h?: string;
-  lowPrice24h?: string;
-  fundingRate?: string;
-  openInterestValue?: string;
-};
-
-type Instrument = {
-  lotSizeFilter?: { minOrderQty?: string; maxOrderQty?: string; qtyStep?: string };
-  priceFilter?: { tickSize?: string };
-  leverageFilter?: { minLeverage?: string; maxLeverage?: string };
-};
-
 const finitePositive = (value: unknown): number => {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;
 };
-
-const decimalPlaces = (step: number): number => {
-  if (!Number.isFinite(step) || step <= 0) return 8;
-  const text = step.toString().toLowerCase();
-  if (text.includes("e-")) return Number(text.split("e-")[1]);
-  return (text.split(".")[1] || "").length;
-};
-
-const alignedToStep = (value: number, step: number): boolean => {
-  if (step <= 0) return true;
-  const precision = 10 ** Math.min(decimalPlaces(step), 12);
-  return Math.abs(Math.round(value * precision) % Math.round(step * precision)) < 1;
-};
-
-async function bybitGet<T>(path: string): Promise<T> {
-  const response = await fetch(`https://api.bybit.com${path}`, {
-    headers: { "Accept": "application/json", "User-Agent": "AtlasMarket/1.0" },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) throw new Error(`Market provider returned ${response.status}`);
-  const payload = await response.json() as { retCode?: number; retMsg?: string; result?: T };
-  if (payload.retCode !== 0 || !payload.result) throw new Error(payload.retMsg || "Invalid market response");
-  return payload.result;
-}
-
-async function getCryptoQuote(symbol: string) {
-  const [tickerResult, instrumentResult] = await Promise.all([
-    bybitGet<{ list?: BybitTicker[] }>(`/v5/market/tickers?category=linear&symbol=${encodeURIComponent(symbol)}`),
-    bybitGet<{ list?: Instrument[] }>(`/v5/market/instruments-info?category=linear&symbol=${encodeURIComponent(symbol)}`),
-  ]);
-  const ticker = tickerResult.list?.[0];
-  const instrument = instrumentResult.list?.[0];
-  const last = finitePositive(ticker?.lastPrice);
-  const mark = finitePositive(ticker?.markPrice) || last;
-  const bid = finitePositive(ticker?.bid1Price) || last;
-  const ask = finitePositive(ticker?.ask1Price) || last;
-  if (!ticker || !instrument || !last || !mark || !bid || !ask) throw new Error("Market is unavailable");
-  return { ticker, instrument, last, mark, bid, ask };
-}
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -109,54 +50,14 @@ Deno.serve(async (request: Request) => {
         return json({ error: "Invalid order parameters" }, 400);
       }
 
-      let marketPrice = 0;
-      if (symbol.endsWith("USDT")) {
-        const quote = await getCryptoQuote(symbol);
-        marketPrice = side === "long" ? quote.ask : quote.bid;
-        const minimum = finitePositive(quote.instrument.lotSizeFilter?.minOrderQty);
-        const maximum = finitePositive(quote.instrument.lotSizeFilter?.maxOrderQty);
-        const quantityStep = finitePositive(quote.instrument.lotSizeFilter?.qtyStep);
-        const tickSize = finitePositive(quote.instrument.priceFilter?.tickSize);
-        const exchangeMaxLeverage = finitePositive(quote.instrument.leverageFilter?.maxLeverage);
-        if (minimum && amount < minimum) return json({ error: `Minimum amount is ${minimum}` }, 400);
-        if (maximum && amount > maximum) return json({ error: `Maximum amount is ${maximum}` }, 400);
-        if (quantityStep && !alignedToStep(amount, quantityStep)) {
-          return json({ error: `Amount must use increments of ${quantityStep}` }, 400);
-        }
-        if (exchangeMaxLeverage && leverage > exchangeMaxLeverage) {
-          return json({ error: `Maximum market leverage is ${exchangeMaxLeverage}x` }, 400);
-        }
-        if (orderType === "limit" && tickSize && limitPrice && !alignedToStep(limitPrice, tickSize)) {
-          return json({ error: `Limit price must use increments of ${tickSize}` }, 400);
-        }
-
-        const timestamp = new Date().toISOString();
-        const { ticker } = quote;
-        const { error: quoteError } = await admin.from("market_data").upsert({
-          symbol,
-          price: quote.mark,
-          bid_price: quote.bid,
-          ask_price: quote.ask,
-          volume_24h: finitePositive(ticker.volume24h),
-          change_24h: Number(ticker.price24hPcnt || 0) * 100,
-          high_price_24h: finitePositive(ticker.highPrice24h),
-          low_price_24h: finitePositive(ticker.lowPrice24h),
-          funding_rate: Number(ticker.fundingRate || 0) * 100,
-          open_interest: finitePositive(ticker.openInterestValue),
-          timestamp,
-          updated_at: timestamp,
-        }, { onConflict: "symbol" });
-        if (quoteError) throw quoteError;
-      } else {
-        const { data: quote, error: quoteError } = await admin.from("cfd_market_quotes")
-          .select("price,timestamp")
-          .eq("symbol", symbol).single();
-        if (quoteError || !quote) throw new Error("Market quote is unavailable");
-        const quoteTime = Date.parse(quote.timestamp || "");
-        if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
-          || Date.now() - quoteTime > 2 * 60_000) throw new Error("Market quote is stale");
-        marketPrice = finitePositive(quote.price);
-      }
+      const quoteTable = symbol.endsWith("USDT") ? "crypto_market_quotes" : "cfd_market_quotes";
+      const { data: quote, error: quoteError } = await admin.from(quoteTable)
+        .select("price,timestamp").eq("symbol", symbol).single();
+      if (quoteError || !quote) throw new Error("Twelve Data market quote is unavailable");
+      const quoteTime = Date.parse(quote.timestamp || "");
+      if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
+        || Date.now() - quoteTime > 2 * 60_000) throw new Error("Twelve Data market quote is stale");
+      const marketPrice = finitePositive(quote.price);
 
       const { data, error } = await admin.rpc("place_derivative_order", {
         p_user_id: authData.user.id,
@@ -182,26 +83,14 @@ Deno.serve(async (request: Request) => {
         .eq("id", positionId).eq("user_id", authData.user.id).eq("is_open", true).single();
       if (positionError || !position) return json({ error: "Open position not found" }, 404);
 
-      let exitPrice = 0;
-      if (position.symbol.endsWith("USDT")) {
-        const quote = await getCryptoQuote(position.symbol);
-        exitPrice = position.side === "long" ? quote.bid : quote.ask;
-        const timestamp = new Date().toISOString();
-        const { error: quoteError } = await admin.from("market_data").upsert({
-          symbol: position.symbol, price: quote.mark, bid_price: quote.bid, ask_price: quote.ask,
-          timestamp, updated_at: timestamp,
-        }, { onConflict: "symbol" });
-        if (quoteError) throw quoteError;
-      } else {
-        const { data: quote, error: quoteError } = await admin.from("cfd_market_quotes")
-          .select("price,timestamp")
-          .eq("symbol", position.symbol).single();
-        if (quoteError || !quote) throw new Error("Market quote is unavailable");
-        const quoteTime = Date.parse(quote.timestamp || "");
-        if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
-          || Date.now() - quoteTime > 2 * 60_000) throw new Error("Market quote is stale");
-        exitPrice = finitePositive(quote.price);
-      }
+      const quoteTable = position.symbol.endsWith("USDT") ? "crypto_market_quotes" : "cfd_market_quotes";
+      const { data: quote, error: quoteError } = await admin.from(quoteTable)
+        .select("price,timestamp").eq("symbol", position.symbol).single();
+      if (quoteError || !quote) throw new Error("Twelve Data market quote is unavailable");
+      const quoteTime = Date.parse(quote.timestamp || "");
+      if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
+        || Date.now() - quoteTime > 2 * 60_000) throw new Error("Twelve Data market quote is stale");
+      const exitPrice = finitePositive(quote.price);
       if (!exitPrice) throw new Error("Exit quote is unavailable");
       const { data: pnl, error } = await admin.rpc("close_futures_position", {
         position_id: positionId,

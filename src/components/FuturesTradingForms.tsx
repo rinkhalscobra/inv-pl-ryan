@@ -47,7 +47,12 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
-  const { getPriceBySymbol, isConnected: isRealtimeConnected, connectionState, getPriceDirection } = useBybitData();
+  const { getCryptoDataBySymbol, getPriceDirection } = useBybitData();
+  const [quoteClock, setQuoteClock] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setQuoteClock(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isLeverageLocked = minAllowedLeverage === maxAllowedLeverage;
   const [leverage, setLeverage] = useState(
@@ -66,8 +71,10 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   const [priceFlash, setPriceFlash] = useState<'up' | 'down' | null>(null);
 
   const livePairPrice = useMemo(() => {
-    return getPriceBySymbol(selectedPair);
-  }, [getPriceBySymbol, selectedPair]);
+    const quote = getCryptoDataBySymbol(selectedPair);
+    const age = quoteClock - Date.parse(quote?.timestamp || '');
+    return quote && age >= 0 && age <= 2 * 60_000 ? quote.price : 0;
+  }, [getCryptoDataBySymbol, selectedPair, quoteClock]);
 
   const previousPrice = usePrevious(livePairPrice);
   const isFuturesSurface = surfaceVariant === 'futures';
@@ -107,16 +114,8 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   }, [livePairPrice, previousPrice]);
 
   const getConnectionIndicator = () => {
-    switch (connectionState) {
-      case 'connected':
-        return <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" title="Connected" />;
-      case 'connecting':
-        return <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" title="Connecting..." />;
-      case 'reconnecting':
-        return <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" title="Reconnecting..." />;
-      default:
-        return <div className="w-2 h-2 bg-red-500 rounded-full" title="Disconnected" />;
-    }
+    return <div className={`h-2 w-2 rounded-full ${livePairPrice > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`}
+      title={livePairPrice > 0 ? 'Twelve Data quote current' : 'Quote unavailable or stale'} />;
   };
 
   const priceDirection = getPriceDirection(selectedPair);
@@ -413,7 +412,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.07] px-4">
             <h2 className="text-sm font-semibold text-white">Place order</h2>
             <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
-              {getConnectionIndicator()} {isRealtimeConnected ? 'Live' : 'Offline'}
+              {getConnectionIndicator()} {livePairPrice > 0 ? 'Quote current' : 'Quote stale'}
             </div>
           </div>
 

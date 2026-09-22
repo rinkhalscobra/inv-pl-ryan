@@ -14,3 +14,6 @@ verify_jwt = false
 [functions.cfd-market-data]
 # Browser preflight is public; the function validates the user JWT internally.
 verify_jwt = false
+
+[functions.twelve-crypto-market-data]
+verify_jwt = false

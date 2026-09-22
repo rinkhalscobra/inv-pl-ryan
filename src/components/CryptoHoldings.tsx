@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bitcoin, Eye, EyeOff, TrendingUp, TrendingDown, Info, Search, Euro } from 'lucide-react';
 import { DatabaseUserAsset } from '../hooks/useDatabase';
-import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
@@ -25,60 +24,21 @@ interface CryptoAsset {
 const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
   usdtBalance,
   btcBalance,
-  currentBtcPrice,
   userAssets = []
 }) => {
   const { t } = useTranslation();
   const { convertUsdToEur, formatFiat } = useFiatCurrency();
-  const { marketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
-  const { getPriceBySymbol: getBybitPrice } = useBybitData();
+  const { getCryptoDataBySymbol } = useBybitData();
   const [showBalances, setShowBalances] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [cryptoAssets, setCryptoAssets] = useState<CryptoAsset[]>([]);
   const [totalValue, setTotalValue] = useState(0);
   const [totalChange, setTotalChange] = useState(0);
 
-  // Helper function to get price for any symbol with multiple fallback strategies
+  // Use the USD value of the stored Twelve Data quote for portfolio accounting.
   const getPriceForSymbol = useCallback((symbol: string): number => {
-    // Stablecoins always return 1
-    if (symbol === 'USDT' || symbol === 'USDC') {
-      return 1;
-    }
-
-    const tradingPair = `${symbol}USDT`;
-
-    // Strategy 1: Try websocket data first (most real-time)
-    const bybitPrice = getBybitPrice(tradingPair);
-    if (bybitPrice > 0) {
-      return bybitPrice;
-    }
-
-    // Strategy 2: Try snapshot data (stable fallback)
-    const snapshotPrice = getSnapshotPriceBySymbol(tradingPair);
-    if (snapshotPrice > 0) {
-      return snapshotPrice;
-    }
-
-    // Strategy 3: Try direct marketData lookup
-    const marketDataItem = marketData.find(item => item.symbol === tradingPair);
-    if (marketDataItem && marketDataItem.price > 0) {
-      return marketDataItem.price;
-    }
-
-    // Strategy 4: Try snapshotData direct lookup
-    const snapshotItem = snapshotData.find(item => item.symbol === tradingPair);
-    if (snapshotItem && snapshotItem.price > 0) {
-      return snapshotItem.price;
-    }
-
-    // Strategy 5: For BTC, use the prop price as final fallback
-    if (symbol === 'BTC' && currentBtcPrice > 0) {
-      return currentBtcPrice;
-    }
-
-    console.warn(`CryptoHoldings: No price found for ${symbol}`);
-    return 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, marketData, snapshotData, currentBtcPrice]);
+    return getCryptoDataBySymbol(symbol === 'USDT' ? 'USDTUSD' : `${symbol}USDT`)?.price_usd || 0;
+  }, [getCryptoDataBySymbol]);
 
   // Initialize assets with all holdings
   useEffect(() => {
@@ -103,7 +63,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
     if (btcBalance > 0) {
       const btcPrice = getPriceForSymbol('BTC');
       const btcValue = btcBalance * btcPrice;
-      const btcMarketData = marketData.find(data => data.symbol === 'BTCUSDT');
+      const btcMarketData = getCryptoDataBySymbol('BTCUSDT');
       const btcChangePercentage = btcMarketData?.change_24h || 0;
       const btcValueChange = btcValue * (btcChangePercentage / 100);
 
@@ -144,7 +104,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
       if (asset.balance > 0) {
         // Get price using multi-strategy lookup
         const price = getPriceForSymbol(asset.asset_symbol);
-        const assetMarketData = marketData.find(data => data.symbol === `${asset.asset_symbol}USDT`);
+        const assetMarketData = getCryptoDataBySymbol(`${asset.asset_symbol}USDT`);
         const changePercentage = assetMarketData?.change_24h || 0;
 
         if (price > 0) {
@@ -174,7 +134,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
     setCryptoAssets(assetList);
     setTotalValue(portfolioValue);
     setTotalChange(totalChangePercentage);
-  }, [usdtBalance, btcBalance, marketData, userAssets, getPriceForSymbol, convertUsdToEur]);
+  }, [usdtBalance, btcBalance, userAssets, getPriceForSymbol, getCryptoDataBySymbol, convertUsdToEur]);
 
   // Filter assets based on search term
   const filteredAssets = cryptoAssets.filter(asset => {

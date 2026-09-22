@@ -12,7 +12,6 @@ import FuturesMarketHeader from './components/FuturesMarketHeader';
 import FuturesMarketRail from './components/FuturesMarketRail';
 import CfdMarketHeader from './components/CfdMarketHeader';
 import CfdMarketRail from './components/CfdMarketRail';
-import TradingChart from './components/TradingChart';
 import CfdTwelveDataChart from './components/CfdTwelveDataChart';
 import Markets from './components/Markets';
 import SpotMyOrders from './components/SpotMyOrders';
@@ -82,8 +81,8 @@ export interface Transaction {
 
 function AppContent() {
   const { user, loading: authLoading, signOut } = useAuth();
-  const { marketData, getSnapshotPriceBySymbol, refreshQuotes } = useMarketData();
-  const { getPriceBySymbol: getBybitPrice } = useBybitData();
+  const { marketData, refreshQuotes } = useMarketData();
+  const { getPriceBySymbol: getBybitPrice, refreshQuote: refreshCryptoQuote } = useBybitData();
   const {
     balances,
     updateBalances,
@@ -149,6 +148,24 @@ function AppContent() {
       document.removeEventListener('visibilitychange', refreshSelected);
     };
   }, [refreshQuotes, selectedPair, tradingMode, user]);
+
+  useEffect(() => {
+    if (!user || tradingMode !== 'futures') return;
+    const refreshSelected = () => {
+      if (!document.hidden) void refreshCryptoQuote(selectedPair);
+    };
+    refreshSelected();
+    const timer = window.setInterval(refreshSelected, 60_000);
+    window.addEventListener('focus', refreshSelected);
+    window.addEventListener('online', refreshSelected);
+    document.addEventListener('visibilitychange', refreshSelected);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshSelected);
+      window.removeEventListener('online', refreshSelected);
+      document.removeEventListener('visibilitychange', refreshSelected);
+    };
+  }, [refreshCryptoQuote, selectedPair, tradingMode, user]);
 
   
   // Check if this is a password recovery link
@@ -229,65 +246,19 @@ const handleUpdatePassword = async (newPassword: string) => {
   }, [user, authLoading, isRecoveryLink]);
 
 
-  // Collect all active symbols for WebSocket subscription
-  const activeSymbols = useMemo(() => {
-    // Always ensure we have at least default symbols to prevent empty array
-    const neededSymbols = new Set<string>(['BTCUSDT', 'ETHUSDT']); // Default symbols
-    
-    // Always include the selected pair (most important)
-    if (selectedPair) {
-      neededSymbols.add(selectedPair);
-    }
-    
-    // Include symbols with active positions
-    activePositions.forEach(p => {
-      if (p.symbol) neededSymbols.add(p.symbol);
-    });
-    
-    // Convert to array with selectedPair first
-    const symbolsArray = Array.from(neededSymbols);
-    const finalSymbols = selectedPair ? 
-      [selectedPair, ...symbolsArray.filter(s => s !== selectedPair)] : 
-      symbolsArray;
-    
-    // Limit to 10 symbols max for better coverage
-    const limitedSymbols = finalSymbols.slice(0, 10);
-    
-    return limitedSymbols;
-  }, [selectedPair, activePositions]);
-  
   // Get current price from ticker or market data
   const currentSelectedPairPrice = useMemo(() => {
     if (tradingMode === 'cfd') {
       const storedQuote = (marketData || []).find(data => data.symbol === selectedPair)?.price;
       return storedQuote && storedQuote > 0 ? storedQuote : 0;
     }
-    const streamPrice = getBybitPrice(selectedPair);
-    if (streamPrice > 0) return streamPrice;
-    const snapshotPrice = getSnapshotPriceBySymbol(selectedPair);
-    if (snapshotPrice > 0) return snapshotPrice;
-    const marketPrice = (marketData || []).find(data => data.symbol === selectedPair)?.price;
-    return marketPrice && marketPrice > 0 ? marketPrice : 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, selectedPair, marketData, tradingMode]);
+    return getBybitPrice(selectedPair);
+  }, [getBybitPrice, selectedPair, marketData, tradingMode]);
 
-  // Get live price for a symbol with fallback (using same strategy as WalletPage)
+  // Crypto valuations use only the stored Twelve Data reference quote.
   const getCurrentPrice = useCallback((symbol: string): number => {
-    // Strategy 1: Try Bybit WebSocket data first (most real-time)
-    const bybitPrice = getBybitPrice(symbol);
-    if (bybitPrice > 0) {
-      return bybitPrice;
-    }
-
-    // Strategy 2: Try snapshot data (stable fallback)
-    const snapshotPrice = getSnapshotPriceBySymbol(symbol);
-    if (snapshotPrice > 0) {
-      return snapshotPrice;
-    }
-
-    // Strategy 3: Fallback to database market data
-    const dbData = (marketData || []).find(data => data.symbol === symbol);
-    return dbData?.price || 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, marketData]);
+    return getBybitPrice(symbol);
+  }, [getBybitPrice]);
 
   // Get current BTC price from combined data using the same strategy
   const currentBtcPrice = getCurrentPrice('BTCUSDT');
@@ -483,10 +454,10 @@ const handleUpdatePassword = async (newPassword: string) => {
   }, [selectedPair, openPosition, refreshBreakdown, fetchBalances, fetchActivePositions, fetchOpenOrders]);
 
   // Handle closing a futures position
-  const handleClosePosition = useCallback(async (positionId: string, livePrice?: number) => {
+  const handleClosePosition = useCallback(async (positionId: string) => {
     try {
       // Call the closePosition function from useFuturesTrading hook with live price
-      const success = await closePosition(positionId, livePrice);
+      const success = await closePosition(positionId);
 
       if (success) {
         await fetchBalances();
@@ -673,7 +644,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                         <div className="futures-terminal-grid min-h-0 flex-1 bg-[#252a33]">
                           <section className="futures-chart-panel min-w-0 overflow-hidden bg-[#0b0e11]">
                             <div className="h-[360px] sm:h-[440px] xl:h-full">
-                              <TradingChart key={selectedPair} selectedPair={selectedPair} backgroundVariant="futures" />
+                              <CfdTwelveDataChart key={selectedPair} selectedPair={selectedPair} market="crypto" />
                             </div>
                           </section>
 

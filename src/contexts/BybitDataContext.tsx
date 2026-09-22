@@ -1,469 +1,143 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { TOP_CRYPTO_PAIRS } from '../constants/tradingPairs';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 type PriceDirection = 'up' | 'down' | 'neutral';
-
 interface CryptoTickerData {
   price: number;
+  price_usd: number;
   change_24h: number;
   high_price_24h: number;
   low_price_24h: number;
   volume_24h: number;
   bid_price: number;
   ask_price: number;
+  timestamp: string;
 }
-
-interface BybitDataContextType {
+interface CryptoDataContextType {
   prices: Map<string, number>;
   isConnected: boolean;
   connectionState: ConnectionState;
   getPriceBySymbol: (symbol: string) => number;
   getPriceDirection: (symbol: string) => PriceDirection;
   getCryptoDataBySymbol: (symbol: string) => CryptoTickerData | null;
+  refreshQuote: (symbol: string, force?: boolean) => Promise<void>;
 }
+type StoredQuote = { symbol: string; price: number; price_usd: number; change_24h: number;
+  high_price_24h: number; low_price_24h: number; volume_24h: number; timestamp: string };
 
-const BybitDataContext = createContext<BybitDataContextType | undefined>(undefined);
+const CryptoDataContext = createContext<CryptoDataContextType | undefined>(undefined);
 
-const BYBIT_WS_URL = 'wss://stream.bybit.com/v5/public/linear';
-const BYBIT_REST_URL = 'https://api.bybit.com/v5/market/tickers';
-const PRICE_BATCH_INTERVAL = 100;
-const WS_SUBSCRIPTION_BATCH_SIZE = 10;
-const WS_SUBSCRIPTION_BATCH_DELAY = 500;
-const STALE_CHECK_INTERVAL = 15000;
-// WebSocket drives the UI. Persist one server-verified snapshot every five
-// minutes so the free REST allowance is not multiplied by every screen tick.
-const DB_SYNC_INTERVAL = 5 * 60 * 1000;
-
-const CRYPTO_SYMBOLS = TOP_CRYPTO_PAIRS.map(p => p.symbol);
-const CRYPTO_SYMBOL_SET = new Set(CRYPTO_SYMBOLS);
-
-async function fetchBybitTickers(): Promise<Map<string, CryptoTickerData>> {
-  const result = new Map<string, CryptoTickerData>();
-  try {
-    const response = await fetch(`${BYBIT_REST_URL}?category=linear`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!response.ok) return result;
-
-    const json = await response.json();
-    const list = json?.result?.list;
-    if (!Array.isArray(list)) return result;
-
-    for (const item of list) {
-      if (!CRYPTO_SYMBOL_SET.has(item.symbol)) continue;
-      const price = parseFloat(item.lastPrice);
-      if (isNaN(price) || price <= 0) continue;
-
-      result.set(item.symbol, {
-        price,
-        change_24h: parseFloat(item.price24hPcnt) * 100 || 0,
-        high_price_24h: parseFloat(item.highPrice24h) || 0,
-        low_price_24h: parseFloat(item.lowPrice24h) || 0,
-        volume_24h: parseFloat(item.volume24h) || 0,
-        bid_price: parseFloat(item.bid1Price) || 0,
-        ask_price: parseFloat(item.ask1Price) || 0,
-      });
-    }
-  } catch {
-    // Silent fail - caller handles empty map
-  }
-  return result;
-}
-
-function subscribeInBatches(ws: WebSocket, symbols: string[]): void {
-  const topics = symbols.map(s => `tickers.${s}`);
-  for (let i = 0; i < topics.length; i += WS_SUBSCRIPTION_BATCH_SIZE) {
-    const batch = topics.slice(i, i + WS_SUBSCRIPTION_BATCH_SIZE);
-    const delay = (i / WS_SUBSCRIPTION_BATCH_SIZE) * WS_SUBSCRIPTION_BATCH_DELAY;
-
-    if (delay === 0) {
-      ws.send(JSON.stringify({ op: 'subscribe', args: batch }));
-    } else {
-      setTimeout(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ op: 'subscribe', args: batch }));
-        }
-      }, delay);
-    }
-  }
-}
-
+// Keep the provider and hook names for existing callers; all prices now come from Supabase's Twelve Data cache.
 export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [prices, setPrices] = useState<Map<string, number>>(new Map());
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null);
-  const reconnectAttemptsRef = useRef<number>(0);
-  const pingIntervalRef = useRef<number | null>(null);
-  const batchIntervalRef = useRef<number | null>(null);
-  const staleCheckIntervalRef = useRef<number | null>(null);
-  const lastWsMessageRef = useRef<number>(0);
-  const connectRef = useRef<() => void>(() => {});
+  const [quotes, setQuotes] = useState<Map<string, CryptoTickerData>>(new Map());
+  const [directions, setDirections] = useState<Map<string, PriceDirection>>(new Map());
+  const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
+  const lastRefreshRef = useRef(new Map<string, number>());
+  const inflightRef = useRef(new Set<string>());
 
-  const priceBufferRef = useRef<Map<string, number>>(new Map());
-  const previousPricesRef = useRef<Map<string, number>>(new Map());
-  const priceDirectionsRef = useRef<Map<string, PriceDirection>>(new Map());
-  const tickerDataRef = useRef<Map<string, CryptoTickerData>>(new Map());
-
-  const maxReconnectAttempts = 15;
-  const baseReconnectDelay = 1000;
-  const maxReconnectDelay = 30000;
-
-  const applyTickerSnapshot = useCallback((snapshot: Map<string, CryptoTickerData>) => {
-    if (snapshot.size === 0) return;
-
-    snapshot.forEach((data, symbol) => {
-      tickerDataRef.current.set(symbol, data);
-    });
-
-    setPrices(prev => {
-      const newMap = new Map(prev);
-      snapshot.forEach((data, symbol) => {
-        const oldPrice = newMap.get(symbol) || 0;
-        if (data.price > oldPrice) {
-          priceDirectionsRef.current.set(symbol, 'up');
-        } else if (data.price < oldPrice && oldPrice > 0) {
-          priceDirectionsRef.current.set(symbol, 'down');
-        }
-        previousPricesRef.current.set(symbol, data.price);
-        newMap.set(symbol, data.price);
-      });
-      return newMap;
-    });
-  }, []);
-
-  const loadDatabaseFallback = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('market_data')
-        .select('symbol, price, change_24h, high_price_24h, low_price_24h, volume_24h, bid_price, ask_price')
-        .in('symbol', CRYPTO_SYMBOLS);
-
-      if (error || !data || data.length === 0) return;
-
-      const snapshot = new Map<string, CryptoTickerData>();
-      for (const row of data) {
-        const price = parseFloat(row.price);
-        if (isNaN(price) || price <= 0) continue;
-        snapshot.set(row.symbol, {
+  const mergeQuotes = useCallback((rows: StoredQuote[]) => {
+    setQuotes(previous => {
+      const next = new Map(previous);
+      const updatedDirections = new Map<string, PriceDirection>();
+      for (const row of rows) {
+        const price = Number(row.price);
+        if (!(price > 0)) continue;
+        const old = next.get(row.symbol);
+        if (old && Date.parse(row.timestamp) < Date.parse(old.timestamp)) continue;
+        if (old && price !== old.price) updatedDirections.set(row.symbol, price > old.price ? 'up' : 'down');
+        next.set(row.symbol, {
           price,
-          change_24h: parseFloat(row.change_24h) || 0,
-          high_price_24h: parseFloat(row.high_price_24h) || 0,
-          low_price_24h: parseFloat(row.low_price_24h) || 0,
-          volume_24h: parseFloat(row.volume_24h) || 0,
-          bid_price: row.bid_price ? parseFloat(row.bid_price) : 0,
-          ask_price: row.ask_price ? parseFloat(row.ask_price) : 0,
+          price_usd: Number(row.price_usd) || 0,
+          change_24h: Number(row.change_24h) || 0,
+          high_price_24h: Number(row.high_price_24h) || 0,
+          low_price_24h: Number(row.low_price_24h) || 0,
+          volume_24h: Number(row.volume_24h) || 0,
+          bid_price: 0,
+          ask_price: 0,
+          timestamp: row.timestamp,
         });
       }
-
-      setPrices(prev => {
-        if (prev.size > 0) return prev;
-        const newMap = new Map<string, number>();
-        snapshot.forEach((data, symbol) => {
-          newMap.set(symbol, data.price);
-          previousPricesRef.current.set(symbol, data.price);
-          tickerDataRef.current.set(symbol, data);
-        });
-        return newMap;
-      });
-    } catch {
-      // Silent fail
-    }
-  }, []);
-
-  const loadRestSnapshot = useCallback(async () => {
-    const snapshot = await fetchBybitTickers();
-    applyTickerSnapshot(snapshot);
-  }, [applyTickerSnapshot]);
-
-  const flushPriceBuffer = useCallback(() => {
-    if (priceBufferRef.current.size === 0) return;
-
-    const bufferedPrices = new Map(priceBufferRef.current);
-    priceBufferRef.current.clear();
-
-    bufferedPrices.forEach((newPrice, symbol) => {
-      const prevPrice = previousPricesRef.current.get(symbol) || 0;
-      if (newPrice > prevPrice) {
-        priceDirectionsRef.current.set(symbol, 'up');
-      } else if (newPrice < prevPrice) {
-        priceDirectionsRef.current.set(symbol, 'down');
-      }
-      previousPricesRef.current.set(symbol, newPrice);
-    });
-
-    setPrices(prev => {
-      const newMap = new Map(prev);
-      bufferedPrices.forEach((price, symbol) => {
-        newMap.set(symbol, price);
-      });
-      return newMap;
+      if (updatedDirections.size) setDirections(current => new Map([...current, ...updatedDirections]));
+      return next;
     });
   }, []);
 
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-      setConnectionState('disconnected');
-      return;
-    }
+  const loadQuotes = useCallback(async (symbol?: string) => {
+    const query = supabase.from('crypto_market_quotes')
+      .select('symbol,price,price_usd,change_24h,high_price_24h,low_price_24h,volume_24h,timestamp');
+    const { data, error } = symbol ? await query.eq('symbol', symbol) : await query.limit(150);
+    if (error) { console.error('Stored Twelve Data crypto quotes could not be read', error); return; }
+    if (data) mergeQuotes(data as StoredQuote[]);
+  }, [mergeQuotes]);
 
-    setConnectionState('reconnecting');
-    reconnectAttemptsRef.current += 1;
-
-    const delay = Math.min(
-      baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current - 1),
-      maxReconnectDelay
-    );
-
-    reconnectTimeoutRef.current = window.setTimeout(() => {
-      connectRef.current();
-    }, delay);
-  }, []);
-
-  const connect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    if (wsRef.current) {
-      try { wsRef.current.close(); } catch { /* ignore */ }
-      wsRef.current = null;
-    }
-
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = null;
-    }
-
-    setConnectionState('connecting');
-
+  const refreshQuote = useCallback(async (symbol: string, force = false) => {
+    const normalized = symbol.toUpperCase();
+    if (!/^[A-Z0-9]{2,24}$/.test(normalized) || document.hidden || !navigator.onLine) return;
+    const last = lastRefreshRef.current.get(normalized) || 0;
+    if (inflightRef.current.has(normalized) || Date.now() - last < (force ? 30_000 : 60_000)) return;
+    inflightRef.current.add(normalized);
+    lastRefreshRef.current.set(normalized, Date.now());
     try {
-      const ws = new WebSocket(BYBIT_WS_URL);
-
-      ws.onopen = () => {
-        setConnectionState('connected');
-        reconnectAttemptsRef.current = 0;
-        lastWsMessageRef.current = Date.now();
-
-        subscribeInBatches(ws, CRYPTO_SYMBOLS);
-
-        pingIntervalRef.current = window.setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ op: 'ping' }));
-          }
-        }, 20000);
-
-        if (!batchIntervalRef.current) {
-          batchIntervalRef.current = window.setInterval(flushPriceBuffer, PRICE_BATCH_INTERVAL);
-        }
-      };
-
-      ws.onclose = () => {
-        setConnectionState('disconnected');
-        wsRef.current = null;
-        if (pingIntervalRef.current) {
-          clearInterval(pingIntervalRef.current);
-          pingIntervalRef.current = null;
-        }
-        scheduleReconnect();
-      };
-
-      ws.onerror = () => {
-        setConnectionState('disconnected');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          lastWsMessageRef.current = Date.now();
-
-          if (message.topic && message.topic.startsWith('tickers.') && message.data) {
-            const data = message.data;
-            const symbol = data.symbol;
-            const price = parseFloat(data.lastPrice);
-
-            if (symbol && !isNaN(price) && price > 0) {
-              priceBufferRef.current.set(symbol, price);
-
-              const existing = tickerDataRef.current.get(symbol);
-              const updated: CryptoTickerData = {
-                price,
-                change_24h: data.price24hPcnt !== undefined
-                  ? parseFloat(data.price24hPcnt) * 100
-                  : (existing?.change_24h ?? 0),
-                high_price_24h: data.highPrice24h !== undefined
-                  ? parseFloat(data.highPrice24h)
-                  : (existing?.high_price_24h ?? 0),
-                low_price_24h: data.lowPrice24h !== undefined
-                  ? parseFloat(data.lowPrice24h)
-                  : (existing?.low_price_24h ?? 0),
-                volume_24h: data.volume24h !== undefined
-                  ? parseFloat(data.volume24h)
-                  : (existing?.volume_24h ?? 0),
-                bid_price: data.bid1Price !== undefined
-                  ? parseFloat(data.bid1Price)
-                  : (existing?.bid_price ?? 0),
-                ask_price: data.ask1Price !== undefined
-                  ? parseFloat(data.ask1Price)
-                  : (existing?.ask_price ?? 0),
-              };
-              tickerDataRef.current.set(symbol, updated);
-            }
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      };
-
-      wsRef.current = ws;
-    } catch {
-      scheduleReconnect();
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session) return;
+      const { data, error } = await supabase.functions.invoke('twelve-crypto-market-data', {
+        body: { action: 'sync_selected', symbol: normalized, force },
+        headers: { Authorization: `Bearer ${session.session.access_token}` }
+      });
+      if (error || data?.success !== true) throw error || new Error(data?.error || 'Twelve Data refresh failed');
+      await loadQuotes(normalized);
+    } catch (error) {
+      console.error('Selected Twelve Data crypto quote refresh failed', error);
+      lastRefreshRef.current.set(normalized, Date.now() - 30_000);
+    } finally {
+      inflightRef.current.delete(normalized);
     }
-  }, [flushPriceBuffer, scheduleReconnect]);
+  }, [loadQuotes]);
 
-  connectRef.current = connect;
-
+  useEffect(() => { void loadQuotes(); }, [loadQuotes]);
   useEffect(() => {
-    loadDatabaseFallback();
-    loadRestSnapshot();
-    connect();
-
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        window.setTimeout(() => void loadQuotes(), 0);
       }
-      if (pingIntervalRef.current) {
-        clearInterval(pingIntervalRef.current);
-        pingIntervalRef.current = null;
-      }
-      if (batchIntervalRef.current) {
-        clearInterval(batchIntervalRef.current);
-        batchIntervalRef.current = null;
-      }
-      if (staleCheckIntervalRef.current) {
-        clearInterval(staleCheckIntervalRef.current);
-        staleCheckIntervalRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [connect, loadDatabaseFallback, loadRestSnapshot]);
-
+    });
+    return () => subscription.unsubscribe();
+  }, [loadQuotes]);
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadRestSnapshot();
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-          reconnectAttemptsRef.current = 0;
-          connect();
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [connect, loadRestSnapshot]);
-
+    const timer = window.setInterval(() => {
+      if (!document.hidden && navigator.onLine) void loadQuotes();
+    }, 30_000);
+    const onFocus = () => { if (!document.hidden) void loadQuotes(); };
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onFocus);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); window.removeEventListener('online', onFocus); };
+  }, [loadQuotes]);
   useEffect(() => {
-    const handleOnline = () => {
-      reconnectAttemptsRef.current = 0;
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        connect();
-      }
-    };
+    const channel = supabase.channel(`twelve-crypto-quotes-${crypto.randomUUID()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crypto_market_quotes' }, payload => {
+        if (payload.new) mergeQuotes([payload.new as StoredQuote]);
+      })
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') { setConnectionState('connected'); void loadQuotes(); }
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnectionState('reconnecting');
+        else if (status === 'CLOSED') setConnectionState('disconnected');
+      });
+    return () => { void supabase.removeChannel(channel); };
+  }, [loadQuotes, mergeQuotes]);
 
-    const handleOffline = () => {
-      setConnectionState('disconnected');
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [connect]);
-
-  useEffect(() => {
-    staleCheckIntervalRef.current = window.setInterval(async () => {
-      const now = Date.now();
-      const timeSinceLastMessage = now - lastWsMessageRef.current;
-
-      if (lastWsMessageRef.current === 0 || timeSinceLastMessage > STALE_CHECK_INTERVAL) {
-        const snapshot = await fetchBybitTickers();
-        applyTickerSnapshot(snapshot);
-
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-          reconnectAttemptsRef.current = 0;
-          connectRef.current();
-        }
-      }
-    }, STALE_CHECK_INTERVAL);
-
-    return () => {
-      if (staleCheckIntervalRef.current) {
-        clearInterval(staleCheckIntervalRef.current);
-        staleCheckIntervalRef.current = null;
-      }
-    };
-  }, [applyTickerSnapshot]);
-
-  const syncCryptoPricesToDatabase = useCallback(async () => {
-    try {
-      // The server fetches its own Bybit snapshot so client-supplied prices
-      // can never become the shared settlement source.
-      await supabase.functions.invoke('sync-bybit-market-data');
-    } catch {
-      // Live WebSocket/REST prices remain available if persistence is offline.
-    }
-  }, []);
-
-  useEffect(() => {
-    void syncCryptoPricesToDatabase();
-    const syncInterval = setInterval(syncCryptoPricesToDatabase, DB_SYNC_INTERVAL);
-    return () => clearInterval(syncInterval);
-  }, [syncCryptoPricesToDatabase]);
-
-  const getPriceBySymbol = useCallback((symbol: string): number => {
-    return prices.get(symbol) || 0;
-  }, [prices]);
-
-  const getPriceDirection = useCallback((symbol: string): PriceDirection => {
-    return priceDirectionsRef.current.get(symbol) || 'neutral';
-  }, []);
-
-  const getCryptoDataBySymbol = useCallback((symbol: string): CryptoTickerData | null => {
-    return tickerDataRef.current.get(symbol) || null;
-  }, []);
-
-  const isConnected = connectionState === 'connected';
-
-  const contextValue: BybitDataContextType = {
-    prices,
-    isConnected,
-    connectionState,
-    getPriceBySymbol,
-    getPriceDirection,
-    getCryptoDataBySymbol,
-  };
-
-  return (
-    <BybitDataContext.Provider value={contextValue}>
-      {children}
-    </BybitDataContext.Provider>
-  );
+  const prices = new Map([...quotes].map(([symbol, quote]) => [symbol, quote.price]));
+  const getPriceBySymbol = useCallback((symbol: string) => quotes.get(symbol)?.price || 0, [quotes]);
+  const getCryptoDataBySymbol = useCallback((symbol: string) => quotes.get(symbol) || null, [quotes]);
+  const getPriceDirection = useCallback((symbol: string) => directions.get(symbol) || 'neutral', [directions]);
+  return <CryptoDataContext.Provider value={{ prices, isConnected: connectionState === 'connected',
+    connectionState, getPriceBySymbol, getCryptoDataBySymbol, getPriceDirection, refreshQuote }}>
+    {children}
+  </CryptoDataContext.Provider>;
 };
 
-export const useBybitData = (): BybitDataContextType => {
-  const context = useContext(BybitDataContext);
-  if (context === undefined) {
-    throw new Error('useBybitData must be used within a BybitDataProvider');
-  }
+export const useBybitData = (): CryptoDataContextType => {
+  const context = useContext(CryptoDataContext);
+  if (!context) throw new Error('useBybitData must be used within BybitDataProvider');
   return context;
 };

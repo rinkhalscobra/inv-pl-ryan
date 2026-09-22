@@ -18,9 +18,6 @@ class BackgroundProcessor {
     this.isRunning = true;
     console.log('Starting background processor...');
     
-    // Fetch initial market data to populate the database
-    await this.syncMarketData();
-    
     // Run order processing immediately on startup
     await this.processOrders();
     
@@ -159,26 +156,6 @@ class BackgroundProcessor {
       console.log('✅ CFD data population completed (using real data only)');
     } catch (error) {
       console.error('❌ Error populating initial CFD data:', error);
-    }
-  }
-
-  // Sync market data from Bybit API
-  async syncMarketData() {
-    try {
-      // console.log('🔄 Syncing market data from Bybit API...');
-      
-      const result = await this.safeEdgeFunctionCall('sync-bybit-market-data');
-      
-      if (result.success) {
-        // console.log('✅ Market data sync completed successfully:', result.data?.message || 'Success');
-      } else {
-        console.warn('⚠️ Market data sync failed:', result.error);
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('❌ Error syncing market data:', error);
-      // Don't throw, just log and continue
     }
   }
 

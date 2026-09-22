@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Bot, 
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { DatabaseRobotState } from '../hooks/useDatabase';
 import { supabase } from '../lib/supabaseClient';
-import { useMarketData } from '../contexts/MarketDataContext';
+import { useBybitData } from '../contexts/BybitDataContext';
 
 interface ArbitrageRobotPageProps {
   usdtBalance: number;
@@ -58,7 +58,13 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   fetchRobotState
 }) => {
   const { t } = useTranslation();
-  const { marketData, getSnapshotPriceBySymbol } = useMarketData();
+  const { prices, getPriceBySymbol } = useBybitData();
+  useEffect(() => {
+    const firstPair = [...prices.keys()].find(symbol => symbol.endsWith('USDT'));
+    if (firstPair && !prices.has(selectedPair)) {
+      setSelectedPair(prices.has('BTCUSDT') ? 'BTCUSDT' : firstPair);
+    }
+  }, [prices, selectedPair, setSelectedPair]);
 
   // Robot configuration state
   const [isActivating, setIsActivating] = useState(false);
@@ -80,10 +86,10 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   }, [availableBalance, usdtBalance, localAllocatedBalance, usedMargin]);
   
   // Simulated trading logs
-  const [tradingLogs, setTradingLogs] = useState<any[]>([]);
+  const [tradingLogs] = useState<any[]>([]);
 
   // Simulated arbitrage opportunities
-  const [possibleTrades, setPossibleTrades] = useState<ArbitrageOpportunity[]>([]);
+  const [possibleTrades] = useState<ArbitrageOpportunity[]>([]);
 
   useEffect(() => {
     setLocalAllocatedBalance(robotState?.allocated_balance || 0);
@@ -109,132 +115,8 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
     }
   }, [actualAvailableBalance, allocationAmount]);
 
-  const getReferencePrice = useCallback((pair: string) => {
-    const normalizedSymbol = pair.replace('/', '');
-    const snapshotPrice = getSnapshotPriceBySymbol(normalizedSymbol);
-    if (snapshotPrice > 0) return snapshotPrice;
-
-    // Stable fallbacks keep the explicitly simulated feed valid while live
-    // market data is reconnecting (and avoid displaying NaN percentages).
-    const fallbackPrices: Record<string, number> = {
-      BTCUSDT: 50000,
-      ETHUSDT: 3000,
-      SOLUSDT: 150,
-      XRPUSDT: 0.6,
-      BNBUSDT: 600,
-      ADAUSDT: 0.5,
-      AVAXUSDT: 35
-    };
-
-    return fallbackPrices[normalizedSymbol] || 1;
-  }, [getSnapshotPriceBySymbol]);
-
-  // Get current price for selected pair using snapshot
-  const getCurrentPrice = useCallback(() => {
-    return getReferencePrice(selectedPair);
-  }, [getReferencePrice, selectedPair]);
-  
-  // Generate simulated arbitrage opportunities
-  useEffect(() => {
-    const generateArbitrageOpportunity = () => {
-      const exchanges = ['Binance', 'Bybit', 'Kraken', 'Coinbase', 'Kucoin', 'OKX', 'Huobi'];
-      const pairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'BNB/USDT', 'ADA/USDT', 'AVAX/USDT'];
-      
-      const buyExchange = exchanges[Math.floor(Math.random() * exchanges.length)];
-      let sellExchange = buyExchange;
-      while (sellExchange === buyExchange) {
-        sellExchange = exchanges[Math.floor(Math.random() * exchanges.length)];
-      }
-      
-      const pair = pairs[Math.floor(Math.random() * pairs.length)];
-      const basePrice = getReferencePrice(pair);
-      
-      const buyPrice = basePrice * (1 - Math.random() * 0.005);
-      const sellPrice = basePrice * (1 + Math.random() * 0.005);
-      const profitPercentage = ((sellPrice - buyPrice) / buyPrice) * 100;
-      
-      return {
-        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-        buyExchange,
-        sellExchange,
-        pair,
-        buyPrice,
-        sellPrice,
-        profitPercentage,
-        timestamp: new Date()
-      };
-    };
-    
-    // Generate initial opportunities
-    if (possibleTrades.length === 0) {
-      const initialOpportunities = Array.from({ length: 5 }, (_, i) => {
-        const opportunity = generateArbitrageOpportunity();
-        opportunity.timestamp = new Date(Date.now() - i * 30000); // 30 seconds apart
-        return opportunity;
-      });
-      setPossibleTrades(initialOpportunities);
-    }
-    
-    // Add new opportunities periodically if robot is active
-    const interval = setInterval(() => {
-      if (robotState?.is_active) {
-        setPossibleTrades(prev => {
-          const newOpportunity = generateArbitrageOpportunity();
-          return [newOpportunity, ...prev].slice(0, 10); // Keep only the 10 most recent
-        });
-      }
-    }, 45000); // Every 45 seconds
-    
-    return () => clearInterval(interval);
-  }, [robotState?.is_active, getReferencePrice, possibleTrades.length]);
-  
-  // Generate simulated trading logs
-  useEffect(() => {
-    if (robotState?.is_active) {
-      const generateLog = () => {
-        const actions = ['BUY', 'SELL'];
-        const exchanges = ['Binance', 'Bybit', 'Kraken', 'Coinbase'];
-        const pairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
-        
-        const action = actions[Math.floor(Math.random() * actions.length)];
-        const exchange = exchanges[Math.floor(Math.random() * exchanges.length)];
-        const pair = pairs[Math.floor(Math.random() * pairs.length)];
-        const amount = (Math.random() * 0.1).toFixed(6);
-        const currentPrice = getReferencePrice(pair);
-        const price = (action === 'BUY' ? currentPrice * 0.9999 : currentPrice * 1.0001).toFixed(2);
-        const profit = (Math.random() * 0.01).toFixed(6);
-        
-        return {
-          id: Date.now().toString(),
-          action,
-          pair,
-          exchange,
-          amount,
-          price,
-          profit,
-          timestamp: new Date().toISOString()
-        };
-      };
-      
-      // Generate a new log every 2 minutes if robot is active
-      const interval = setInterval(() => {
-        const newLog = generateLog();
-        setTradingLogs(prev => [newLog, ...prev].slice(0, 100));
-      }, 120000);
-      
-      // Generate initial logs
-      if (tradingLogs.length === 0) {
-        const initialLogs = Array.from({ length: 10 }, (_, i) => {
-          const log = generateLog();
-          log.timestamp = new Date(Date.now() - i * 60000).toISOString();
-          return log;
-        });
-        setTradingLogs(initialLogs);
-      }
-      
-      return () => clearInterval(interval);
-    }
-  }, [robotState?.is_active, getReferencePrice, tradingLogs.length]);
+  // Exchange-specific arbitrage needs independently sourced exchange books.
+  // The Twelve Data reference quote is used only for account valuation.
 
   // Handle robot activation
   const handleActivateRobot = async () => {
@@ -380,7 +262,8 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
     }
 
     const allocatedBalance = localAllocatedBalance;
-    const btcPrice = getCurrentPrice() || 50000; // Get current BTC price or fallback
+    const btcPrice = getPriceBySymbol('BTCUSDT');
+    if (!(btcPrice > 0)) return 0;
     const allocatedBalanceInBTC = allocatedBalance / btcPrice;
 
     if (allocatedBalanceInBTC >= 50) return 2.1; // WHALE tier (50 BTC)
@@ -416,7 +299,8 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   // Get investment tier based on allocated balance (in BTC equivalent)
   const getInvestmentTier = () => {
     const allocatedBalance = localAllocatedBalance;
-    const btcPrice = getCurrentPrice() || 50000; // Get current BTC price or fallback
+    const btcPrice = getPriceBySymbol('BTCUSDT');
+    if (!(btcPrice > 0)) return 'NONE';
     const allocatedBalanceInBTC = allocatedBalance / btcPrice;
 
     if (allocatedBalanceInBTC >= 50) return 'WHALE';
@@ -740,7 +624,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               ) : (
                 <div className="text-center py-6 text-slate-500 mb-6">
                   <p className="mb-2">{t('robot.noOpportunitiesFound')}</p>
-                  <p className="text-sm text-slate-600">{t('robot.activateToScan')}</p>
+                  <p className="text-sm text-slate-600">Twelve Data provides a reference price, not exchange order books. Verified arbitrage opportunities are unavailable.</p>
                 </div>
               )}
             </div>
@@ -788,7 +672,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                     <div className="text-center py-8 text-slate-500">
                       <Activity size={48} className="mx-auto mb-4 opacity-50" />
                       <p className="mb-2">{t('robot.noActivity')}</p>
-                      <p className="text-sm text-slate-600">{t('robot.activateRobot')}</p>
+                      <p className="text-sm text-slate-600">No verified exchange trades have been recorded.</p>
                     </div>
                   )}
                 </div>
@@ -878,9 +762,9 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                     onChange={(e) => setSelectedPair(e.target.value)}
                     className={`${robotFieldClass} custom-select`}
                   >
-                    {marketData.map((pair) => (
-                      <option key={pair.symbol} value={pair.symbol} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
-                        {pair.symbol}
+                    {[...prices.keys()].filter(symbol => symbol.endsWith('USDT')).sort().map((symbol) => (
+                      <option key={symbol} value={symbol} style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                        {symbol}
                       </option>
                     ))}
                   </select>

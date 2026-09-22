@@ -6,17 +6,19 @@ import {
 } from 'chart.js';
 import { getCfdInstrument } from '../constants/tradingPairs';
 import { useMarketData } from '../contexts/MarketDataContext';
+import { useBybitData } from '../contexts/BybitDataContext';
 import { supabase } from '../lib/supabaseClient';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
 type Candle = { candle_time: string; open: number; high: number; low: number; close: number; volume: number };
 
-export default function CfdTwelveDataChart({ selectedPair }: { selectedPair: string }) {
+export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { selectedPair: string; market?: 'cfd' | 'crypto' }) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
   const { getMarketDataBySymbol } = useMarketData();
-  const quote = getMarketDataBySymbol(selectedPair);
+  const { getCryptoDataBySymbol } = useBybitData();
+  const quote = market === 'crypto' ? getCryptoDataBySymbol(selectedPair) : getMarketDataBySymbol(selectedPair);
   const instrument = getCfdInstrument(selectedPair);
 
   useEffect(() => {
@@ -24,7 +26,7 @@ export default function CfdTwelveDataChart({ selectedPair }: { selectedPair: str
     setCandles([]);
     setLoading(true);
     const load = async () => {
-      const { data, error } = await supabase.from('cfd_market_candles')
+      const { data, error } = await supabase.from(market === 'crypto' ? 'crypto_market_candles' : 'cfd_market_candles')
         .select('candle_time,open,high,low,close,volume')
         .eq('symbol', selectedPair)
         .order('candle_time', { ascending: false })
@@ -40,7 +42,7 @@ export default function CfdTwelveDataChart({ selectedPair }: { selectedPair: str
     void load();
     const timer = window.setInterval(() => void load(), 20_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [selectedPair]);
+  }, [selectedPair, market]);
 
   const points = useMemo(() => {
     const values = candles.map(candle => ({ time: candle.candle_time, price: candle.close }));
@@ -50,7 +52,8 @@ export default function CfdTwelveDataChart({ selectedPair }: { selectedPair: str
     }
     return values;
   }, [candles, quote]);
-  const pricePrecision = instrument?.type === 'forex' ? 5 : 2;
+  const pricePrecision = market === 'crypto' ? (Number(quote?.price || 0) < 1 ? 8 : 2)
+    : instrument?.type === 'forex' ? 5 : 2;
   const last = points[points.length - 1]?.price || quote?.price || 0;
   const first = points[0]?.price || last;
   const rising = last >= first;
@@ -103,7 +106,7 @@ export default function CfdTwelveDataChart({ selectedPair }: { selectedPair: str
   return (
     <div className="flex h-full min-h-[280px] flex-col bg-[#0b0e11] text-slate-200">
       <div className="flex min-h-10 items-center justify-between border-b border-[#252a33] px-4 text-xs">
-        <div className="flex items-center gap-3"><span className="font-semibold text-white">{selectedPair}</span><span className="text-slate-500">1m chart</span><span className="text-slate-500">Twelve Data</span></div>
+        <div className="flex items-center gap-3"><span className="font-semibold text-white">{selectedPair}</span><span className="text-slate-500">1m chart</span><span className="text-slate-500">Twelve Data{market === 'crypto' ? ' · USDT reference' : ''}</span></div>
         <span className={`font-mono font-semibold tabular-nums ${rising ? 'text-emerald-400' : 'text-rose-400'}`}>
           {last > 0 ? last.toFixed(pricePrecision) : '--'}
         </span>
@@ -111,7 +114,7 @@ export default function CfdTwelveDataChart({ selectedPair }: { selectedPair: str
       <div className="relative min-h-0 flex-1 px-2 pb-2 pt-3">
         {points.length > 1 ? <Line data={chartData} options={options} /> : (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
-            {loading ? 'Loading Twelve Data chart…' : instrument?.tradable === false
+            {loading ? 'Loading Twelve Data chart…' : market === 'cfd' && instrument?.tradable === false
               ? 'Twelve Data chart unavailable for this instrument'
               : 'Waiting for Twelve Data chart history'}
           </div>

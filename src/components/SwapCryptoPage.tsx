@@ -57,11 +57,9 @@ const ALLOWED_SWAP_SYMBOLS = [
   { symbol: 'ADA', name: 'Cardano' },
   { symbol: 'DOGE', name: 'Dogecoin' },
   { symbol: 'AVAX', name: 'Avalanche' },
-  { symbol: 'MATIC', name: 'Polygon' },
   { symbol: 'TRX', name: 'TRON' },
   { symbol: 'DOT', name: 'Polkadot' },
   { symbol: 'SHIB', name: 'Shiba Inu' },
-  { symbol: 'TON', name: 'Toncoin' },
   { symbol: 'APT', name: 'Aptos' },
   { symbol: 'ARB', name: 'Arbitrum' },
   { symbol: 'OP', name: 'Optimism' },
@@ -79,60 +77,26 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
 }) => {
   const { transactions } = useDatabase();
   const { convertUsdToEur, eurUsdRate, formatFiat, formatEur } = useFiatCurrency();
-  const { marketData, snapshotData, getSnapshotPriceBySymbol, refreshSnapshot, lastSnapshotTime } = useMarketData();
-  const { getPriceBySymbol: getBybitPrice, isConnected: isBybitConnected } = useBybitData();
+  const { marketData, snapshotData, getMarketDataBySymbol, refreshSnapshot, lastSnapshotTime } = useMarketData();
+  const { getCryptoDataBySymbol, refreshQuote: refreshCryptoQuote, isConnected: isBybitConnected } = useBybitData();
 
   const [lockedPrices, setLockedPrices] = useState<{ from: number; to: number } | null>(null);
   const [priceLockedAt, setPriceLockedAt] = useState<number | null>(null);
   const [remainingLockTime, setRemainingLockTime] = useState<number>(0);
   const lockDurationRef = useRef<number>(15000);
 
-  const lastValidatedPricesRef = useRef<Record<string, { price: number; confidence: number }>>({});
-
-  // Helper function to get price for any symbol with multiple fallback strategies
+  // Twelve Data spot prices are stored in Supabase in USD for swap valuation.
   const getPriceForSymbol = useCallback((symbol: string): number => {
     if (symbol === 'EUR') {
-      return eurUsdRate;
+      const quote = getMarketDataBySymbol('EUR/USD');
+      const age = Date.now() - Date.parse(quote?.timestamp || '');
+      return quote && age >= 0 && age <= 5 * 60_000 ? quote.price : 0;
     }
-    if (symbol === 'USDC') {
-      return 1;
-    }
+    const quote = getCryptoDataBySymbol(`${symbol}USDT`);
+    const age = Date.now() - Date.parse(quote?.timestamp || '');
+    return quote && age >= 0 && age <= 5 * 60_000 ? quote.price_usd : 0;
+  }, [getCryptoDataBySymbol, getMarketDataBySymbol]);
 
-    const tradingPair = `${symbol}USDT`;
-
-    const isBtcReasonable = (price: number): boolean => {
-      if (symbol !== 'BTC' || currentBtcPrice <= 100) return true;
-      const ratio = Math.max(price, currentBtcPrice) / Math.min(price, currentBtcPrice);
-      return ratio < 3;
-    };
-
-    const bybitPrice = getBybitPrice(tradingPair);
-    if (bybitPrice > 0 && isBtcReasonable(bybitPrice)) {
-      return bybitPrice;
-    }
-
-    const snapshotPrice = getSnapshotPriceBySymbol(tradingPair);
-    if (snapshotPrice > 0 && isBtcReasonable(snapshotPrice)) {
-      return snapshotPrice;
-    }
-
-    const marketDataItem = marketData.find(item => item.symbol === tradingPair);
-    if (marketDataItem && marketDataItem.price > 0 && isBtcReasonable(marketDataItem.price)) {
-      return marketDataItem.price;
-    }
-
-    const snapshotItem = snapshotData.find(item => item.symbol === tradingPair);
-    if (snapshotItem && snapshotItem.price > 0 && isBtcReasonable(snapshotItem.price)) {
-      return snapshotItem.price;
-    }
-
-    if (symbol === 'BTC' && currentBtcPrice > 0) {
-      return currentBtcPrice;
-    }
-
-    return 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, marketData, snapshotData, currentBtcPrice, eurUsdRate]);
-  
   // State for swap form
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
@@ -152,6 +116,12 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     balance: btcBalance,
     price: 0 // Will be set by useEffect
   }));
+  const refreshSwapQuotes = useCallback(() => {
+    void Promise.all([fromCurrency.symbol, toCurrency.symbol]
+      .filter(symbol => symbol !== 'EUR')
+      .map(symbol => refreshCryptoQuote(`${symbol}USDT`, true)));
+    refreshSnapshot();
+  }, [fromCurrency.symbol, toCurrency.symbol, refreshCryptoQuote, refreshSnapshot]);
   
   // State for token selection
   const [showFromTokens, setShowFromTokens] = useState(false);
@@ -206,19 +176,10 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
 
     let price;
     if (lockedPrices) {
+      if (getPriceForSymbol(symbol) <= 0) return 0;
       price = currencyType === 'from' ? lockedPrices.from : lockedPrices.to;
     } else {
       price = getPriceForSymbol(symbol);
-    }
-
-    if (symbol === 'EUR' || symbol === 'USDC') return price;
-
-    if (price > 0) {
-      const tracked = lastValidatedPricesRef.current[symbol];
-      if (tracked && tracked.confidence >= 2) {
-        const ratio = Math.max(price, tracked.price) / Math.min(price, tracked.price);
-        if (ratio > 3) return tracked.price;
-      }
     }
 
     return price;
@@ -243,31 +204,6 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
 
     return () => clearInterval(interval);
   }, [priceLockedAt, unlockPrices]);
-
-  // Track price confidence - builds trust in prices over consecutive similar readings
-  useEffect(() => {
-    const trackSymbol = (symbol: string) => {
-      if (symbol === 'EUR' || symbol === 'USDC') return;
-      const price = getPriceForSymbol(symbol);
-      if (price <= 0) return;
-      const tracked = lastValidatedPricesRef.current[symbol];
-      if (tracked && tracked.price > 0) {
-        const ratio = Math.max(price, tracked.price) / Math.min(price, tracked.price);
-        if (ratio < 2) {
-          lastValidatedPricesRef.current[symbol] = {
-            price,
-            confidence: Math.min(tracked.confidence + 1, 5)
-          };
-        } else if (tracked.confidence < 2) {
-          lastValidatedPricesRef.current[symbol] = { price, confidence: 1 };
-        }
-      } else {
-        lastValidatedPricesRef.current[symbol] = { price, confidence: 1 };
-      }
-    };
-    trackSymbol(fromCurrency.symbol);
-    trackSymbol(toCurrency.symbol);
-  }, [fromCurrency.symbol, toCurrency.symbol, getPriceForSymbol, marketData, snapshotData]);
 
   // Cross-validate locked prices against live data - re-lock if significantly wrong
   useEffect(() => {
@@ -298,19 +234,19 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   // Set up interval to refresh market data every minute when on swap page
   useEffect(() => {
     // Refresh snapshot to get latest prices
-    refreshSnapshot();
+    refreshSwapQuotes();
 
     // Set up interval to refresh snapshot every minute
     const intervalId = setInterval(() => {
       console.log('Refreshing market data for swap page...');
-      refreshSnapshot();
+      refreshSwapQuotes();
     }, 60000); // 60 seconds = 1 minute
 
     // Clean up interval on unmount
     return () => {
       clearInterval(intervalId);
     };
-  }, [refreshSnapshot]);
+  }, [refreshSwapQuotes]);
 
   const getCurrencyBalance = useCallback((symbol: string): number => {
     if (symbol === 'EUR') return convertUsdToEur(usdtBalance);
@@ -945,7 +881,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
             remainingLockTime={remainingLockTime}
             swapError={swapError}
             swapSuccess={swapSuccess}
-            onRefresh={refreshSnapshot}
+            onRefresh={refreshSwapQuotes}
             onUnlock={unlockPrices}
             onReverse={handleSwapCurrencies}
             onConfirm={handleShowConfirmation}
@@ -955,7 +891,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
           />
         </main>
         <aside className="grid min-w-0 gap-4 sm:gap-5">
-          <SwapMarketOverview prices={getSortedMarketPrices()} formatFiat={formatFiat} onRefresh={refreshSnapshot} />
+          <SwapMarketOverview prices={getSortedMarketPrices()} formatFiat={formatFiat} onRefresh={refreshSwapQuotes} />
           <SwapRecentSwaps transactions={swapTransactions} formatEur={formatEur} formatFiat={formatFiat} />
         </aside>
       </div>

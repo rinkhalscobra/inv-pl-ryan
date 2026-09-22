@@ -68,7 +68,7 @@ export const TOP_CRYPTO_PAIRS: CryptoPairConfig[] = [
   { symbol: 'XTZUSDT', name: 'Tezos', type: 'crypto', active: true, priority: 'normal' },
   { symbol: 'AUSDT', name: 'Vaulta (formerly EOS)', type: 'crypto', active: true, priority: 'normal' },
   { symbol: 'RENDERUSDT', name: 'Render', type: 'crypto', active: true, priority: 'normal' },
-  { symbol: 'KASUSDT', name: 'Kaspa', type: 'crypto', active: true, priority: 'normal' },
+  { symbol: 'KASUSDT', name: 'Kaspa', type: 'crypto', active: false, priority: 'normal' },
 ];
 
 const CFD_INSTRUMENTS_BASE: CfdInstrumentConfig[] = [

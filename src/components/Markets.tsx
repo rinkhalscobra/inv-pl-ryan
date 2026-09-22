@@ -250,13 +250,15 @@ const Markets: React.FC<MarketsProps> = ({
 
       const cryptoData = getCryptoDataBySymbol(item.symbol);
       const price = cryptoData?.price || getPriceBySymbol(item.symbol);
+      const quoteTime = Date.parse(cryptoData?.timestamp || '');
       return {
         symbol: item.symbol,
         price: price,
         change_24h: cryptoData?.change_24h || 0,
         volume_24h: cryptoData?.volume_24h || 0,
-        timestamp: new Date().toISOString(),
-        isLive: price > 0,
+        timestamp: cryptoData?.timestamp || '',
+        isLive: price > 0 && Number.isFinite(quoteTime) && quoteTime <= Date.now() + 60_000
+          && Date.now() - quoteTime < 2 * 60_000,
         isTradable: item.active,
         category: 'crypto'
       };

@@ -93,59 +93,14 @@ Deno.serve(async (req: Request) => {
     const uniqueSymbols = [...new Set(positions.map(p => p.symbol))];
     const priceMap: Record<string, number> = {};
 
-    const cryptoSymbols = uniqueSymbols.filter(s => s.endsWith('USDT'));
-    const otherSymbols = uniqueSymbols.filter(s => !s.endsWith('USDT'));
-
-    if (cryptoSymbols.length > 0) {
-      try {
-        console.log(`Fetching live prices for ${cryptoSymbols.length} crypto symbols from Bybit...`);
-        const bybitResponse = await fetch('https://api.bybit.com/v5/market/tickers?category=linear', {
-          headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(10000)
-        });
-
-        if (bybitResponse.ok) {
-          const bybitData = await bybitResponse.json();
-          if (bybitData?.result?.list) {
-            for (const ticker of bybitData.result.list) {
-              if (cryptoSymbols.includes(ticker.symbol) && ticker.lastPrice) {
-                const price = parseFloat(ticker.lastPrice);
-                if (price > 0) {
-                  priceMap[ticker.symbol] = price;
-                }
-              }
-            }
-            console.log(`Got ${Object.keys(priceMap).length} live prices from Bybit`);
-          }
-        } else {
-          console.warn(`Bybit API returned ${bybitResponse.status}, falling back to database`);
-        }
-      } catch (bybitErr) {
-        console.warn(`Failed to fetch from Bybit API: ${bybitErr.message}, falling back to database`);
-      }
-    }
-
-    const symbolsNeedingDbFallback = uniqueSymbols.filter(s => !priceMap[s]);
-
-    if (symbolsNeedingDbFallback.length > 0) {
-      console.log(`Fetching ${symbolsNeedingDbFallback.length} prices from database...`);
-      for (const symbol of symbolsNeedingDbFallback) {
-        const { data: priceData, error: priceError } = await supabase
-          .from('market_data')
-          .select('price')
-          .eq('symbol', symbol)
-          .order('timestamp', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (priceError) {
-          console.warn(`Failed to fetch price for ${symbol}: ${priceError.message}`);
-          continue;
-        }
-
-        if (priceData && priceData.price > 0) {
-          priceMap[symbol] = parseFloat(priceData.price);
-        }
+    for (const symbol of uniqueSymbols) {
+      const table = symbol.endsWith('USDT') ? 'crypto_market_quotes' : 'cfd_market_quotes';
+      const { data: quote, error: priceError } = await supabase
+        .from(table).select('price,timestamp').eq('symbol', symbol).maybeSingle();
+      if (priceError || !quote) continue;
+      const sourceAge = Date.now() - Date.parse(quote.timestamp);
+      if (sourceAge >= 0 && sourceAge <= 5 * 60_000 && Number(quote.price) > 0) {
+        priceMap[symbol] = Number(quote.price);
       }
     }
 

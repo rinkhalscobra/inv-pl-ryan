@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -31,7 +31,6 @@ import { MarketData, DatabaseTransaction, DatabaseUserAsset, DatabaseUserStake }
 import { supabase } from '../lib/supabaseClient';
 import WalletBreakdownCard from './WalletBreakdownCard';
 import { WalletBreakdown } from '../hooks/useWalletBreakdown';
-import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 import ManualDepositRequest from './ManualDepositRequest';
@@ -69,7 +68,6 @@ const WalletPage: React.FC<WalletPageProps> = ({
   transactions,
   kycStatus,
   setTradingMode,
-  marketData,
   userAssets = [],
   userStakes,
   calculateCurrentEarnings,
@@ -77,8 +75,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { marketData: contextMarketData, snapshotData, getSnapshotPriceBySymbol } = useMarketData();
-  const { getPriceBySymbol: getBybitPrice } = useBybitData();
+  const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol } = useBybitData();
   const { convertUsdToEur, formatEur, formatFiat } = useFiatCurrency();
 
   // Helper function to format date safely
@@ -100,49 +97,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
   const [showBankWithdrawalModal, setShowBankWithdrawalModal] = useState(false);
   const [showCryptoWithdrawalModal, setShowCryptoWithdrawalModal] = useState(false);
   
-  // Get the actual BTC price to use (moved here so it can be used in hooks)
-  const actualBtcPrice = useMemo(() => {
-    // Strategy 1: Try websocket data first (most real-time)
-    const bybitPrice = getBybitPrice('BTCUSDT');
-    if (bybitPrice > 0) {
-      return bybitPrice;
-    }
-
-    // Strategy 2: Try snapshot data (stable fallback)
-    const snapshotPrice = getSnapshotPriceBySymbol('BTCUSDT');
-    if (snapshotPrice > 0) {
-      return snapshotPrice;
-    }
-
-    // Strategy 3: Try direct contextMarketData lookup
-    const marketDataItem = contextMarketData.find(item => item.symbol === 'BTCUSDT');
-    if (marketDataItem && marketDataItem.price > 0) {
-      return marketDataItem.price;
-    }
-
-    // Strategy 4: Try snapshotData direct lookup
-    const snapshotItem = snapshotData.find(item => item.symbol === 'BTCUSDT');
-    if (snapshotItem && snapshotItem.price > 0) {
-      return snapshotItem.price;
-    }
-
-    // Strategy 5: Try prop marketData
-    const propMarketDataItem = marketData.find(item => item.symbol === 'BTCUSDT');
-    if (propMarketDataItem && propMarketDataItem.price > 0) {
-      return propMarketDataItem.price;
-    }
-
-    return 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, contextMarketData, snapshotData, marketData]);
-
-  const wsGetPrice = useCallback((symbol: string): number => {
-    const bybitPrice = getBybitPrice(symbol);
-    if (bybitPrice > 0) return bybitPrice;
-    const snapshotPrice = getSnapshotPriceBySymbol(symbol);
-    if (snapshotPrice > 0) return snapshotPrice;
-    const md = contextMarketData.find(item => item.symbol === symbol);
-    return md?.price || 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, contextMarketData]);
+  const actualBtcPrice = getBybitPrice('BTCUSDT');
+  const wsGetPrice = useCallback((symbol: string): number => getBybitPrice(symbol), [getBybitPrice]);
 
   // State for bank transfer details
   const [bankDetails, setBankDetails] = useState<BankTransferDetails | null>(null);
@@ -271,7 +227,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   }, 0);
 
   // Calculate 24h change
-  const btc24hChange = marketData.find(m => m.symbol === 'BTCUSDT')?.change_24h || 0;
+  const btc24hChange = getCryptoDataBySymbol('BTCUSDT')?.change_24h || 0;
   const portfolioChange24h = (btcBalance * actualBtcPrice * (btc24hChange / 100));
   
   const formatCurrency = formatFiat;

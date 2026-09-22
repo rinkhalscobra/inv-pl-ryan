@@ -11,13 +11,15 @@ interface FuturesMarketHeaderProps {
 }
 
 const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair, currentPrice, onSelectPair }) => {
-  const { getCryptoDataBySymbol, connectionState } = useBybitData();
+  const { getCryptoDataBySymbol } = useBybitData();
   const { formatFiatPrice, formatFiatCompact, formatTradingPair } = useFiatCurrency();
   const [isPairMenuOpen, setIsPairMenuOpen] = useState(false);
   const [pairSearch, setPairSearch] = useState('');
   const pairMenuRef = useRef<HTMLDivElement>(null);
   const market = getCryptoDataBySymbol(selectedPair);
   const displayPrice = market?.price || currentPrice;
+  const sourceAge = Date.now() - Date.parse(market?.timestamp || '');
+  const quoteCurrent = sourceAge >= 0 && sourceAge <= 2 * 60_000;
   const change = market?.change_24h ?? 0;
   const isPositive = change >= 0;
 
@@ -73,7 +75,7 @@ const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair,
             {formatTradingPair(selectedPair)} <ChevronDown size={14} className="text-slate-500" />
           </button>
           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-            Perpetual <span className="rounded bg-sky-400/10 px-1.5 py-0.5 text-sky-300">USDT-M</span>
+            Futures <span className="rounded bg-sky-400/10 px-1.5 py-0.5 text-sky-300">Twelve Data reference</span>
           </div>
         </div>
 
@@ -138,8 +140,8 @@ const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair,
           {displayPrice > 0 ? formatFiatPrice(displayPrice) : '--'}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-          <span className={`h-1.5 w-1.5 rounded-full ${connectionState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-          Mark price
+          <span className={`h-1.5 w-1.5 rounded-full ${quoteCurrent ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+          {quoteCurrent ? 'Current reference' : 'Stored reference · delayed'}
         </div>
       </div>
 
@@ -153,7 +155,7 @@ const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair,
       </div>
 
       <div className="hidden shrink-0 items-center gap-2 rounded-md border border-emerald-400/15 bg-emerald-400/[0.06] px-2.5 py-1.5 text-[11px] text-emerald-300 2xl:flex">
-        <Activity size={13} /> Live market
+        <Activity size={13} /> {quoteCurrent ? 'Quote current' : 'Quote delayed'}
       </div>
     </section>
   );

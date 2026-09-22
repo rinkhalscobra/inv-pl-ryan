@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMarketData } from '../contexts/MarketDataContext';
+import { useBybitData } from '../contexts/BybitDataContext';
 import { 
   Wallet, 
   Check,
@@ -142,6 +143,10 @@ const StakingPage: React.FC<StakingPageProps> = ({
 }) => {
   const { t } = useTranslation();
   const { isConnected: isRealtimeConnected } = useMarketData();
+  const { getCryptoDataBySymbol } = useBybitData();
+  const ethUsdPrice = getCryptoDataBySymbol('ETHUSDT')?.price_usd || 0;
+  const solUsdPrice = getCryptoDataBySymbol('SOLUSDT')?.price_usd || 0;
+  const usdtUsdPrice = getCryptoDataBySymbol('USDTUSD')?.price_usd || 0;
   const { userStakes, addUserStake, calculateCurrentEarnings, cancelUserStake, claimUserStake, fetchUserStakes, coingeckoMarketCapData } = useDatabase();
   const primaryCardBackgroundClass = 'app-surface-raised';
   const secondaryCardBackgroundClass = 'app-surface-primary';
@@ -226,7 +231,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
       lockPeriods: [30, 60, 90, 180, 365],
       totalStaked: 5750000,
       balance: availableBalance || 0,
-      price: 1
+      price: usdtUsdPrice
     },
     {
       id: 'eth-stake',
@@ -238,7 +243,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
       lockPeriods: [30, 60, 90, 180, 365],
       totalStaked: 32500.5,
       balance: 0,
-      price: 3500
+      price: ethUsdPrice
     },
     {
       id: 'sol-stake',
@@ -250,7 +255,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
       lockPeriods: [30, 60, 90, 180, 365],
       totalStaked: 185000,
       balance: 0,
-      price: 150
+      price: solUsdPrice
     }
   ]);
 
@@ -284,12 +289,16 @@ const StakingPage: React.FC<StakingPageProps> = ({
         if (asset.symbol === 'BTC') {
           return { ...asset, balance: btcBalance, price: currentBtcPrice };
         } else if (asset.symbol === 'USDT') {
-          return { ...asset, balance: availableBalance || usdtBalance, price: 1 };
+          return { ...asset, balance: availableBalance || usdtBalance, price: usdtUsdPrice };
+        } else if (asset.symbol === 'ETH') {
+          return { ...asset, price: ethUsdPrice };
+        } else if (asset.symbol === 'SOL') {
+          return { ...asset, price: solUsdPrice };
         }
         return asset;
       })
     );
-  }, [btcBalance, usdtBalance, currentBtcPrice, availableBalance]);
+  }, [btcBalance, usdtBalance, currentBtcPrice, availableBalance, usdtUsdPrice, ethUsdPrice, solUsdPrice]);
 
   // Clear staking message after 5 seconds
   useEffect(() => {

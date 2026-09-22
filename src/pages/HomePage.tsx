@@ -82,8 +82,8 @@ const HomePage: React.FC<HomePageProps> = ({
   const { t } = useTranslation();
   const { formatFiat, formatFiatCompact } = useFiatCurrency();
   const { fetchPortfolioSnapshots, portfolioSnapshots, createPortfolioSnapshot, coingeckoMarketCapData } = useDatabase();
-  const { marketData, isConnected: isRealtimeConnected, getPriceBySymbol } = useMarketData();
-  const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol } = useBybitData();
+  const { marketData, getPriceBySymbol } = useMarketData();
+  const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol, isConnected: isRealtimeConnected } = useBybitData();
   const [activeTab, setActiveTab] = useState<'overview' | 'positions' | 'transactions'>('overview');
   const [filteredSnapshots, setFilteredSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [liveSnapshots, setLiveSnapshots] = useState<PortfolioSnapshot[]>([]);
@@ -125,7 +125,9 @@ const HomePage: React.FC<HomePageProps> = ({
   // Chart period state
   const [chartPeriod, setChartPeriod] = useState<'1W' | '1M' | '3M' | '1Y' | 'All'>('1M');
   
-  const currentBtcPrice = getBybitPrice('BTCUSDT') || getPriceBySymbol('BTCUSDT') || 0;
+  const currentBtcPrice = getBybitPrice('BTCUSDT');
+  const btcQuoteAge = Date.now() - Date.parse(getCryptoDataBySymbol('BTCUSDT')?.timestamp || '');
+  const marketFeedCurrent = isRealtimeConnected && btcQuoteAge >= 0 && btcQuoteAge <= 2 * 60_000;
   
   // Calculate actual portfolio value if not provided or is zero
   const actualPortfolioValue = totalPortfolioValue > 0 ? totalPortfolioValue : (usdtBalance + (btcBalance * currentBtcPrice));
@@ -140,7 +142,7 @@ const HomePage: React.FC<HomePageProps> = ({
     
     // Get live price from market data context first, then fallback to position data
     let currentPrice = 0;
-    const livePrice = getPriceBySymbol(position.symbol);
+    const livePrice = position.symbol.endsWith('USDT') ? getBybitPrice(position.symbol) : getPriceBySymbol(position.symbol);
     if (livePrice > 0) {
       currentPrice = livePrice;
     } else {
@@ -557,8 +559,8 @@ const HomePage: React.FC<HomePageProps> = ({
           <p className="mt-1 text-sm text-slate-400">{t('home.welcomeSubtitle')}</p>
         </div>
         <span className="inline-flex w-fit items-center gap-2 rounded-md border border-white/[0.08] bg-[#11151b] px-3 py-1.5 text-xs text-slate-300">
-          <span className={`h-2 w-2 rounded-full ${isRealtimeConnected ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-          {isRealtimeConnected ? 'Market feed live' : 'Market feed connecting'}
+          <span className={`h-2 w-2 rounded-full ${marketFeedCurrent ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+          {marketFeedCurrent ? 'Twelve Data quote current' : 'Market quote delayed'}
         </span>
       </div>
       
@@ -876,7 +878,7 @@ const HomePage: React.FC<HomePageProps> = ({
                 futuresPositions.map((position, index) => {
                   // Get live price from market data context first, then fallback to position data
                   let currentPrice = 0;
-                  const livePrice = getPriceBySymbol(position.symbol);
+                  const livePrice = position.symbol.endsWith('USDT') ? getBybitPrice(position.symbol) : getPriceBySymbol(position.symbol);
                   if (livePrice > 0) {
                     currentPrice = livePrice;
                   } else {

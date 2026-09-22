@@ -42,8 +42,8 @@ export default function SwapTradePanel({ fromField, toField, fromCurrency, toCur
             </span>
           ) : (
             <>
-              <span className="flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${isBybitConnected ? 'bg-green-400' : 'bg-blue-400'}`} />{isBybitConnected ? 'Live prices' : 'Snapshot prices'}</span>
-              {!isBybitConnected && <button type="button" onClick={onRefresh} className="flex items-center gap-1 text-blue-400 hover:text-blue-300" title="Refresh prices now"><RefreshCw size={14} /> Refresh</button>}
+              <span className="flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${isBybitConnected && canQuote ? 'bg-green-400' : 'bg-amber-400'}`} />{canQuote ? 'Twelve Data quote' : 'Quote unavailable'}</span>
+              <button type="button" onClick={onRefresh} className="flex items-center gap-1 text-blue-400 hover:text-blue-300" title="Refresh prices now"><RefreshCw size={14} /> Refresh</button>
             </>
           )}
         </div>

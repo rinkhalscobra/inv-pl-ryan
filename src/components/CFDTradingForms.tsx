@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { AlertTriangle, CheckCircle, Plus, Edit2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
+import { CFD_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { getInstrumentTypeFromSymbol } from '../constants/tradingTiers';
 import { calculateSpreadCostFromNotional, getSpreadForSymbol } from '../constants/spreadConfig';
@@ -140,7 +141,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     && livePairPrice > 0
     && Number.isFinite(quoteTimestamp)
     && quoteTimestamp <= Date.now() + 60 * 1000
-    && Date.now() - quoteTimestamp < 2 * 60 * 1000;
+    && Date.now() - quoteTimestamp < CFD_QUOTE_MAX_AGE_MS;
   const quoteIssue = !selectedQuote
     ? 'No stored quote has arrived for this market.'
     : !Number.isFinite(quoteTimestamp)
@@ -151,7 +152,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   const canTradeSelectedInstrument = selectedInstrument?.tradable !== false && hasVerifiedPrice;
   useEffect(() => {
     if (!Number.isFinite(quoteTimestamp)) return;
-    const untilStale = quoteTimestamp + 2 * 60_000 - Date.now();
+    const untilStale = quoteTimestamp + CFD_QUOTE_MAX_AGE_MS - Date.now();
     if (untilStale <= 0) return;
     const timer = window.setTimeout(() => setQuoteClock(Date.now()), untilStale + 1);
     return () => window.clearTimeout(timer);
@@ -612,7 +613,7 @@ const getLotSize = (symbol: string): number => {
           <span>
             {selectedInstrument?.tradable === false
               ? 'This market is listed, but trading is unavailable until a verified quote source is connected.'
-              : Number.isFinite(quoteTimestamp) && Date.now() - quoteTimestamp >= 2 * 60 * 1000
+              : Number.isFinite(quoteTimestamp) && Date.now() - quoteTimestamp >= CFD_QUOTE_MAX_AGE_MS
                 ? 'A current quote is unavailable. The last price is shown for reference; trading resumes when a fresh quote arrives.'
                 : 'Waiting for a verified live price before trading is enabled.'}
             {selectedInstrument?.tradable !== false && (

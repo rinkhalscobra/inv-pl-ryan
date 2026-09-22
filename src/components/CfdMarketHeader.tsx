@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Check, ChevronDown, Search } from 'lucide-react';
 import { CFD_INSTRUMENTS, getCfdInstrument } from '../constants/tradingPairs';
+import { CFD_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
@@ -22,11 +23,11 @@ export default function CfdMarketHeader({ selectedPair, currentPrice, onSelectPa
   const price = getPriceBySymbol(selectedPair) || currentPrice;
   const quoteTimestamp = Date.parse(quote?.timestamp || '');
   const quoteIsFresh = Number.isFinite(quoteTimestamp) && quoteTimestamp <= Date.now() + 60_000
-    && Date.now() - quoteTimestamp < 2 * 60_000;
+    && Date.now() - quoteTimestamp < CFD_QUOTE_MAX_AGE_MS;
 
   useEffect(() => {
     if (!Number.isFinite(quoteTimestamp)) return;
-    const untilStale = quoteTimestamp + 2 * 60_000 - Date.now();
+    const untilStale = quoteTimestamp + CFD_QUOTE_MAX_AGE_MS - Date.now();
     if (untilStale <= 0) return;
     const timer = window.setTimeout(() => setQuoteClock(Date.now()), untilStale + 1);
     return () => window.clearTimeout(timer);

@@ -18,60 +18,38 @@ const ResetPasswordPage: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
 
-  const { updatePassword, user } = useAuth();
-  
-  // State to hold parsed tokens
-  const [parsedAccessToken, setParsedAccessToken] = useState<string | null>(null);
-  const [parsedRefreshToken, setParsedRefreshToken] = useState<string | null>(null);
-  const [parsedType, setParsedType] = useState<string | null>(null);
-
+  const { updatePassword } = useAuth();
+  const [isInvite] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('type') === 'invite');
   const [isSessionSet, setIsSessionSet] = useState(false);
 
   // Check if we have the required tokens from the URL
   useEffect(() => {
-    // Parse tokens from URL hash if available (Supabase often puts them here for recovery)
     const hash = window.location.hash;
-    const hashParams = new URLSearchParams(hash.substring(1)); // Remove '#'
+    const hashParams = new URLSearchParams(hash.substring(1));
 
     const hashAccessToken = hashParams.get('access_token');
     const hashRefreshToken = hashParams.get('refresh_token');
     const hashType = hashParams.get('type');
 
-    const finalAccessToken = hashAccessToken;
-    const finalRefreshToken = hashRefreshToken;
-    const finalType = hashType;
-
-    if (finalType !== 'recovery' || !finalAccessToken || !finalRefreshToken) {
-      setError('Invalid or expired reset link. Please request a new password reset.');
-      return;
-    }
-    
     const setSessionAndUser = async () => {
       try {
-        const { data, error } = await supabase.auth.setSession({
-          access_token: finalAccessToken,
-          refresh_token: finalRefreshToken,
-        });
-
-        if (error) {
-          throw error;
+        if ((hashType === 'recovery' || hashType === 'invite') && hashAccessToken && hashRefreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: hashAccessToken,
+            refresh_token: hashRefreshToken,
+          });
+          if (error) throw error;
+        } else {
+          const { data } = await supabase.auth.getSession();
+          if (!data.session) throw new Error('Invalid or expired invitation or reset link.');
         }
-
-        console.log('Session set successfully for password reset:', data);
-        setIsSessionSet(true); // Indicate that session has been attempted to be set
-      } catch (err: any) {
-        console.error('Error setting session:', err);
-        setError('Failed to verify reset link. Please request a new password reset.');
+        setIsSessionSet(true);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to verify the link. Please request a new one.');
       }
     };
-
-    // Store parsed tokens in state
-    setParsedAccessToken(finalAccessToken);
-    setParsedRefreshToken(finalRefreshToken);
-    setParsedType(finalType);
-
-    setSessionAndUser();
-  }, []); // Empty dependency array to run only once on mount
+    void setSessionAndUser();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +57,7 @@ const ResetPasswordPage: React.FC = () => {
     setError('');
 
     try {
+      if (!isSessionSet) throw new Error('Verify your invitation or reset link first.');
       // Validate passwords
       if (password.length < 6) {
         throw new Error('Password must be at least 6 characters long');
@@ -101,8 +80,8 @@ const ResetPasswordPage: React.FC = () => {
       setTimeout(() => {
       navigate('/signin');
       }, 3000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to update password. Please try again.');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Failed to update password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -140,10 +119,10 @@ const ResetPasswordPage: React.FC = () => {
           </div>
           <BrandLogo className="mx-auto mb-5 h-auto w-64 sm:w-72" />
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
-            {t('auth.resetYourPassword')}
+            {isInvite ? 'Set your account password' : t('auth.resetYourPassword')}
           </h1>
           <p className="text-slate-300 mt-2 text-lg">
-            {t('auth.enterYourNewPasswordBelow')}
+            {isInvite ? 'Choose a password to activate your client account.' : t('auth.enterYourNewPasswordBelow')}
           </p>
         </div>
 
@@ -226,7 +205,7 @@ const ResetPasswordPage: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={loading || !password || !confirmPassword}
+                disabled={loading || !isSessionSet || !password || !confirmPassword}
                 className="w-full app-action-primary text-white py-4 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 mt-2"
               >
                 {loading ? (

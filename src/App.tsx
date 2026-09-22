@@ -48,6 +48,7 @@ import PaymentSandbox from './components/PaymentSandbox';
 import AdminCRMPage from './components/AdminCRMPage';
 import AdminIpGate from './components/AdminIpGate';
 import AdminIpAccessPage from './components/AdminIpAccessPage';
+import AdminLeadsPage from './components/AdminLeadsPage';
 import CRMHierarchyPage from './components/CRMHierarchyPage';
 import CRMStaffPage from './components/CRMStaffPage';
 
@@ -170,8 +171,8 @@ function AppContent() {
   }, [refreshCryptoQuote, selectedPair, tradingMode, user]);
 
   
-  // Check if this is a password recovery link
-  const isRecoveryLink = useMemo(() => {
+  // Recovery and invitation links both lead to the password setup screen.
+  const isPasswordSetupLink = useMemo(() => {
     const hash = window.location.hash;
     if (!hash) return false;
     
@@ -179,7 +180,7 @@ function AppContent() {
     const accessToken = hashParams.get('access_token');
     const type = hashParams.get('type');
     
-    return type === 'recovery' && !!accessToken;
+    return (type === 'recovery' || type === 'invite') && !!accessToken;
   }, []);
 
   // Add this function inside App component, before the return
@@ -237,7 +238,7 @@ const handleUpdatePassword = async (newPassword: string) => {
 
   // Detect when user logs in and show market loading screen
   useEffect(() => {
-    if (user && !authLoading && !isRecoveryLink) {
+    if (user && !authLoading && !isPasswordSetupLink) {
       const hasShownLoading = sessionStorage.getItem('marketLoadingShown');
 
       if (!hasShownLoading) {
@@ -245,7 +246,7 @@ const handleUpdatePassword = async (newPassword: string) => {
         sessionStorage.setItem('marketLoadingShown', 'true');
       }
     }
-  }, [user, authLoading, isRecoveryLink]);
+  }, [user, authLoading, isPasswordSetupLink]);
 
 
   // Get current price from ticker or market data
@@ -336,7 +337,7 @@ const handleUpdatePassword = async (newPassword: string) => {
   // Initialize app data - only when user is authenticated
   useEffect(() => {
     // Skip initialization if this is a recovery link
-    if (isRecoveryLink) {
+    if (isPasswordSetupLink) {
       setIsLoading(false);
       return;
     }
@@ -369,7 +370,7 @@ const handleUpdatePassword = async (newPassword: string) => {
     fetchUserStakes,
     fetchActivePositions,
     fetchOpenOrders,
-    isRecoveryLink
+    isPasswordSetupLink
   ]);
 
   useEffect(() => {
@@ -588,12 +589,12 @@ const handleUpdatePassword = async (newPassword: string) => {
           <Routes>
             {/* Public landing page and root-level password recovery links */}
             <Route path="/" element={
-              isRecoveryLink ? <ResetPasswordPage /> : <LandingPage />
+              isPasswordSetupLink ? <ResetPasswordPage /> : <LandingPage />
             } />
 
             {/* Authenticated trading workspace */}
             <Route path="/dashboard" element={
-              isRecoveryLink ? (
+              isPasswordSetupLink ? (
                 <ResetPasswordPage />
               ) : user ? (
                 <>
@@ -854,6 +855,14 @@ const handleUpdatePassword = async (newPassword: string) => {
               ) : <Navigate to="/auth" replace />
             } />
 
+            <Route path="/admin/leads" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
+              ) : user ? (
+                isAdmin ? <AdminIpGate><AdminLeadsPage /></AdminIpGate> : <Navigate to="/dashboard" replace />
+              ) : <Navigate to="/auth" replace />
+            } />
+
             <Route path="/crm" element={
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>
@@ -903,7 +912,7 @@ const handleUpdatePassword = async (newPassword: string) => {
           )}
 
           {/* Loading Screen */}
-          {(authLoading || isLoading) && !isRecoveryLink && !isPreparingMarkets && (
+          {(authLoading || isLoading) && !isPasswordSetupLink && !isPreparingMarkets && (
             <LoadingScreen />
           )}
         </div>

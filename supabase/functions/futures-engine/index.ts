@@ -148,15 +148,14 @@ Deno.serve(async (request: Request) => {
         }, { onConflict: "symbol" });
         if (quoteError) throw quoteError;
       } else {
-        const { data: quote, error: quoteError } = await admin.from("market_data")
-          .select("price,bid_price,ask_price,updated_at,timestamp")
+        const { data: quote, error: quoteError } = await admin.from("cfd_market_quotes")
+          .select("price,timestamp")
           .eq("symbol", symbol).single();
         if (quoteError || !quote) throw new Error("Market quote is unavailable");
         const quoteTime = Date.parse(quote.timestamp || "");
         if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
           || Date.now() - quoteTime > 2 * 60_000) throw new Error("Market quote is stale");
-        marketPrice = finitePositive(side === "long" ? quote.ask_price : quote.bid_price)
-          || finitePositive(quote.price);
+        marketPrice = finitePositive(quote.price);
       }
 
       const { data, error } = await admin.rpc("place_derivative_order", {
@@ -194,15 +193,14 @@ Deno.serve(async (request: Request) => {
         }, { onConflict: "symbol" });
         if (quoteError) throw quoteError;
       } else {
-        const { data: quote, error: quoteError } = await admin.from("market_data")
-          .select("price,bid_price,ask_price,updated_at,timestamp")
+        const { data: quote, error: quoteError } = await admin.from("cfd_market_quotes")
+          .select("price,timestamp")
           .eq("symbol", position.symbol).single();
         if (quoteError || !quote) throw new Error("Market quote is unavailable");
         const quoteTime = Date.parse(quote.timestamp || "");
         if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
           || Date.now() - quoteTime > 2 * 60_000) throw new Error("Market quote is stale");
-        exitPrice = finitePositive(position.side === "long" ? quote.bid_price : quote.ask_price)
-          || finitePositive(quote.price);
+        exitPrice = finitePositive(quote.price);
       }
       if (!exitPrice) throw new Error("Exit quote is unavailable");
       const { data: pnl, error } = await admin.rpc("close_futures_position", {

@@ -595,6 +595,12 @@ const inferProviderSymbol = (instrument: CfdInstrumentConfig): string => {
   return instrument.symbol;
 };
 
+// These symbols have no unambiguous Twelve Data quote on the current plan.
+export const UNSUPPORTED_TWELVE_DATA_CFD_SYMBOLS = new Set([
+  'NATGAS/USD', 'CORN/USD', 'WHEAT/USD', 'SUGAR/USD',
+  'CAC', 'ASX', 'NI225', 'STOXX50', 'KOSPI', 'SAMSUNG'
+]);
+
 export const CFD_INSTRUMENTS: CfdInstrumentConfig[] = CFD_INSTRUMENTS_BASE.map(instrument => ({
   ...instrument,
   category: inferCategory(instrument),
@@ -602,7 +608,8 @@ export const CFD_INSTRUMENTS: CfdInstrumentConfig[] = CFD_INSTRUMENTS_BASE.map(i
   tradingViewSymbol: instrument.tradingViewSymbol
     || TRADING_VIEW_SYMBOL_OVERRIDES[instrument.symbol]
     || instrument.symbol,
-  tradable: instrument.tradable ?? instrument.active
+  tradable: !UNSUPPORTED_TWELVE_DATA_CFD_SYMBOLS.has(instrument.symbol)
+    && (instrument.tradable ?? instrument.active)
 }));
 
 const CFD_BY_SYMBOL = new Map(CFD_INSTRUMENTS.map(instrument => [instrument.symbol.toUpperCase(), instrument]));

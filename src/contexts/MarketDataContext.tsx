@@ -50,8 +50,8 @@ const FREE_PRICE_INSTRUMENTS = CFD_INSTRUMENTS
   .filter(instrument => instrument.active && instrument.tradable !== false)
   .map(instrument => ({ symbol: instrument.symbol, type: instrument.type }));
 const FREE_PRICE_SYMBOLS = new Set(FREE_PRICE_INSTRUMENTS.map(instrument => instrument.symbol));
-const PRICE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-const SELECTED_QUOTE_INTERVAL_MS = 90 * 1000;
+const PRICE_REFRESH_INTERVAL_MS = 4 * 60 * 1000;
+const SELECTED_QUOTE_INTERVAL_MS = 60 * 1000;
 const quoteTime = (item: MarketDataItem) => Date.parse(item.timestamp || '') || 0;
 
 export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children }) => {
@@ -73,8 +73,8 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
 
       for (let index = 0; index < cfdSymbols.length; index += 100) {
         const { data, error: dbError } = await supabase
-          .from('market_data')
-          .select('symbol, price, change_24h, high_price_24h, low_price_24h, volume_24h, timestamp, bid_price, ask_price, updated_at')
+          .from('cfd_market_quotes')
+          .select('symbol, price, change_24h, high_price_24h, low_price_24h, volume_24h, timestamp, updated_at')
           .in('symbol', cfdSymbols.slice(index, index + 100));
 
         if (dbError) throw dbError;
@@ -199,12 +199,20 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
     void loadDatabaseFallback();
   }, [loadDatabaseFallback]);
 
+  // Realtime can be interrupted while the browser sleeps or reconnects.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden && navigator.onLine) void loadDatabaseFallback();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [loadDatabaseFallback]);
+
   useEffect(() => {
     const channel = supabase
       .channel(`market-data-live-${crypto.randomUUID()}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'market_data' },
+        { event: '*', schema: 'public', table: 'cfd_market_quotes' },
         payload => {
           const row = payload.new as Record<string, string | number | null>;
           if (!row?.symbol) return;

@@ -13,6 +13,7 @@ import FuturesMarketRail from './components/FuturesMarketRail';
 import CfdMarketHeader from './components/CfdMarketHeader';
 import CfdMarketRail from './components/CfdMarketRail';
 import TradingChart from './components/TradingChart';
+import CfdTwelveDataChart from './components/CfdTwelveDataChart';
 import Markets from './components/Markets';
 import SpotMyOrders from './components/SpotMyOrders';
 import ArbitrageRobotPage from './components/ArbitrageRobotPage';
@@ -129,7 +130,7 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPreparingMarkets, setIsPreparingMarkets] = useState(false);
 
-  // The free quote source is sampled only while a CFD workspace is open.
+  // The selected CFD quote is refreshed while its workspace is open.
   // Supabase Realtime pushes each stored quote to the UI without reloading it.
   useEffect(() => {
     if (!user || tradingMode !== 'cfd') return;
@@ -137,7 +138,7 @@ function AppContent() {
       if (!document.hidden) void refreshQuotes(selectedPair);
     };
     refreshSelected();
-    const selectedTimer = window.setInterval(refreshSelected, 90 * 1000);
+    const selectedTimer = window.setInterval(refreshSelected, 60 * 1000);
     window.addEventListener('focus', refreshSelected);
     window.addEventListener('online', refreshSelected);
     document.addEventListener('visibilitychange', refreshSelected);
@@ -149,20 +150,6 @@ function AppContent() {
     };
   }, [refreshQuotes, selectedPair, tradingMode, user]);
 
-  useEffect(() => {
-    if (!user || tradingMode !== 'cfd') return;
-    let stopped = false;
-    let catalogTimer: number;
-    const refreshCatalog = async () => {
-      await refreshQuotes();
-      if (!stopped) catalogTimer = window.setTimeout(() => void refreshCatalog(), 5 * 60 * 1000);
-    };
-    catalogTimer = window.setTimeout(() => void refreshCatalog(), 10 * 1000);
-    return () => {
-      stopped = true;
-      window.clearTimeout(catalogTimer);
-    };
-  }, [refreshQuotes, tradingMode, user]);
   
   // Check if this is a password recovery link
   const isRecoveryLink = useMemo(() => {
@@ -271,13 +258,17 @@ const handleUpdatePassword = async (newPassword: string) => {
   
   // Get current price from ticker or market data
   const currentSelectedPairPrice = useMemo(() => {
+    if (tradingMode === 'cfd') {
+      const storedQuote = (marketData || []).find(data => data.symbol === selectedPair)?.price;
+      return storedQuote && storedQuote > 0 ? storedQuote : 0;
+    }
     const streamPrice = getBybitPrice(selectedPair);
     if (streamPrice > 0) return streamPrice;
     const snapshotPrice = getSnapshotPriceBySymbol(selectedPair);
     if (snapshotPrice > 0) return snapshotPrice;
     const marketPrice = (marketData || []).find(data => data.symbol === selectedPair)?.price;
     return marketPrice && marketPrice > 0 ? marketPrice : 0;
-  }, [getBybitPrice, getSnapshotPriceBySymbol, selectedPair, marketData]);
+  }, [getBybitPrice, getSnapshotPriceBySymbol, selectedPair, marketData, tradingMode]);
 
   // Get live price for a symbol with fallback (using same strategy as WalletPage)
   const getCurrentPrice = useCallback((symbol: string): number => {
@@ -745,7 +736,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                         <div className="cfd-terminal-grid min-h-0 flex-1 bg-[#252a33]">
                           <section className="cfd-chart-panel min-w-0 overflow-hidden bg-[#0b0e11]">
                             <div className="h-[360px] sm:h-[440px] xl:h-full">
-                              <TradingChart key={selectedPair} selectedPair={selectedPair} backgroundVariant="cfd-terminal" />
+                              <CfdTwelveDataChart key={selectedPair} selectedPair={selectedPair} />
                             </div>
                           </section>
                           <div className="cfd-depth-panel min-h-0 overflow-hidden bg-[#0b0e11]">

@@ -11,7 +11,7 @@ interface CfdMarketHeaderProps {
 }
 
 export default function CfdMarketHeader({ selectedPair, currentPrice, onSelectPair }: CfdMarketHeaderProps) {
-  const { getMarketDataBySymbol, getPriceBySymbol, connectionState } = useMarketData();
+  const { getMarketDataBySymbol, getPriceBySymbol } = useMarketData();
   const { formatFiatPrice, formatFiatCompact } = useFiatCurrency();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -103,14 +103,13 @@ export default function CfdMarketHeader({ selectedPair, currentPrice, onSelectPa
       </div>
       <div className="min-w-[140px]">
         <div className="font-mono text-lg font-semibold tabular-nums text-emerald-400">{price > 0 ? formatPrice(price) : '--'}</div>
-        <a href="https://twelvedata.com" target="_blank" rel="noopener noreferrer" className="text-[10px] text-slate-500 underline decoration-slate-700 underline-offset-2 hover:text-slate-300">Primary data by Twelve Data</a>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500"><span className={`h-1.5 w-1.5 rounded-full ${quoteIsFresh ? 'bg-emerald-400' : 'bg-amber-400'}`} />{quoteIsFresh ? 'Recent quote' : 'Delayed quote'} {isForex ? '· rate' : '· EUR'}</div>
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-2">
         {metrics.map((metric) => <div key={metric.label} className="min-w-[90px]"><div className="text-[11px] text-slate-500">{metric.label}</div><div className={`mt-1 font-mono text-xs tabular-nums text-slate-200 ${metric.accent || ''}`}>{metric.value}</div></div>)}
       </div>
-      <div className={`hidden items-center gap-2 rounded-md border px-2.5 py-1.5 text-[11px] 2xl:flex ${quoteIsFresh && connectionState === 'connected' ? 'border-emerald-400/15 bg-emerald-400/[0.06] text-emerald-300' : 'border-amber-400/15 bg-amber-400/[0.06] text-amber-300'}`}>
-        <Activity size={13} />{quoteIsFresh && connectionState === 'connected' ? 'Recent quote' : 'Quote delayed'}
+      <div className={`hidden items-center gap-2 rounded-md border px-2.5 py-1.5 text-[11px] 2xl:flex ${quoteIsFresh ? 'border-emerald-400/15 bg-emerald-400/[0.06] text-emerald-300' : 'border-amber-400/15 bg-amber-400/[0.06] text-amber-300'}`}>
+        <Activity size={13} />{quoteIsFresh ? 'Quote current' : 'Quote delayed'}
       </div>
     </section>
   );

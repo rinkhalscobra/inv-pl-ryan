@@ -1,7 +1,7 @@
 import { ipAddress, next } from '@vercel/functions';
 import { isAllowedAdminIp } from './src/constants/adminIpAllowlist';
 
-export const config = { matcher: ['/admin', '/admin/:path*'] };
+export const config = { matcher: ['/admin', '/admin/:path*'], runtime: 'nodejs' };
 
 export default function middleware(request: Request) {
   const ip = ipAddress(request);

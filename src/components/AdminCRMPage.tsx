@@ -235,6 +235,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState<CRMStats>(emptyStats);
   const [search, setSearch] = useState('');
+  const [kycFilter, setKycFilter] = useState<'pending' | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<UserWorkspace | null>(null);
   const [tab, setTab] = useState<CRMTab>('dashboard');
@@ -274,7 +275,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     const { data, error } = await supabase.rpc('admin_get_users', {
       p_search: query.trim() || null,
       p_limit: 100,
-      p_offset: 0
+      p_offset: 0,
+      p_kyc_status: kycFilter
     });
     setLoadingUsers(false);
     if (error) {
@@ -288,7 +290,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setSelectedUserId(current => current && nextUsers.some(user => user.id === current)
       ? current
       : nextUsers[0]?.id || null);
-  }, [isAdmin, showError]);
+  }, [isAdmin, kycFilter, showError]);
 
   const loadWorkspace = useCallback(async (userId: string) => {
     const requestId = ++workspaceRequestId.current;
@@ -748,20 +750,22 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         </div>
 
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            ['Customers', stats.total_users, Users],
-            ['Pending KYC', stats.pending_kyc, FileText],
-            ['Active robots', stats.active_robots, Bot],
-            ['Robot allocation', formatBaseAsEur(stats.total_robot_allocated), Wallet]
-          ].map(([label, value, Icon]) => {
-            const StatIcon = Icon as React.ElementType;
-            return (
-              <div key={String(label)} className={`${panelClass} p-4`}>
-                <div className="mb-2 flex items-center gap-2 text-xs text-slate-400"><StatIcon size={15} />{String(label)}</div>
-                <div className="truncate text-xl font-bold text-white">{String(value)}</div>
-              </div>
-            );
-          })}
+          <button type="button" onClick={() => setKycFilter(null)} aria-pressed={kycFilter === null} className={`${panelClass} p-4 text-left transition hover:border-violet-400/60 hover:bg-slate-900 ${kycFilter === null ? 'border-violet-400/50 ring-1 ring-violet-400/20' : ''}`}>
+            <div className="mb-2 flex items-center gap-2 text-xs text-slate-400"><Users size={15} />Customers</div>
+            <div className="truncate text-xl font-bold text-white">{stats.total_users}</div>
+          </button>
+          <button type="button" onClick={() => setKycFilter('pending')} aria-pressed={kycFilter === 'pending'} className={`${panelClass} p-4 text-left transition hover:border-amber-400/60 hover:bg-slate-900 ${kycFilter === 'pending' ? 'border-amber-400/60 bg-amber-500/[0.06] ring-1 ring-amber-400/20' : ''}`}>
+            <div className="mb-2 flex items-center justify-between gap-2 text-xs text-slate-400"><span className="flex items-center gap-2"><FileText size={15} />Pending KYC</span><span className="text-[10px] font-semibold uppercase tracking-wide text-amber-300">View clients</span></div>
+            <div className="truncate text-xl font-bold text-white">{stats.pending_kyc}</div>
+          </button>
+          <div className={`${panelClass} p-4`}>
+            <div className="mb-2 flex items-center gap-2 text-xs text-slate-400"><Bot size={15} />Active robots</div>
+            <div className="truncate text-xl font-bold text-white">{stats.active_robots}</div>
+          </div>
+          <div className={`${panelClass} p-4`}>
+            <div className="mb-2 flex items-center gap-2 text-xs text-slate-400"><Wallet size={15} />Robot allocation</div>
+            <div className="truncate text-xl font-bold text-white">{formatBaseAsEur(stats.total_robot_allocated)}</div>
+          </div>
         </div>
 
         {message && (
@@ -777,12 +781,18 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
                 <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, email or client number..." className={`${fieldClass} pl-9`} />
               </div>
+              {kycFilter === 'pending' && (
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  <span className="flex items-center gap-2"><FileText size={14} />Pending KYC clients</span>
+                  <button type="button" onClick={() => setKycFilter(null)} className="flex items-center gap-1 font-semibold text-amber-100 hover:text-white"><XCircle size={14} />Clear</button>
+                </div>
+              )}
             </div>
             <div className="max-h-[68vh] overflow-y-auto p-2">
               {loadingUsers ? (
                 <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-400"><Loader2 className="animate-spin" size={18} />Loading users</div>
               ) : users.length === 0 ? (
-                <div className="p-8 text-center text-sm text-slate-500">No users found</div>
+                <div className="p-8 text-center text-sm text-slate-500">{kycFilter === 'pending' ? 'No pending KYC clients found' : 'No users found'}</div>
               ) : users.map(user => (
                 <button key={user.id} onClick={() => setSelectedUserId(user.id)} className={`mb-1 w-full rounded-xl border p-3 text-left transition ${selectedUserId === user.id ? 'border-purple-500/50 bg-purple-500/15' : 'border-transparent hover:border-slate-700 hover:bg-white/[0.03]'}`}>
                   <div className="flex items-start justify-between gap-2">

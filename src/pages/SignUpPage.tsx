@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import BrandLogo from '../components/BrandLogo';
+import PhoneInput from '../components/PhoneInput';
 
 const SignUpPage: React.FC = () => {
   const { t } = useTranslation();
@@ -16,6 +17,8 @@ const SignUpPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const [country, setCountry] = useState('');
+  const [countryCode, setCountryCode] = useState('+1');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -38,10 +41,6 @@ const SignUpPage: React.FC = () => {
     setError('');
 
     try {
-      if (!country) {
-        throw new Error('Please select your country');
-      }
-
       if (password !== confirmPassword) {
         throw new Error('Passwords do not match');
       }
@@ -52,7 +51,8 @@ const SignUpPage: React.FC = () => {
         referralCode,
         firstName,
         lastName,
-        country
+        country,
+        phoneNumber.trim() ? `${countryCode} ${phoneNumber.trim()}` : ''
       );
 
       if (signUpError) {
@@ -172,9 +172,16 @@ const SignUpPage: React.FC = () => {
                   </div>
                 </div>
 
+                <PhoneInput
+                  value={phoneNumber}
+                  countryCode={countryCode}
+                  onCountryCodeChange={setCountryCode}
+                  onPhoneNumberChange={setPhoneNumber}
+                />
+
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">
-                    {t('auth.country')} <span className="text-red-400">*</span>
+                    {t('auth.country')} <span className="text-slate-500">(optional fallback)</span>
                   </label>
                   <div
                     className="relative"
@@ -224,6 +231,7 @@ const SignUpPage: React.FC = () => {
                       </div>
                     )}
                   </div>
+                  <p className="mt-2 text-xs text-slate-500">A recognized international phone code sets your country automatically.</p>
                 </div>
 
                 <div>

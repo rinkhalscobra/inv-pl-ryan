@@ -69,6 +69,13 @@ interface TaxIdSubmission {
   reviewed_by: string | null;
 }
 
+interface ClientOnboardingSummary {
+  profile: JsonRow;
+  trade_account: JsonRow;
+  folder: JsonRow;
+  documents: JsonRow[];
+}
+
 interface UserWorkspace {
   profile: AdminUser;
   balance: JsonRow;
@@ -236,6 +243,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const workspaceRequestId = useRef(0);
   const [profileForm, setProfileForm] = useState<Record<string, string | boolean>>({});
   const [taxSubmission, setTaxSubmission] = useState<TaxIdSubmission | null>(null);
+  const [clientOnboarding, setClientOnboarding] = useState<ClientOnboardingSummary | null>(null);
   const [showTaxId, setShowTaxId] = useState(false);
   const [kycDocumentUrls, setKycDocumentUrls] = useState<{ id?: string; selfie?: string }>({});
   const [balanceForm, setBalanceForm] = useState({ usdt: '0', btc: '0' });
@@ -282,15 +290,17 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setWorkspace(null);
     setWorkspaceError(null);
     setTaxSubmission(null);
+    setClientOnboarding(null);
     setTaxSubmissionError(false);
     setKycDocumentUrls({});
     setShowTaxId(false);
     setKycReviewReason('');
     setMessage(current => current?.type === 'error' ? null : current);
     try {
-      const [{ data, error }, { data: taxData, error: taxError }] = await Promise.all([
+      const [{ data, error }, { data: taxData, error: taxError }, { data: onboardingData, error: onboardingError }] = await Promise.all([
         supabase.rpc('admin_get_user_workspace', { p_target_user_id: userId }),
-        supabase.rpc('admin_get_kyc_tax_id', { p_target_user_id: userId })
+        supabase.rpc('admin_get_kyc_tax_id', { p_target_user_id: userId }),
+        supabase.rpc('admin_get_client_onboarding', { p_target_user_id: userId })
       ]);
       if (requestId !== workspaceRequestId.current) return;
       if (error || !data) {
@@ -304,6 +314,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         setMessage({ type: 'error', text: `Tax ID review: ${errorText(taxError)}` });
       } else {
         setTaxSubmission((taxData as TaxIdSubmission | null) || null);
+      }
+      if (onboardingError) {
+        setMessage({ type: 'error', text: `Client account identifiers: ${errorText(onboardingError)}` });
+      } else {
+        setClientOnboarding((onboardingData as ClientOnboardingSummary | null) || null);
       }
       const next = data as UserWorkspace;
       setWorkspace(next);
@@ -384,7 +399,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setNewPassword('');
     setDeleteConfirmation('');
     if (selectedUserId) void loadWorkspace(selectedUserId);
-    else { workspaceRequestId.current += 1; setWorkspace(null); setWorkspaceError(null); setTaxSubmission(null); setKycDocumentUrls({}); setLoadingWorkspace(false); }
+    else { workspaceRequestId.current += 1; setWorkspace(null); setWorkspaceError(null); setTaxSubmission(null); setClientOnboarding(null); setKycDocumentUrls({}); setLoadingWorkspace(false); }
   }, [loadWorkspace, selectedUserId]);
 
   const refreshAll = async () => {
@@ -852,8 +867,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         {[['first_name', 'First name'], ['last_name', 'Last name'], ['country', 'Country'], ['phone_number', 'Phone number']].map(([key, label]) => (
                           <label key={key} className="text-xs text-slate-400">{label}<input value={String(profileForm[key] || '')} onChange={event => setProfileForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         ))}
+                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Client ID<div className="mt-1 break-all font-mono text-sm font-semibold text-white">{asText(clientOnboarding?.profile?.client_id) || 'Unavailable'}</div></div>
+                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Trading account<div className="mt-1 break-all font-mono text-sm font-semibold text-white">{asText(clientOnboarding?.trade_account?.account_number) || 'Unavailable'}</div></div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">KYC status<div className="mt-1 text-sm font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
-                        <div className="flex items-end rounded-xl border border-slate-700 p-3">
+                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Client documents<div className="mt-1 text-sm font-semibold text-white">{clientOnboarding?.documents?.length || 0} files</div></div>
+                        <div className="flex items-end rounded-xl border border-slate-700 p-3 sm:col-span-2">
                           <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.is_admin)} onChange={event => setProfileForm(current => ({ ...current, is_admin: event.target.checked }))} />Administrator</label>
                         </div>
                       </div>

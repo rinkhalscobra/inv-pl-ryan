@@ -91,13 +91,23 @@ Deno.serve(async (request: Request) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { first_name: firstName, last_name: lastName, country },
+        user_metadata: { first_name: firstName, last_name: lastName, country, onboarding_source: "crm_create_user" },
       });
       if (createError || !created.user) {
         return json({ error: createError?.message || "Account creation failed" }, 400);
       }
 
       const newUserId = created.user.id;
+      const { data: onboarding, error: onboardingError } = await admin.rpc("crm_ensure_client_onboarding", {
+        p_user_id: newUserId,
+      });
+      if (onboardingError || onboarding?.success !== true) {
+        console.error("Client onboarding failed", { user_id: newUserId, error: onboardingError?.message || onboarding?.error });
+        const { error: rollbackError } = await admin.auth.admin.deleteUser(newUserId, false);
+        if (rollbackError) return json({ error: `Client onboarding failed and cleanup needs administrator attention. User ID: ${newUserId}` }, 500);
+        await admin.from("users").delete().eq("id", newUserId);
+        return json({ error: `Account was not created: ${onboardingError?.message || onboarding?.error || "Client onboarding did not complete"}` }, 400);
+      }
       const { error: finalizeError } = await admin.rpc("crm_finalize_created_user", {
         p_user_id: newUserId,
         p_actor_id: actorId,

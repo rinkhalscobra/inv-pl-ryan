@@ -172,6 +172,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
 
   setLoading(true);
   setError(null);
+  const uploadedPaths: string[] = [];
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -199,6 +200,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
         contentType: idDocument.type || 'application/octet-stream',
       });
     if (idUploadError) throw new Error(`Error uploading ID document: ${idUploadError.message}`);
+    uploadedPaths.push(idPath);
 
     const { error: selfieUploadError } = await supabase.storage
       .from('kyc-documents')
@@ -208,6 +210,7 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
         contentType: (selfieDocument as File)?.type || 'image/jpeg',
       });
     if (selfieUploadError) throw new Error(`Error uploading selfie: ${selfieUploadError.message}`);
+    uploadedPaths.push(selfiePath);
 
     const { error: submitError } = await supabase.rpc('submit_kyc_application', {
       p_tax_id: taxId.trim(),
@@ -220,6 +223,10 @@ const KycDocumentUpload: React.FC<KycDocumentUploadProps> = ({ onClose, onKycSta
     onKycStatusChange('pending');
     setTimeout(() => onClose(), 3000);
   } catch (err: unknown) {
+    if (uploadedPaths.length > 0) {
+      const { error: cleanupError } = await supabase.storage.from('kyc-documents').remove(uploadedPaths);
+      if (cleanupError) console.error('KYC upload cleanup failed:', cleanupError.message);
+    }
     console.error('Error uploading KYC documents:', err);
     setError(err instanceof Error ? err.message : 'An unexpected error occurred');
   } finally {

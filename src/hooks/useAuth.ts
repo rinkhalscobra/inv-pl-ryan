@@ -30,6 +30,7 @@ export const useAuth = () => {
     firstName?: string,
     lastName?: string,
     country?: string,
+    phoneNumber?: string,
   ) => {
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -41,22 +42,21 @@ export const useAuth = () => {
             first_name: firstName || null,
             last_name: lastName || null,
             country: country || null,
+            phone_number: phoneNumber || null,
+            onboarding_source: 'website_signup',
           },
         },
       });
 
-      if (data.user && !error && (firstName || lastName || country)) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({
-            first_name: firstName || null,
-            last_name: lastName || null,
-            country: country || null,
-          })
-          .eq('id', data.user.id);
-
-        if (updateError) console.error('Error updating user info:', updateError);
+      if (data.user && data.session && !error) {
+        const { data: onboardingData, error: onboardingError } = await supabase.rpc('ensure_my_client_onboarding');
+        const onboarding = onboardingData as { success?: boolean; error?: string } | null;
+        if (onboardingError || onboarding?.success !== true) {
+          return {
+            data,
+            error: new Error(onboardingError?.message || onboarding?.error || 'Client account setup did not complete'),
+          };
+        }
       }
 
       return { data, error };
@@ -91,9 +91,9 @@ export const useAuth = () => {
       });
       if (error) throw error;
       return { error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error sending password reset email:', error);
-      return { error };
+      return { error: error instanceof Error ? error : new Error('Could not send the password reset email') };
     }
   };
 

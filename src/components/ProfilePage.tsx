@@ -54,6 +54,11 @@ interface TaxIdStatus {
   review_reason: string | null;
 }
 
+interface ClientAccountSummary {
+  profile?: { client_id?: string };
+  trade_account?: { account_number?: string; account_type?: string; base_currency?: string; status?: string };
+}
+
 const ProfilePage: React.FC<ProfilePageProps> = ({
   user,
   usdtBalance,
@@ -83,6 +88,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [taxIdStatus, setTaxIdStatus] = useState<TaxIdStatus | null>(null);
   const [taxIdStatusLoading, setTaxIdStatusLoading] = useState(true);
   const [taxIdStatusError, setTaxIdStatusError] = useState(false);
+  const [clientAccount, setClientAccount] = useState<ClientAccountSummary | null>(null);
 
   // Profile information state
   const [firstName, setFirstName] = useState('');
@@ -132,6 +138,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     };
     
     fetchUserProfile();
+  }, [user.id]);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.rpc('get_my_client_onboarding').then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        console.error('Error fetching client account identifiers:', error.message);
+        return;
+      }
+      setClientAccount((data as ClientAccountSummary | null) || null);
+    });
+    return () => { active = false; };
   }, [user.id]);
 
   useEffect(() => {
@@ -765,6 +784,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             <h3 className="mb-4 text-base font-semibold text-white">{t('profile.accountSummary')}</h3>
             
             <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-slate-400">Client ID</span>
+                <span className="truncate font-mono text-xs font-medium text-white">{clientAccount?.profile?.client_id || 'Preparing'}</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-slate-400">Trading account</span>
+                <span className="truncate font-mono text-xs font-medium text-white">{clientAccount?.trade_account?.account_number || 'Preparing'}</span>
+              </div>
+
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">{t('profile.accountType')}</span>
                 <span className="text-white font-medium">{t('profile.standardAccountType')}</span>

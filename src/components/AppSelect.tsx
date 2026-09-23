@@ -1,4 +1,4 @@
-import { Children, isValidElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Children, isValidElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 
@@ -41,21 +41,24 @@ export default function AppSelect({ value, onChange, children, className = '', d
   const menuRef = useRef<HTMLDivElement>(null);
   const listId = useId().replace(/:/g, '');
 
-  const updatePosition = () => {
+  const updatePosition = useCallback(() => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
     const width = Math.min(Math.max(rect.width, 180), window.innerWidth - 16);
     const below = window.innerHeight - rect.bottom - 12;
     const above = rect.top - 12;
-    const placeAbove = below < 220 && above > below;
-    const maxHeight = Math.max(100, Math.min(320, placeAbove ? above : below));
+    const estimatedHeight = menuRef.current?.scrollHeight || Math.min(320, choices.length * 42 + 12);
+    const placeAbove = below < estimatedHeight && above > below;
+    const availableSpace = placeAbove ? above : below;
+    const maxHeight = Math.max(48, Math.min(320, availableSpace));
+    const renderedHeight = Math.min(estimatedHeight, maxHeight);
     setPosition({
-      top: placeAbove ? Math.max(8, rect.top - maxHeight - 5) : rect.bottom + 5,
+      top: placeAbove ? Math.max(8, rect.top - renderedHeight - 5) : rect.bottom + 5,
       left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
       width,
       maxHeight,
     });
-  };
+  }, [choices.length]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -76,7 +79,7 @@ export default function AppSelect({ value, onChange, children, className = '', d
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', onScroll, true);
     };
-  }, [open]);
+  }, [open, updatePosition]);
 
   useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
 

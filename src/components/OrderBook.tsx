@@ -82,7 +82,7 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair, orderBook, tradingM
 
         {!displayBook && (
           <div className="space-y-4 px-4 py-5 text-xs text-slate-400">
-            <div className="text-[10px] uppercase tracking-widest text-slate-500">Twelve Data reference quote</div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500">Market reference quote</div>
             <div className="font-mono text-2xl font-semibold text-white">{currentPrice > 0 ? formatPrice(currentPrice) : '--'}</div>
             {cryptoQuote && <div className="grid grid-cols-2 gap-3 border-t border-white/[0.07] pt-4">
               <div><div className="text-slate-500">24h change</div><div className={cryptoQuote.change_24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{cryptoQuote.change_24h.toFixed(2)}%</div></div>
@@ -90,7 +90,7 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair, orderBook, tradingM
               <div><div className="text-slate-500">24h high</div><div className="text-slate-200">{cryptoQuote.high_price_24h > 0 ? formatPrice(cryptoQuote.high_price_24h) : '--'}</div></div>
               <div><div className="text-slate-500">24h low</div><div className="text-slate-200">{cryptoQuote.low_price_24h > 0 ? formatPrice(cryptoQuote.low_price_24h) : '--'}</div></div>
             </div>}
-            <div className="border-t border-white/[0.07] pt-3 text-slate-500">Order book depth is unavailable from Twelve Data.</div>
+            <div className="border-t border-white/[0.07] pt-3 text-slate-500">Order book depth is unavailable for this market.</div>
           </div>
         )}
 

@@ -116,7 +116,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const getConnectionIndicator = () => {
     return <div className={`h-2 w-2 rounded-full ${livePairPrice > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`}
-      title={livePairPrice > 0 ? 'Twelve Data quote current' : 'Quote unavailable or stale'} />;
+      title={livePairPrice > 0 ? 'Market quote current' : 'Quote unavailable or stale'} />;
   };
 
   const priceDirection = getPriceDirection(selectedPair);

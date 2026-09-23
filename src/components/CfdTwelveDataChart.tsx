@@ -121,7 +121,7 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
   return (
     <div className="flex h-full min-h-[280px] flex-col bg-[#0b0e11] text-slate-200">
       <div className="flex min-h-10 items-center justify-between border-b border-[#252a33] px-4 text-xs">
-        <div className="flex items-center gap-3"><span className="font-semibold text-white">{selectedPair}</span><span className="text-slate-500">1m chart</span><span className="text-slate-500">Twelve Data{market === 'crypto' ? ' · USDT reference' : ''}</span></div>
+        <div className="flex items-center gap-3"><span className="font-semibold text-white">{selectedPair}</span><span className="text-slate-500">1m chart</span>{market === 'crypto' && <span className="text-slate-500">USDT reference</span>}</div>
         <span className={`font-mono font-semibold tabular-nums ${rising ? 'text-emerald-400' : 'text-rose-400'}`}>
           {last > 0 ? last.toFixed(pricePrecision) : '--'}
         </span>
@@ -130,7 +130,7 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
         {points.length > 1 ? <Line data={chartData} options={options} /> : (
           <div className="flex h-full items-center justify-center px-4">
             {quote?.price ? <div className="w-full max-w-md rounded-xl border border-white/[0.08] bg-white/[0.025] p-5 text-slate-300">
-              <div className="text-[11px] uppercase tracking-widest text-slate-500">Twelve Data reference quote</div>
+              <div className="text-[11px] uppercase tracking-widest text-slate-500">Market reference quote</div>
               <div className="mt-2 font-mono text-3xl font-semibold text-white">{quote.price.toFixed(pricePrecision)}</div>
               <div className="mt-4 grid grid-cols-2 gap-4 border-t border-white/[0.08] pt-4 text-xs">
                 <div><span className="text-slate-500">24h high</span><div className="mt-1 font-mono">{quote.high_price_24h > 0 ? quote.high_price_24h.toFixed(pricePrecision) : '--'}</div></div>

@@ -75,7 +75,7 @@ const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair,
             {formatTradingPair(selectedPair)} <ChevronDown size={14} className="text-slate-500" />
           </button>
           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-            Futures <span className="rounded bg-sky-400/10 px-1.5 py-0.5 text-sky-300">Twelve Data reference</span>
+            Futures <span className="rounded bg-sky-400/10 px-1.5 py-0.5 text-sky-300">Market reference</span>
           </div>
         </div>
 

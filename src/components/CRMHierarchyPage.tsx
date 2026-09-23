@@ -1,7 +1,7 @@
 ﻿import AppSelect from './AppSelect';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, ArrowRight, ChevronDown, ExternalLink, Loader2, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ChevronDown, ExternalLink, Loader2, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { openClientDashboard } from '../lib/clientAccess';
 
@@ -299,17 +299,6 @@ export default function CRMHierarchyPage() {
 
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
         {notice && <div role="status" className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{notice}</div>}
-
-        <section className={`${panel} mb-5 p-4 sm:p-5`} aria-labelledby="access-model-title">
-          <div className="mb-4"><h2 id="access-model-title" className="text-sm font-semibold">How account access works</h2><p className="mt-1 text-xs text-slate-400">Build each team in this order. Access follows the assignments shown below.</p></div>
-          <div className="grid items-stretch gap-2 lg:grid-cols-[1fr_auto_1fr_auto_1fr]">
-            <div className="rounded-lg border border-violet-400/15 bg-violet-500/[0.06] p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-violet-300">1 · Retention manager</div><div className="mt-1 text-sm font-semibold">Supervises a team</div><p className="mt-1 text-xs text-slate-400">Can view assigned agents, their clients, and direct clients.</p></div>
-            <ArrowRight size={18} className="m-auto hidden text-slate-600 lg:block" />
-            <div className="rounded-lg border border-sky-400/15 bg-sky-500/[0.05] p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-sky-300">2 · Agent</div><div className="mt-1 text-sm font-semibold">Manages assigned clients</div><p className="mt-1 text-xs text-slate-400">Can view and open only the client accounts assigned to them.</p></div>
-            <ArrowRight size={18} className="m-auto hidden text-slate-600 lg:block" />
-            <div className="rounded-lg border border-emerald-400/15 bg-emerald-500/[0.05] p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">3 · Client</div><div className="mt-1 text-sm font-semibold">Uses the trading platform</div><p className="mt-1 text-xs text-slate-400">Assigned to one agent or directly to one retention manager.</p></div>
-          </div>
-        </section>
 
         <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className={`${panel} p-4`}><div className="text-xs text-slate-400">Retention managers</div><div className="mt-1 text-2xl font-bold">{retention.length}</div><div className="mt-1 text-[11px] text-slate-500">Team supervisors</div></div>

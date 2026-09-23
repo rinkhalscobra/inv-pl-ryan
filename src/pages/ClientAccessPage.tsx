@@ -1,23 +1,55 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
-import { clientAccessBootstrapPromise } from '../lib/supabaseClient';
+import { bootstrapClientAccess, clientAccessBootstrapPromise } from '../lib/supabaseClient';
 
 export default function ClientAccessPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const hash = new URLSearchParams(window.location.hash.slice(1));
-    if (hash.has('waiting')) return;
-    if (!clientAccessBootstrapPromise) {
+    let authenticationTimeout: number | undefined;
+    let handoffTimeout: number | undefined;
+    let cancelled = false;
+
+    const clearTimers = () => {
+      if (authenticationTimeout) window.clearTimeout(authenticationTimeout);
+      if (handoffTimeout) window.clearTimeout(handoffTimeout);
+    };
+
+    const startAuthentication = (tokenHash: string, initialPromise?: Promise<string | null> | null) => {
+      clearTimers();
+      setError(null);
+      authenticationTimeout = window.setTimeout(() => {
+        if (!cancelled) setError('Client authentication timed out. Close this tab and open the client dashboard again.');
+      }, 15_000);
+      void (initialPromise || bootstrapClientAccess(tokenHash)).then(result => {
+        if (authenticationTimeout) window.clearTimeout(authenticationTimeout);
+        if (!cancelled && result) setError(result);
+      });
+    };
+
+    const processLocation = () => {
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      const tokenHash = hash.get('token_hash');
+      if (tokenHash) {
+        startAuthentication(tokenHash, clientAccessBootstrapPromise);
+        return;
+      }
+      if (hash.has('waiting')) {
+        handoffTimeout = window.setTimeout(() => {
+          if (!cancelled) setError('The client session request did not complete. Close this tab and try Open as client again.');
+        }, 20_000);
+        return;
+      }
       setError('This client access link is missing or has expired.');
-      return;
-    }
-    const timeout = window.setTimeout(() => setError('Client authentication timed out. Close this tab and open the client dashboard again.'), 15_000);
-    void clientAccessBootstrapPromise.then(result => {
-      window.clearTimeout(timeout);
-      if (result) setError(result);
-    });
-    return () => window.clearTimeout(timeout);
+    };
+
+    processLocation();
+    window.addEventListener('hashchange', processLocation);
+    return () => {
+      cancelled = true;
+      clearTimers();
+      window.removeEventListener('hashchange', processLocation);
+    };
   }, []);
 
   return <main className="flex min-h-screen items-center justify-center bg-[#0d1118] px-4 text-slate-100">

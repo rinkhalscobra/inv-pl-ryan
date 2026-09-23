@@ -63,8 +63,14 @@ type ClientAuthSession = {
 // Exchange the one-time token directly. The regular auth client can wait on its
 // own browser lock during startup, so the bootstrap stores the verified session
 // first and then reloads the application with the isolated session available.
-export const clientAccessBootstrapPromise: Promise<string | null> | null = clientAccessTokenHash
-  ? (() => {
+let activeClientAccessToken: string | null = null;
+let activeClientAccessPromise: Promise<string | null> | null = null;
+
+export const bootstrapClientAccess = (tokenHash: string): Promise<string | null> => {
+  if (activeClientAccessPromise && activeClientAccessToken === tokenHash) return activeClientAccessPromise;
+
+  activeClientAccessToken = tokenHash;
+  activeClientAccessPromise = (() => {
       window.history.replaceState({}, document.title, '/client-access');
       sessionStorage.removeItem('atlas-crm-client-auth');
       const controller = new AbortController();
@@ -98,7 +104,13 @@ export const clientAccessBootstrapPromise: Promise<string | null> | null = clien
         ? 'Client authentication timed out. Close this tab and open the client dashboard again.'
         : error instanceof Error ? error.message : 'The client session could not be created.')
         .finally(() => window.clearTimeout(timeout));
-    })()
+    })();
+
+  return activeClientAccessPromise;
+};
+
+export const clientAccessBootstrapPromise: Promise<string | null> | null = clientAccessTokenHash
+  ? bootstrapClientAccess(clientAccessTokenHash)
   : null;
 
 // Enhanced test connection function with better error handling

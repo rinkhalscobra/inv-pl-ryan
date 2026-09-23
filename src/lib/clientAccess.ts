@@ -16,7 +16,8 @@ export async function openClientDashboard(clientId: string) {
   if (!clientWindow) throw new Error('Allow pop-ups for this website to open the client dashboard.');
   try {
     clientWindow.opener = null;
-    clientWindow.location.replace('/client-access#waiting');
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    clientWindow.location.replace(`/client-access?request=${encodeURIComponent(requestId)}#waiting`);
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) throw new Error('Your CRM session expired. Sign in again.');
     const { data, error } = await supabase.functions.invoke('crm-client-access', {
@@ -26,7 +27,10 @@ export async function openClientDashboard(clientId: string) {
     if (error) throw new Error(await errorDetail(error));
     const payload = data as ClientAccessResponse | null;
     if (!payload?.token_hash) throw new Error(payload?.error || 'The server did not issue a client session.');
-    clientWindow.location.replace(`/client-access#token_hash=${encodeURIComponent(payload.token_hash)}`);
+    // Changing only the hash keeps the already loaded waiting page alive. Use a
+    // different query string so the browser creates a fresh document and the
+    // one-time token is present when the auth bootstrap module initializes.
+    clientWindow.location.replace(`/client-access?handoff=${encodeURIComponent(requestId)}#token_hash=${encodeURIComponent(payload.token_hash)}`);
   } catch (cause) {
     clientWindow.close();
     throw cause;

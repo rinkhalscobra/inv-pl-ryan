@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 
-type ClientAccessResponse = { token_hash?: string; error?: string };
+type ClientAccessResponse = { token_hash?: string; client_user_id?: string; error?: string };
 
 const errorDetail = async (error: { message: string; context?: Response }) => {
   const response = error.context;
@@ -26,11 +26,11 @@ export async function openClientDashboard(clientId: string) {
     });
     if (error) throw new Error(await errorDetail(error));
     const payload = data as ClientAccessResponse | null;
-    if (!payload?.token_hash) throw new Error(payload?.error || 'The server did not issue a client session.');
+    if (!payload?.token_hash || !payload.client_user_id) throw new Error(payload?.error || 'The server did not issue a verified client session.');
     // Changing only the hash keeps the already loaded waiting page alive. Use a
     // different query string so the browser creates a fresh document and the
     // one-time token is present when the auth bootstrap module initializes.
-    clientWindow.location.replace(`/client-access?handoff=${encodeURIComponent(requestId)}#token_hash=${encodeURIComponent(payload.token_hash)}`);
+    clientWindow.location.replace(`/client-access?handoff=${encodeURIComponent(requestId)}#token_hash=${encodeURIComponent(payload.token_hash)}&client_user_id=${encodeURIComponent(payload.client_user_id)}`);
   } catch (cause) {
     clientWindow.close();
     throw cause;

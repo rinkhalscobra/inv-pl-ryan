@@ -15,13 +15,13 @@ export default function ClientAccessPage() {
       if (handoffTimeout) window.clearTimeout(handoffTimeout);
     };
 
-    const startAuthentication = (tokenHash: string, initialPromise?: Promise<string | null> | null) => {
+    const startAuthentication = (tokenHash: string, expectedUserId: string | null, initialPromise?: Promise<string | null> | null) => {
       clearTimers();
       setError(null);
       authenticationTimeout = window.setTimeout(() => {
         if (!cancelled) setError('Client authentication timed out. Close this tab and open the client dashboard again.');
       }, 15_000);
-      void (initialPromise || bootstrapClientAccess(tokenHash)).then(result => {
+      void (initialPromise || bootstrapClientAccess(tokenHash, expectedUserId)).then(result => {
         if (authenticationTimeout) window.clearTimeout(authenticationTimeout);
         if (!cancelled && result) setError(result);
       });
@@ -30,8 +30,13 @@ export default function ClientAccessPage() {
     const processLocation = () => {
       const hash = new URLSearchParams(window.location.hash.slice(1));
       const tokenHash = hash.get('token_hash');
+      const expectedUserId = hash.get('client_user_id');
       if (tokenHash) {
-        startAuthentication(tokenHash, clientAccessBootstrapPromise);
+        if (!expectedUserId) {
+          setError('This client access link is incomplete. Close this tab and open the client dashboard again.');
+          return;
+        }
+        startAuthentication(tokenHash, expectedUserId, clientAccessBootstrapPromise);
         return;
       }
       if (hash.has('waiting')) {

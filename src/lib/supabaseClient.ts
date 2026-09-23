@@ -5,6 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const clientAccessBootstrap = typeof window !== 'undefined' && window.location.pathname === '/client-access';
 const clientAccessHash = clientAccessBootstrap ? new URLSearchParams(window.location.hash.slice(1)) : null;
 const clientAccessTokenHash = clientAccessHash?.get('token_hash') || null;
+const clientAccessExpectedUserId = clientAccessHash?.get('client_user_id') || null;
 if (clientAccessBootstrap) sessionStorage.setItem('crm_client_session', 'true');
 export const isCrmClientSession = typeof window !== 'undefined' && sessionStorage.getItem('crm_client_session') === 'true';
 
@@ -64,12 +65,14 @@ type ClientAuthSession = {
 // own browser lock during startup, so the bootstrap stores the verified session
 // first and then reloads the application with the isolated session available.
 let activeClientAccessToken: string | null = null;
+let activeClientAccessExpectedUserId: string | null = null;
 let activeClientAccessPromise: Promise<string | null> | null = null;
 
-export const bootstrapClientAccess = (tokenHash: string): Promise<string | null> => {
-  if (activeClientAccessPromise && activeClientAccessToken === tokenHash) return activeClientAccessPromise;
+export const bootstrapClientAccess = (tokenHash: string, expectedUserId?: string | null): Promise<string | null> => {
+  if (activeClientAccessPromise && activeClientAccessToken === tokenHash && activeClientAccessExpectedUserId === expectedUserId) return activeClientAccessPromise;
 
   activeClientAccessToken = tokenHash;
+  activeClientAccessExpectedUserId = expectedUserId || null;
   activeClientAccessPromise = (() => {
       window.history.replaceState({}, document.title, '/client-access');
       sessionStorage.removeItem('atlas-crm-client-auth');
@@ -88,6 +91,7 @@ export const bootstrapClientAccess = (tokenHash: string): Promise<string | null>
         const payload = await response.json().catch(() => ({})) as Partial<ClientAuthSession> & { msg?: string; message?: string; error_description?: string };
         if (!response.ok) return payload.error_description || payload.message || payload.msg || 'The client access link is invalid or expired.';
         if (!payload.access_token || !payload.refresh_token || !payload.user?.id) return 'The authentication server returned an incomplete client session.';
+        if (expectedUserId && payload.user.id !== expectedUserId) return 'The client session identity did not match the selected CRM account.';
         const session: ClientAuthSession = {
           access_token: payload.access_token,
           refresh_token: payload.refresh_token,
@@ -110,7 +114,7 @@ export const bootstrapClientAccess = (tokenHash: string): Promise<string | null>
 };
 
 export const clientAccessBootstrapPromise: Promise<string | null> | null = clientAccessTokenHash
-  ? bootstrapClientAccess(clientAccessTokenHash)
+  ? bootstrapClientAccess(clientAccessTokenHash, clientAccessExpectedUserId)
   : null;
 
 // Enhanced test connection function with better error handling

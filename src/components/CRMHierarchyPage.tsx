@@ -1,8 +1,9 @@
 ﻿import AppSelect from './AppSelect';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Loader2, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { openClientDashboard } from '../lib/clientAccess';
 
 type CRMRole = 'client' | 'agent' | 'retention' | 'admin';
 
@@ -43,6 +44,7 @@ export default function CRMHierarchyPage() {
   const [newUser, setNewUser] = useState(emptyNewUser);
   const [createError, setCreateError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'clients' | 'teams'>('clients');
+  const [openingClientId, setOpeningClientId] = useState('');
 
   const closeCreateUser = () => {
     setShowCreateUser(false);
@@ -143,6 +145,18 @@ export default function CRMHierarchyPage() {
       });
       return { error };
     }, 'Client assignment updated.');
+  };
+
+  const openClient = async (client: Person) => {
+    setOpeningClientId(client.id);
+    setError(null);
+    try {
+      await openClientDashboard(client.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The client dashboard could not be opened.');
+    } finally {
+      setOpeningClientId('');
+    }
   };
 
   const createUser = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -342,14 +356,14 @@ export default function CRMHierarchyPage() {
                       </div>
                       <div className="p-4">
                         {directClients.length > 0 && <div className="mb-4"><div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Direct clients</div><div className="space-y-2">{directClients.map(client => (
-                          <div key={client.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.07] bg-[#101620] px-3 py-2.5"><div className="min-w-0"><div className="truncate text-sm font-medium">{nameOf(client)}</div><div className="truncate text-[11px] text-slate-500">{client.email}</div></div><AppSelect aria-label={`Owner for ${client.email}`} value={ownerValueOf(client)} disabled={busy !== null} onChange={event => assignClientOwner(client, event.target.value)} className={selectClass}><option value="">Unassigned</option><optgroup label="Agents">{agents.map(agent => <option key={agent.id} value={`agent:${agent.id}`}>{nameOf(agent)}</option>)}</optgroup><optgroup label="Direct retention">{retention.map(item => <option key={item.id} value={`retention:${item.id}`}>{nameOf(item)}</option>)}</optgroup></AppSelect></div>
+                          <div key={client.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.07] bg-[#101620] px-3 py-2.5"><div className="min-w-0"><div className="truncate text-sm font-medium">{nameOf(client)}</div><div className="truncate text-[11px] text-slate-500">{client.email}</div></div><div className="flex flex-wrap items-center gap-2"><AppSelect aria-label={`Owner for ${client.email}`} value={ownerValueOf(client)} disabled={busy !== null} onChange={event => assignClientOwner(client, event.target.value)} className={selectClass}><option value="">Unassigned</option><optgroup label="Agents">{agents.map(agent => <option key={agent.id} value={`agent:${agent.id}`}>{nameOf(agent)}</option>)}</optgroup><optgroup label="Direct retention">{retention.map(item => <option key={item.id} value={`retention:${item.id}`}>{nameOf(item)}</option>)}</optgroup></AppSelect><button type="button" onClick={() => void openClient(client)} disabled={!!openingClientId} className="flex items-center gap-1.5 rounded-lg border border-violet-400/25 bg-violet-500/10 px-2.5 py-2 text-xs font-semibold text-violet-200 hover:bg-violet-500/20 disabled:opacity-50">{openingClientId === client.id ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}Open dashboard</button></div></div>
                         ))}</div></div>}
                         <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Assigned agents</div>
                         {managerAgents.length === 0 ? <p className="mt-2 rounded-lg border border-dashed border-white/[0.09] p-4 text-center text-xs text-slate-500">No agents assigned to this retention manager.</p> : <div className="mt-2 space-y-3">{managerAgents.map(agent => {
                           const agentClients = clientsForAgent(agent.id);
                           return <div key={agent.id} className="rounded-lg border border-white/[0.08] bg-[#101620]">
                             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-3"><div className="min-w-0"><div className="flex items-center gap-2"><span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-sky-300">Agent</span><span className="truncate text-sm font-semibold">{nameOf(agent)}</span></div><div className="mt-1 truncate text-[11px] text-slate-500">{agent.email} · {agentClients.length} clients</div></div><div className="flex flex-wrap gap-2"><AppSelect aria-label={`Role for ${agent.email}`} value="agent" onChange={event => changeRole(agent, event.target.value as CRMRole)} disabled={busy !== null} className={selectClass}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect><AppSelect aria-label={`Retention manager for ${agent.email}`} value={manager.id} disabled={busy !== null} onChange={event => void run(`agent-${agent.id}`, async () => { const { error } = await supabase.rpc('crm_admin_assign_agent', { p_agent_id: agent.id, p_retention_id: event.target.value || null }); return { error }; }, 'Agent assignment updated.')} className={selectClass}><option value="">Unassigned</option>{retention.map(item => <option key={item.id} value={item.id}>{nameOf(item)}</option>)}</AppSelect></div></div>
-                            {agentClients.length > 0 && <div className="divide-y divide-white/[0.05]">{agentClients.map(client => <div key={client.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"><div className="min-w-0"><div className="truncate text-xs font-medium text-slate-300">{nameOf(client)}</div><div className="truncate text-[10px] text-slate-600">{client.email}</div></div><AppSelect aria-label={`Owner for ${client.email}`} value={ownerValueOf(client)} disabled={busy !== null} onChange={event => assignClientOwner(client, event.target.value)} className={selectClass}><option value="">Unassigned</option><optgroup label="Agents">{agents.map(item => <option key={item.id} value={`agent:${item.id}`}>{nameOf(item)}</option>)}</optgroup><optgroup label="Direct retention">{retention.map(item => <option key={item.id} value={`retention:${item.id}`}>{nameOf(item)}</option>)}</optgroup></AppSelect></div>)}</div>}
+                            {agentClients.length > 0 && <div className="divide-y divide-white/[0.05]">{agentClients.map(client => <div key={client.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"><div className="min-w-0"><div className="truncate text-xs font-medium text-slate-300">{nameOf(client)}</div><div className="truncate text-[10px] text-slate-600">{client.email}</div></div><div className="flex flex-wrap items-center gap-2"><AppSelect aria-label={`Owner for ${client.email}`} value={ownerValueOf(client)} disabled={busy !== null} onChange={event => assignClientOwner(client, event.target.value)} className={selectClass}><option value="">Unassigned</option><optgroup label="Agents">{agents.map(item => <option key={item.id} value={`agent:${item.id}`}>{nameOf(item)}</option>)}</optgroup><optgroup label="Direct retention">{retention.map(item => <option key={item.id} value={`retention:${item.id}`}>{nameOf(item)}</option>)}</optgroup></AppSelect><button type="button" onClick={() => void openClient(client)} disabled={!!openingClientId} className="rounded-md border border-white/[0.09] p-2 text-slate-400 hover:border-violet-400/40 hover:text-violet-200 disabled:opacity-50" title={`Open ${nameOf(client)} dashboard`}>{openingClientId === client.id ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}</button></div></div>)}</div>}
                           </div>;
                         })}</div>}
                       </div>
@@ -361,7 +375,7 @@ export default function CRMHierarchyPage() {
                   <div className="border-b border-amber-400/15 bg-amber-400/[0.04] p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Unassigned agents</h3><p className="mt-1 text-xs text-slate-400">Place these agents under a retention manager.</p></div><span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-bold text-amber-300">{agents.filter(agent => !agentManager.has(agent.id)).length}</span></div></div>
                   <div className="divide-y divide-white/[0.06]">{agents.filter(agent => !agentManager.has(agent.id)).map(agent => {
                     const agentClients = clientsForAgent(agent.id);
-                    return <div key={agent.id} className="p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><div className="truncate text-sm font-semibold">{nameOf(agent)}</div><div className="truncate text-xs text-slate-500">{agent.email} · {agentClients.length} clients</div></div><div className="flex flex-wrap gap-2"><AppSelect aria-label={`Role for ${agent.email}`} value="agent" onChange={event => changeRole(agent, event.target.value as CRMRole)} disabled={busy !== null} className={selectClass}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect><AppSelect aria-label={`Retention manager for ${agent.email}`} value="" disabled={busy !== null} onChange={event => void run(`agent-${agent.id}`, async () => { const { error } = await supabase.rpc('crm_admin_assign_agent', { p_agent_id: agent.id, p_retention_id: event.target.value || null }); return { error }; }, 'Agent assignment updated.')} className={selectClass}><option value="">Select retention</option>{retention.map(item => <option key={item.id} value={item.id}>{nameOf(item)}</option>)}</AppSelect></div></div>{agentClients.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{agentClients.map(client => <span key={client.id} className="rounded-md border border-white/[0.07] bg-black/10 px-2 py-1 text-[11px] text-slate-400">{nameOf(client)}</span>)}</div>}</div>;
+                    return <div key={agent.id} className="p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><div className="truncate text-sm font-semibold">{nameOf(agent)}</div><div className="truncate text-xs text-slate-500">{agent.email} · {agentClients.length} clients</div></div><div className="flex flex-wrap gap-2"><AppSelect aria-label={`Role for ${agent.email}`} value="agent" onChange={event => changeRole(agent, event.target.value as CRMRole)} disabled={busy !== null} className={selectClass}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect><AppSelect aria-label={`Retention manager for ${agent.email}`} value="" disabled={busy !== null} onChange={event => void run(`agent-${agent.id}`, async () => { const { error } = await supabase.rpc('crm_admin_assign_agent', { p_agent_id: agent.id, p_retention_id: event.target.value || null }); return { error }; }, 'Agent assignment updated.')} className={selectClass}><option value="">Select retention</option>{retention.map(item => <option key={item.id} value={item.id}>{nameOf(item)}</option>)}</AppSelect></div></div>{agentClients.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{agentClients.map(client => <button type="button" key={client.id} onClick={() => void openClient(client)} disabled={!!openingClientId} className="flex items-center gap-1.5 rounded-md border border-white/[0.07] bg-black/10 px-2 py-1 text-[11px] text-slate-400 hover:border-violet-400/30 hover:text-violet-200 disabled:opacity-50">{openingClientId === client.id ? <Loader2 size={11} className="animate-spin" /> : <ExternalLink size={11} />}{nameOf(client)}</button>)}</div>}</div>;
                   })}</div>
                 </section>}
               </div>

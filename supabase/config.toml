@@ -17,6 +17,9 @@ verify_jwt = false
 [functions.admin-leads]
 verify_jwt = false
 
+[functions.crm-client-access]
+verify_jwt = false
+
 [functions.affiliate-leads]
 verify_jwt = false
 

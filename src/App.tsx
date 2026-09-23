@@ -29,12 +29,13 @@ import SignUpPage from './pages/SignUpPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
+import ClientAccessPage from './pages/ClientAccessPage';
 import TradingFeesPage from './pages/TradingFeesPage';
 import FinnhubWebSocketTest from './components/FinnhubWebSocketTest';
 import LoadingScreen from './components/LoadingScreen';
 import MarketLoadingScreen from './components/MarketLoadingScreen';
 import AuthModal from './components/AuthModal';
-import { supabase } from './lib/supabaseClient';
+import { isCrmClientSession, supabase } from './lib/supabaseClient';
 import { useAuth } from './hooks/useAuth';
 import { useDatabase } from './hooks/useDatabase';
 import { getUserCfdTier } from './constants/tradingTiers';
@@ -195,46 +196,6 @@ const handleUpdatePassword = async (newPassword: string) => {
   }
 };
 
-
-  // Handle auth callback from CRM impersonation
-  useEffect(() => {
-    const handleAuthCallback = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const accessToken = urlParams.get('access_token');
-      const refreshToken = urlParams.get('refresh_token');
-
-      if (accessToken) {
-        try {
-          console.log('Auth callback detected, handling CRM impersonation...');
-
-          // Sign out current session first
-          await supabase.auth.signOut();
-
-          // Set the new session with the provided tokens
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken || accessToken // Use access token as fallback if no refresh token
-          });
-
-          if (error) {
-            console.error('Error setting session from auth callback:', error);
-            throw error;
-          }
-
-          console.log('Successfully set session from auth callback:', data);
-
-          // Clear the URL parameters to clean up the address bar
-          const newUrl = window.location.pathname;
-          window.history.replaceState({}, document.title, newUrl);
-
-        } catch (error) {
-          console.error('Error handling auth callback:', error);
-        }
-      }
-    };
-
-    handleAuthCallback();
-  }, []);
 
   // Detect when user logs in and show market loading screen
   useEffect(() => {
@@ -587,6 +548,8 @@ const handleUpdatePassword = async (newPassword: string) => {
     <Router>
       <div className="min-h-screen app-page-bg text-white">
           <Routes>
+            <Route path="/client-access" element={<ClientAccessPage />} />
+
             {/* Public landing page and root-level password recovery links */}
             <Route path="/" element={
               isPasswordSetupLink ? <ResetPasswordPage /> : <LandingPage />
@@ -598,6 +561,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                 <ResetPasswordPage />
               ) : user ? (
                 <>
+                  {isCrmClientSession && <div className="flex min-h-9 items-center justify-center gap-3 border-b border-amber-400/25 bg-amber-400/10 px-4 py-2 text-center text-xs font-medium text-amber-100"><span>Authorized CRM client session</span><span className="hidden text-amber-300/70 sm:inline">This tab is signed in as the selected client.</span><button type="button" onClick={() => window.close()} className="rounded-md border border-amber-300/25 px-2 py-1 text-[11px] font-semibold hover:bg-amber-300/10">Close client session</button></div>}
                   <Header
                     tradingMode={tradingMode}
                     setTradingMode={handleTradingModeChange}

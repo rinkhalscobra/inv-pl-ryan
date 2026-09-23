@@ -2,6 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const clientAccessBootstrap = typeof window !== 'undefined' && window.location.pathname === '/client-access';
+if (clientAccessBootstrap) sessionStorage.setItem('crm_client_session', 'true');
+export const isCrmClientSession = typeof window !== 'undefined' && sessionStorage.getItem('crm_client_session') === 'true';
 
 // Enhanced validation with better error messages
 if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'your_supabase_url_here' || supabaseAnonKey === 'your_supabase_anon_key_here') {
@@ -26,7 +29,8 @@ try {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
-    autoRefreshToken: true,
+    autoRefreshToken: !isCrmClientSession,
+    ...(isCrmClientSession ? { storage: window.sessionStorage, storageKey: 'atlas-crm-client-auth' } : {}),
   },
   global: {
     headers: {

@@ -56,7 +56,7 @@ interface TaxIdStatus {
 }
 
 interface ClientAccountSummary {
-  profile?: { client_id?: string };
+  profile?: { client_id?: string; client_number?: number };
   trade_account?: { account_number?: string; account_type?: string; base_currency?: string; status?: string };
 }
 
@@ -786,6 +786,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             <h3 className="mb-4 text-base font-semibold text-white">{t('profile.accountSummary')}</h3>
             
             <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-slate-400">Customer number</span>
+                <span className="font-mono text-sm font-semibold text-white">{clientAccount?.profile?.client_number ? `#${clientAccount.profile.client_number}` : 'Preparing'}</span>
+              </div>
+
               <div className="flex items-center justify-between gap-4">
                 <span className="text-slate-400">Client ID</span>
                 <span className="truncate font-mono text-xs font-medium text-white">{clientAccount?.profile?.client_id || 'Preparing'}</span>

@@ -39,6 +39,8 @@ type CRMTab = 'dashboard' | 'profile' | 'wallet' | 'swap' | 'futures' | 'cfd' | 
 interface AdminUser extends JsonRow {
   id: string;
   email: string;
+  client_number?: number | null;
+  client_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   country?: string | null;
@@ -773,7 +775,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             <div className="border-b border-slate-700/70 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search users or UUID..." className={`${fieldClass} pl-9`} />
+                <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, email or client number..." className={`${fieldClass} pl-9`} />
               </div>
             </div>
             <div className="max-h-[68vh] overflow-y-auto p-2">
@@ -785,7 +787,10 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                 <button key={user.id} onClick={() => setSelectedUserId(user.id)} className={`mb-1 w-full rounded-xl border p-3 text-left transition ${selectedUserId === user.id ? 'border-purple-500/50 bg-purple-500/15' : 'border-transparent hover:border-slate-700 hover:bg-white/[0.03]'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-white">{displayName(user)}</div>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="truncate text-sm font-semibold text-white">{displayName(user)}</div>
+                        {user.client_number && <span className="shrink-0 rounded-md bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-300">#{user.client_number}</span>}
+                      </div>
                       <div className="truncate text-xs text-slate-500">{user.email}</div>
                     </div>
                     {user.is_admin && <ShieldCheck size={15} className="shrink-0 text-purple-400" />}
@@ -818,6 +823,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="truncate text-xl font-bold text-white">{displayName(profile)}</h2>
+                        {clientOnboarding?.profile?.client_number && <span className="rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-1 font-mono text-xs font-semibold text-violet-200">Customer #{asText(clientOnboarding.profile.client_number)}</span>}
                         {profile.is_admin && <span className="rounded-full bg-purple-500/15 px-2 py-1 text-xs text-purple-300">Admin</span>}
                       </div>
                       <p className="mt-1 truncate text-sm text-slate-400">{profile.email} Â· {profile.id}</p>
@@ -872,6 +878,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         {[['first_name', 'First name'], ['last_name', 'Last name'], ['country', 'Country'], ['phone_number', 'Phone number']].map(([key, label]) => (
                           <label key={key} className="text-xs text-slate-400">{label}<input value={String(profileForm[key] || '')} onChange={event => setProfileForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         ))}
+                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Customer number<div className="mt-1 font-mono text-sm font-semibold text-white">{clientOnboarding?.profile?.client_number ? `#${asText(clientOnboarding.profile.client_number)}` : 'Unavailable'}</div></div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Client ID<div className="mt-1 break-all font-mono text-sm font-semibold text-white">{asText(clientOnboarding?.profile?.client_id) || 'Unavailable'}</div></div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Trading account<div className="mt-1 break-all font-mono text-sm font-semibold text-white">{asText(clientOnboarding?.trade_account?.account_number) || 'Unavailable'}</div></div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">KYC status<div className="mt-1 text-sm font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>

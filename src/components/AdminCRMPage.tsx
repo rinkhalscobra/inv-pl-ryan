@@ -260,6 +260,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [robotForm, setRobotForm] = useState<Record<string, string | boolean>>({});
   const [assetForm, setAssetForm] = useState({ symbol: '', balance: '0' });
   const [manualProfit, setManualProfit] = useState('');
+  const [depositForm, setDepositForm] = useState({ currency: 'EUR', amount: '', reference: '' });
   const [note, setNote] = useState('');
   const [notification, setNotification] = useState('');
   const [supportConversationId, setSupportConversationId] = useState('');
@@ -547,6 +548,18 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     });
     return { error };
   }, 'Robot profit credited');
+
+  const addDeposit = () => runMutation('deposit', async () => {
+    const { error } = await supabase.rpc('admin_add_user_deposit', {
+      p_target_user_id: selectedUserId,
+      p_amount: Number(depositForm.amount),
+      p_currency: depositForm.currency,
+      p_reference: depositForm.reference.trim() || null,
+      p_reason: reason.trim()
+    });
+    if (!error) setDepositForm(current => ({ ...current, amount: '', reference: '' }));
+    return { error };
+  }, `${depositForm.currency} deposit added`);
 
   const addNote = () => runMutation('note', async () => {
     const { error } = await supabase.rpc('admin_add_user_note', {
@@ -1123,6 +1136,20 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
                 {tab === 'deposits' && (
                   <div className="space-y-5">
+                    <section className={`${panelClass} p-5`}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div><h3 className="flex items-center gap-2 font-semibold text-white"><CreditCard size={18} className="text-emerald-300" />Add wallet deposit</h3><p className="mt-1 text-xs text-slate-400">Credit this client immediately and create a completed, audited deposit transaction.</p></div>
+                        <div className="flex gap-4 text-right text-xs text-slate-400"><div>EUR balance<div className="mt-1 font-mono text-sm font-semibold text-white">{formatBaseAsEur(asNumber(workspace.balance.usdt_balance))}</div></div><div>USD balance<div className="mt-1 font-mono text-sm font-semibold text-white">{formatUsd(workspace.balance.usd_balance)}</div></div></div>
+                      </div>
+                      <div className="mt-5 grid gap-3 md:grid-cols-[160px_minmax(180px,0.65fr)_1fr_auto]">
+                        <label className="text-xs text-slate-400">Currency<AppSelect value={depositForm.currency} onChange={event => setDepositForm(current => ({ ...current, currency: event.target.value }))} className={`${fieldClass} mt-1.5`}><option value="EUR">EUR</option><option value="USD">USD</option></AppSelect></label>
+                        <label className="text-xs text-slate-400">Amount<input type="number" min="0.01" step="0.01" inputMode="decimal" value={depositForm.amount} onChange={event => setDepositForm(current => ({ ...current, amount: event.target.value }))} placeholder="0.00" className={`${fieldClass} mt-1.5 font-mono`} /></label>
+                        <label className="text-xs text-slate-400">Payment reference <span className="text-slate-600">(optional)</span><input maxLength={120} value={depositForm.reference} onChange={event => setDepositForm(current => ({ ...current, reference: event.target.value }))} placeholder="Bank transfer or internal reference" className={`${fieldClass} mt-1.5`} /></label>
+                        <button type="button" onClick={addDeposit} disabled={saving !== null || !selectedUserId || Number(depositForm.amount) <= 0 || !reason.trim()} className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/15 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">{saving === 'deposit' ? <Loader2 size={17} className="animate-spin" /> : <CheckCircle2 size={17} />}Add deposit</button>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-500">EUR deposits use the current EUR/USD settlement rate. The audit reason entered above is saved with this action.</p>
+                    </section>
+                    {managedSection('Wallet deposit history', 'transactions', (workspace.transactions || []).filter(item => ['deposit', 'nowpayments_deposit'].includes(asText(item.type))))}
                     {managedSection('Deposit addresses', 'crypto_deposit_addresses', workspace.deposit_addresses)}
                     {managedSection('On-chain deposits', 'crypto_deposits', workspace.deposits)}
                     {managedSection('Crypto payment requests', 'crypto_payment_requests', workspace.payment_requests)}

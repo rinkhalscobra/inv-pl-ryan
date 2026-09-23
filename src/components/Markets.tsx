@@ -7,6 +7,7 @@ import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constant
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { CFD_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 
 interface MarketData {
   symbol: string;
@@ -113,7 +114,7 @@ const Markets: React.FC<MarketsProps> = ({
     const now = Date.now();
     const nextExpiry = marketData.reduce((earliest, quote) => {
       if (!getCfdInstrument(quote.symbol)) return earliest;
-      const expiry = Date.parse(quote.timestamp || '') + 2 * 60_000;
+      const expiry = Date.parse(quote.timestamp || '') + CFD_QUOTE_MAX_AGE_MS;
       return expiry > now && expiry < earliest ? expiry : earliest;
     }, Infinity);
     if (!Number.isFinite(nextExpiry)) return;
@@ -231,7 +232,7 @@ const Markets: React.FC<MarketsProps> = ({
             volume_24h: marketDataItem.volume_24h || 0,
             timestamp: marketDataItem.timestamp || '',
             isLive: Number.isFinite(quoteTime) && quoteTime <= Date.now() + 60_000
-              && Date.now() - quoteTime < 2 * 60_000,
+              && Date.now() - quoteTime < CFD_QUOTE_MAX_AGE_MS,
             isTradable: instrument?.tradable !== false,
             category: instrument?.category
           };

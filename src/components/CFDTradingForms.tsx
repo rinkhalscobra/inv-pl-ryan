@@ -62,7 +62,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
-  const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol, refreshQuotes, error: quoteRefreshError } = useMarketData();
+  const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol, refreshQuotes, quotesReady, error: quoteRefreshError } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isTerminal = surfaceVariant === 'terminal';
   const isCfdSurface = surfaceVariant === 'cfd' || isTerminal;
@@ -607,15 +607,13 @@ const getLotSize = (symbol: string): number => {
         </div>
       )}
 
-      {!canTradeSelectedInstrument && (
+      {quotesReady && !canTradeSelectedInstrument && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300 md:mb-6 md:p-4">
           <AlertTriangle size={20} className="flex-shrink-0" />
           <span>
             {selectedInstrument?.tradable === false
               ? 'This market is listed, but trading is unavailable until a verified quote source is connected.'
-              : Number.isFinite(quoteTimestamp) && Date.now() - quoteTimestamp >= CFD_QUOTE_MAX_AGE_MS
-                ? 'A current quote is unavailable. The last price is shown for reference; trading resumes when a fresh quote arrives.'
-                : 'Waiting for a verified live price before trading is enabled.'}
+              : 'This market is temporarily unavailable for trading.'}
             {selectedInstrument?.tradable !== false && (
               <span className="mt-1 block text-xs text-amber-200/80">
                 {quoteIssue} {quoteRefreshError || ''}

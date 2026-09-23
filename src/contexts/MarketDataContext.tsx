@@ -29,6 +29,7 @@ type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnect
 interface MarketDataContextType {
   marketData: MarketDataItem[];
   snapshotData: MarketDataItem[];
+  quotesReady: boolean;
   isConnected: boolean;
   connectionState: ConnectionState;
   error: string | null;
@@ -57,6 +58,7 @@ const quoteTime = (item: MarketDataItem) => Date.parse(item.timestamp || '') || 
 export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children }) => {
   const [marketData, setMarketData] = useState<MarketDataItem[]>([]);
   const [snapshotData, setSnapshotData] = useState<MarketDataItem[]>([]);
+  const [quotesReady, setQuotesReady] = useState(false);
   const [lastSnapshotTime, setLastSnapshotTime] = useState<number>(Date.now());
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +136,8 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
       }
     } catch {
       setError('Stored CFD prices are temporarily unavailable');
+    } finally {
+      if (!symbol) setQuotesReady(true);
     }
   }, []);
 
@@ -291,6 +295,7 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
   const contextValue: MarketDataContextType = {
     marketData,
     snapshotData,
+    quotesReady,
     isConnected,
     connectionState,
     error,

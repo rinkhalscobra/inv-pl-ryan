@@ -10,6 +10,7 @@ import {
   Coins,
   CreditCard,
   Database,
+  DollarSign,
   FileText,
   Eye,
   EyeOff,

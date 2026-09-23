@@ -3,6 +3,7 @@ import { Activity, Check, ChevronDown, Search } from 'lucide-react';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 import { TOP_CRYPTO_PAIRS } from '../constants/tradingPairs';
+import { CRYPTO_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 
 interface FuturesMarketHeaderProps {
   selectedPair: string;
@@ -11,7 +12,7 @@ interface FuturesMarketHeaderProps {
 }
 
 const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair, currentPrice, onSelectPair }) => {
-  const { getCryptoDataBySymbol } = useBybitData();
+  const { getCryptoDataBySymbol, quotesReady } = useBybitData();
   const { formatFiatPrice, formatFiatCompact, formatTradingPair } = useFiatCurrency();
   const [isPairMenuOpen, setIsPairMenuOpen] = useState(false);
   const [pairSearch, setPairSearch] = useState('');
@@ -19,7 +20,8 @@ const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair,
   const market = getCryptoDataBySymbol(selectedPair);
   const displayPrice = market?.price || currentPrice;
   const sourceAge = Date.now() - Date.parse(market?.timestamp || '');
-  const quoteCurrent = sourceAge >= 0 && sourceAge <= 2 * 60_000;
+  const quoteCurrent = sourceAge >= 0 && sourceAge <= CRYPTO_QUOTE_MAX_AGE_MS;
+  const quoteUnavailable = quotesReady && !quoteCurrent;
   const change = market?.change_24h ?? 0;
   const isPositive = change >= 0;
 
@@ -140,8 +142,8 @@ const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair,
           {displayPrice > 0 ? formatFiatPrice(displayPrice) : '--'}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-          <span className={`h-1.5 w-1.5 rounded-full ${quoteCurrent ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-          {quoteCurrent ? 'Current reference' : 'Stored reference · delayed'}
+          <span className={`h-1.5 w-1.5 rounded-full ${quoteCurrent ? 'bg-emerald-400' : quoteUnavailable ? 'bg-slate-500' : 'animate-pulse bg-sky-400'}`} />
+          {quoteCurrent ? 'Market price' : quoteUnavailable ? 'Price unavailable' : 'Loading market'}
         </div>
       </div>
 
@@ -154,9 +156,11 @@ const FuturesMarketHeader: React.FC<FuturesMarketHeaderProps> = ({ selectedPair,
         ))}
       </div>
 
-      <div className="hidden shrink-0 items-center gap-2 rounded-md border border-emerald-400/15 bg-emerald-400/[0.06] px-2.5 py-1.5 text-[11px] text-emerald-300 2xl:flex">
-        <Activity size={13} /> {quoteCurrent ? 'Quote current' : 'Quote delayed'}
-      </div>
+      {quoteCurrent && (
+        <div className="hidden shrink-0 items-center gap-2 rounded-md border border-emerald-400/15 bg-emerald-400/[0.06] px-2.5 py-1.5 text-[11px] text-emerald-300 2xl:flex">
+          <Activity size={13} />Market current
+        </div>
+      )}
     </section>
   );
 };

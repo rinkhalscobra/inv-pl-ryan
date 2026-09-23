@@ -7,6 +7,7 @@ import { usePrevious } from '../hooks/usePrevious';
 import { formatSpreadDisplay } from '../constants/spreadConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { CRYPTO_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 
 interface FuturesTradingFormsProps {
   usdtBalance: number;
@@ -48,7 +49,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 }) => {
   const { t } = useTranslation();
   const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
-  const { getCryptoDataBySymbol, getPriceDirection } = useBybitData();
+  const { getCryptoDataBySymbol, getPriceDirection, quotesReady } = useBybitData();
   const [quoteClock, setQuoteClock] = useState(Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setQuoteClock(Date.now()), 10_000);
@@ -74,7 +75,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   const livePairPrice = useMemo(() => {
     const quote = getCryptoDataBySymbol(selectedPair);
     const age = quoteClock - Date.parse(quote?.timestamp || '');
-    return quote && age >= 0 && age <= 2 * 60_000 ? quote.price : 0;
+    return quote && age >= 0 && age <= CRYPTO_QUOTE_MAX_AGE_MS ? quote.price : 0;
   }, [getCryptoDataBySymbol, selectedPair, quoteClock]);
 
   const previousPrice = usePrevious(livePairPrice);
@@ -115,8 +116,8 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   }, [livePairPrice, previousPrice]);
 
   const getConnectionIndicator = () => {
-    return <div className={`h-2 w-2 rounded-full ${livePairPrice > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`}
-      title={livePairPrice > 0 ? 'Market quote current' : 'Quote unavailable or stale'} />;
+    return <div className={`h-2 w-2 rounded-full ${livePairPrice > 0 ? 'bg-emerald-400' : quotesReady ? 'bg-slate-500' : 'animate-pulse bg-sky-400'}`}
+      title={livePairPrice > 0 ? 'Market current' : quotesReady ? 'Market unavailable' : 'Loading market'} />;
   };
 
   const priceDirection = getPriceDirection(selectedPair);
@@ -413,7 +414,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.07] px-4">
             <h2 className="text-sm font-semibold text-white">Place order</h2>
             <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
-              {getConnectionIndicator()} {livePairPrice > 0 ? 'Quote current' : 'Quote stale'}
+              {getConnectionIndicator()} {livePairPrice > 0 ? 'Market current' : quotesReady ? 'Unavailable' : 'Loading'}
             </div>
           </div>
 

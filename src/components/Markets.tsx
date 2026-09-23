@@ -7,7 +7,7 @@ import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constant
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
-import { CFD_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
+import { CFD_QUOTE_MAX_AGE_MS, CRYPTO_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 
 interface MarketData {
   symbol: string;
@@ -259,7 +259,7 @@ const Markets: React.FC<MarketsProps> = ({
         volume_24h: cryptoData?.volume_24h || 0,
         timestamp: cryptoData?.timestamp || '',
         isLive: price > 0 && Number.isFinite(quoteTime) && quoteTime <= Date.now() + 60_000
-          && Date.now() - quoteTime < 2 * 60_000,
+          && Date.now() - quoteTime < CRYPTO_QUOTE_MAX_AGE_MS,
         isTradable: item.active,
         category: 'crypto'
       };

@@ -16,6 +16,7 @@ interface CryptoTickerData {
 }
 interface CryptoDataContextType {
   prices: Map<string, number>;
+  quotesReady: boolean;
   isConnected: boolean;
   connectionState: ConnectionState;
   getPriceBySymbol: (symbol: string) => number;
@@ -31,6 +32,7 @@ const CryptoDataContext = createContext<CryptoDataContextType | undefined>(undef
 // Keep the provider and hook names for existing callers; all prices now come from Supabase's Twelve Data cache.
 export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [quotes, setQuotes] = useState<Map<string, CryptoTickerData>>(new Map());
+  const [quotesReady, setQuotesReady] = useState(false);
   const [directions, setDirections] = useState<Map<string, PriceDirection>>(new Map());
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const lastRefreshRef = useRef(new Map<string, number>());
@@ -64,11 +66,15 @@ export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const loadQuotes = useCallback(async (symbol?: string) => {
-    const query = supabase.from('crypto_market_quotes')
-      .select('symbol,price,price_usd,change_24h,high_price_24h,low_price_24h,volume_24h,timestamp');
-    const { data, error } = symbol ? await query.eq('symbol', symbol) : await query.limit(150);
-    if (error) { console.error('Stored Twelve Data crypto quotes could not be read', error); return; }
-    if (data) mergeQuotes(data as StoredQuote[]);
+    try {
+      const query = supabase.from('crypto_market_quotes')
+        .select('symbol,price,price_usd,change_24h,high_price_24h,low_price_24h,volume_24h,timestamp');
+      const { data, error } = symbol ? await query.eq('symbol', symbol) : await query.limit(150);
+      if (error) { console.error('Stored crypto quotes could not be read', error); return; }
+      if (data) mergeQuotes(data as StoredQuote[]);
+    } finally {
+      if (!symbol) setQuotesReady(true);
+    }
   }, [mergeQuotes]);
 
   const refreshQuote = useCallback(async (symbol: string, force = false) => {
@@ -131,7 +137,7 @@ export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const getPriceBySymbol = useCallback((symbol: string) => quotes.get(symbol)?.price || 0, [quotes]);
   const getCryptoDataBySymbol = useCallback((symbol: string) => quotes.get(symbol) || null, [quotes]);
   const getPriceDirection = useCallback((symbol: string) => directions.get(symbol) || 'neutral', [directions]);
-  return <CryptoDataContext.Provider value={{ prices, isConnected: connectionState === 'connected',
+  return <CryptoDataContext.Provider value={{ prices, quotesReady, isConnected: connectionState === 'connected',
     connectionState, getPriceBySymbol, getCryptoDataBySymbol, getPriceDirection, refreshQuote }}>
     {children}
   </CryptoDataContext.Provider>;

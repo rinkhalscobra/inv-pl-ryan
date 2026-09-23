@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
-import { CFD_QUOTE_MAX_AGE_MS } from "../../../src/constants/quoteFreshness.ts";
+import { CFD_QUOTE_MAX_AGE_MS, CRYPTO_QUOTE_MAX_AGE_MS } from "../../../src/constants/quoteFreshness.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,7 +57,7 @@ Deno.serve(async (request: Request) => {
       if (quoteError || !quote) throw new Error("Market quote is unavailable");
       const quoteTime = Date.parse(quote.timestamp || "");
       if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
-        || Date.now() - quoteTime > (symbol.endsWith("USDT") ? 2 * 60_000 : CFD_QUOTE_MAX_AGE_MS)) throw new Error("Market quote is stale");
+        || Date.now() - quoteTime > (symbol.endsWith("USDT") ? CRYPTO_QUOTE_MAX_AGE_MS : CFD_QUOTE_MAX_AGE_MS)) throw new Error("Market quote is stale");
       const marketPrice = finitePositive(quote.price);
 
       const { data, error } = await admin.rpc("place_derivative_order", {
@@ -90,7 +90,7 @@ Deno.serve(async (request: Request) => {
       if (quoteError || !quote) throw new Error("Market quote is unavailable");
       const quoteTime = Date.parse(quote.timestamp || "");
       if (!Number.isFinite(quoteTime) || quoteTime > Date.now() + 60_000
-        || Date.now() - quoteTime > (position.symbol.endsWith("USDT") ? 2 * 60_000 : CFD_QUOTE_MAX_AGE_MS)) throw new Error("Market quote is stale");
+        || Date.now() - quoteTime > (position.symbol.endsWith("USDT") ? CRYPTO_QUOTE_MAX_AGE_MS : CFD_QUOTE_MAX_AGE_MS)) throw new Error("Market quote is stale");
       const exitPrice = finitePositive(quote.price);
       if (!exitPrice) throw new Error("Exit quote is unavailable");
       const { data: pnl, error } = await admin.rpc("close_futures_position", {

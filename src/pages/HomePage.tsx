@@ -83,7 +83,7 @@ const HomePage: React.FC<HomePageProps> = ({
   const { formatFiat, formatFiatCompact } = useFiatCurrency();
   const { fetchPortfolioSnapshots, portfolioSnapshots, createPortfolioSnapshot, coingeckoMarketCapData } = useDatabase();
   const { marketData, getPriceBySymbol } = useMarketData();
-  const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol, isConnected: isRealtimeConnected } = useBybitData();
+  const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol, quotesReady } = useBybitData();
   const [activeTab, setActiveTab] = useState<'overview' | 'positions' | 'transactions'>('overview');
   const [filteredSnapshots, setFilteredSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [liveSnapshots, setLiveSnapshots] = useState<PortfolioSnapshot[]>([]);
@@ -126,8 +126,7 @@ const HomePage: React.FC<HomePageProps> = ({
   const [chartPeriod, setChartPeriod] = useState<'1W' | '1M' | '3M' | '1Y' | 'All'>('1M');
   
   const currentBtcPrice = getBybitPrice('BTCUSDT');
-  const btcQuoteAge = Date.now() - Date.parse(getCryptoDataBySymbol('BTCUSDT')?.timestamp || '');
-  const marketFeedCurrent = isRealtimeConnected && btcQuoteAge >= 0 && btcQuoteAge <= 2 * 60_000;
+  const marketFeedAvailable = quotesReady && currentBtcPrice > 0;
   
   // Calculate actual portfolio value if not provided or is zero
   const actualPortfolioValue = totalPortfolioValue > 0 ? totalPortfolioValue : (usdtBalance + (btcBalance * currentBtcPrice));
@@ -558,10 +557,11 @@ const HomePage: React.FC<HomePageProps> = ({
           </h1>
           <p className="mt-1 text-sm text-slate-400">{t('home.welcomeSubtitle')}</p>
         </div>
-        <span className="inline-flex w-fit items-center gap-2 rounded-md border border-white/[0.08] bg-[#11151b] px-3 py-1.5 text-xs text-slate-300">
-          <span className={`h-2 w-2 rounded-full ${marketFeedCurrent ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-          {marketFeedCurrent ? 'Twelve Data quote current' : 'Market quote delayed'}
-        </span>
+        {marketFeedAvailable && (
+          <span className="inline-flex w-fit items-center gap-2 rounded-md border border-emerald-400/15 bg-emerald-400/[0.06] px-3 py-1.5 text-xs text-emerald-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />Market data active
+          </span>
+        )}
       </div>
       
       {/* Quick Stats */}

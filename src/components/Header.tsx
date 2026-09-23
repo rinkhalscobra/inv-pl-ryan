@@ -30,7 +30,12 @@ import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constants/tradingPairs';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import AppSelect from './AppSelect';
 
+type PortfolioCurrency = 'EUR' | 'USD';
+const usdPortfolioFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
 
 interface HeaderProps {
   tradingMode: TradingMode;
@@ -87,6 +92,10 @@ const Header: React.FC<HeaderProps> = ({
     }))
     : cfdMarketData;
   const [showBalances, setShowBalances] = useState(true);
+  const [portfolioCurrency, setPortfolioCurrency] = useState<PortfolioCurrency>(() => {
+    const saved = typeof window === 'undefined' ? null : window.localStorage.getItem('atlas:portfolio-currency');
+    return saved === 'USD' ? 'USD' : 'EUR';
+  });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,6 +115,13 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const currentPairPrice = getCurrentPairPrice();
+  const formatPortfolioValue = (value: number) => portfolioCurrency === 'USD'
+    ? usdPortfolioFormatter.format(Number.isFinite(value) ? value : 0)
+    : formatFiat(value);
+
+  useEffect(() => {
+    window.localStorage.setItem('atlas:portfolio-currency', portfolioCurrency);
+  }, [portfolioCurrency]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -389,14 +405,20 @@ const Header: React.FC<HeaderProps> = ({
                   <div className="min-w-0">
                     <div className="text-[10px] text-slate-400 2xl:text-xs">{t('header.portfolioValue')}</div>
                     <div className="truncate font-mono text-sm font-semibold text-white">
-                      {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
+                      {showBalances ? formatPortfolioValue(totalPortfolioValue) : '••••••'}
                     </div>
                   </div>
                 </div>
 
-                <span className={`ml-2 rounded border border-white/[0.08] ${headerSurfaceBackgroundClass} px-2 py-1 text-[11px] text-slate-300`}>
-                  EUR
-                </span>
+                <AppSelect
+                  value={portfolioCurrency}
+                  onChange={event => setPortfolioCurrency(event.target.value as PortfolioCurrency)}
+                  aria-label="Portfolio display currency"
+                  className={`ml-2 w-[78px] rounded border border-white/[0.08] ${headerSurfaceBackgroundClass} px-2 py-1 text-[11px] font-semibold text-slate-200`}
+                >
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                </AppSelect>
               </div>
 
             </div>
@@ -432,10 +454,10 @@ const Header: React.FC<HeaderProps> = ({
 
                   <div className="mt-1 rounded-xl border border-white/[0.08] bg-[#101720] px-3.5 py-3">
                     <div className="flex items-center justify-between gap-3 text-[11px] text-slate-400">
-                      <span>{t('header.portfolioValue')}</span><span className="font-semibold text-slate-500">EUR</span>
+                      <span>{t('header.portfolioValue')}</span><span className="font-semibold text-slate-500">{portfolioCurrency}</span>
                     </div>
-                    <div className="mt-1 truncate font-mono text-lg font-semibold tracking-tight text-white" title={showBalances ? formatFiat(totalPortfolioValue) : undefined}>
-                      {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
+                    <div className="mt-1 truncate font-mono text-lg font-semibold tracking-tight text-white" title={showBalances ? formatPortfolioValue(totalPortfolioValue) : undefined}>
+                      {showBalances ? formatPortfolioValue(totalPortfolioValue) : '••••••'}
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.07] pt-2.5 text-xs">
                       <span className="text-slate-400">EUR cash</span>
@@ -548,16 +570,21 @@ const Header: React.FC<HeaderProps> = ({
                 <div className="min-w-0">
                   <div className="text-slate-400 text-xs">{t('header.portfolioValue')}</div>
                   <div className="truncate text-base font-mono text-white">
-                    {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
+                    {showBalances ? formatPortfolioValue(totalPortfolioValue) : '••••••'}
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowBalances(!showBalances)}
-                  aria-label={showBalances ? 'Hide portfolio value' : 'Show portfolio value'}
-                  className="rounded-md p-2 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-white"
-                >
-                  {showBalances ? <Eye size={16} /> : <EyeOff size={16} />}
-                </button>
+                <div className="flex items-center gap-2">
+                  <AppSelect value={portfolioCurrency} onChange={event => setPortfolioCurrency(event.target.value as PortfolioCurrency)} aria-label="Portfolio display currency" className="w-[76px] rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-xs font-semibold text-slate-200">
+                    <option value="EUR">EUR</option><option value="USD">USD</option>
+                  </AppSelect>
+                  <button
+                    onClick={() => setShowBalances(!showBalances)}
+                    aria-label={showBalances ? 'Hide portfolio value' : 'Show portfolio value'}
+                    className="rounded-md p-2 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-white"
+                  >
+                    {showBalances ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
 

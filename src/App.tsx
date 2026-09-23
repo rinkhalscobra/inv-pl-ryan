@@ -893,6 +893,7 @@ const handleUpdatePassword = async (newPassword: string) => {
 }
 
 function App() {
+  if (window.location.pathname === '/client-access') return <ClientAccessPage />;
   return (
     <MarketDataProvider>
       <BybitDataProvider>

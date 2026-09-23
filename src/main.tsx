@@ -4,11 +4,12 @@ import App from './App.tsx';
 import './index.css';
 import './i18n';
 
-// Import background processor to start automated trading logic
-import backgroundProcessor from './background/processor';
-
-// Ensure background processor is initialized
-console.log('Background processor initialized:', backgroundProcessor.isRunning ? 'running' : 'not running');
+// Client access performs an isolated auth handoff before any account services start.
+if (window.location.pathname !== '/client-access') {
+  void import('./background/processor').then(({ default: backgroundProcessor }) => {
+    console.log('Background processor initialized:', backgroundProcessor.isRunning ? 'running' : 'not running');
+  });
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

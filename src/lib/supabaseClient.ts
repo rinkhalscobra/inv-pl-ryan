@@ -51,19 +51,53 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Complete the isolated CRM handoff before React mounts. This avoids development
-// StrictMode running the callback effect twice and consuming a one-time token.
+type ClientAuthSession = {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  expires_at?: number;
+  token_type: string;
+  user: { id: string };
+};
+
+// Exchange the one-time token directly. The regular auth client can wait on its
+// own browser lock during startup, so the bootstrap stores the verified session
+// first and then reloads the application with the isolated session available.
 export const clientAccessBootstrapPromise: Promise<string | null> | null = clientAccessTokenHash
   ? (() => {
       window.history.replaceState({}, document.title, '/client-access');
-      return supabase.auth.verifyOtp({ token_hash: clientAccessTokenHash, type: 'magiclink' })
-        .then(({ data, error }) => {
-          if (error || !data.session) return error?.message || 'The client session could not be created.';
-          sessionStorage.setItem('crm_client_user_id', data.user?.id || '');
-          window.location.replace('/dashboard');
-          return null;
-        })
-        .catch(error => error instanceof Error ? error.message : 'The client session could not be created.');
+      sessionStorage.removeItem('atlas-crm-client-auth');
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 12_000);
+      return fetch(`${supabaseUrl}/auth/v1/verify`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token_hash: clientAccessTokenHash, type: 'magiclink' }),
+        signal: controller.signal,
+      }).then(async response => {
+        const payload = await response.json().catch(() => ({})) as Partial<ClientAuthSession> & { msg?: string; message?: string; error_description?: string };
+        if (!response.ok) return payload.error_description || payload.message || payload.msg || 'The client access link is invalid or expired.';
+        if (!payload.access_token || !payload.refresh_token || !payload.user?.id) return 'The authentication server returned an incomplete client session.';
+        const session: ClientAuthSession = {
+          access_token: payload.access_token,
+          refresh_token: payload.refresh_token,
+          expires_in: Number(payload.expires_in || 3600),
+          expires_at: Number(payload.expires_at || Math.floor(Date.now() / 1000) + Number(payload.expires_in || 3600)),
+          token_type: payload.token_type || 'bearer',
+          user: payload.user,
+        };
+        sessionStorage.setItem('atlas-crm-client-auth', JSON.stringify(session));
+        sessionStorage.setItem('crm_client_user_id', session.user.id);
+        window.location.replace('/dashboard');
+        return null;
+      }).catch(error => error instanceof DOMException && error.name === 'AbortError'
+        ? 'Client authentication timed out. Close this tab and open the client dashboard again.'
+        : error instanceof Error ? error.message : 'The client session could not be created.')
+        .finally(() => window.clearTimeout(timeout));
     })()
   : null;
 

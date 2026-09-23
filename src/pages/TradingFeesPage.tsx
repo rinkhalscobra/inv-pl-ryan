@@ -5,10 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { SPREAD_RANGES, DEFAULT_SPREADS } from '../constants/spreadConfig';
 import { SWAP_RATES_BY_TYPE } from '../constants/swapConfig';
 import { CFD_TIERS } from '../constants/tradingTiers';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 const TradingFeesPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { formatFiat } = useFiatCurrency();
   const [activeTab, setActiveTab] = useState<'spreads' | 'swaps' | 'leverage' | 'referral'>('spreads');
 
   const sampleSpreads = useMemo(() => Object.entries(DEFAULT_SPREADS).slice(0, 15), []);
@@ -214,7 +216,7 @@ const TradingFeesPage: React.FC = () => {
                       </li>
                       <li className="flex justify-between">
                         <span className="text-slate-500">Position Size:</span>
-                        <span className="font-mono">$10,000</span>
+                        <span className="font-mono">{formatFiat(10000)}</span>
                       </li>
                       <li className="flex justify-between">
                         <span className="text-slate-500">Leverage:</span>
@@ -231,19 +233,19 @@ const TradingFeesPage: React.FC = () => {
                     <ul className="space-y-2 text-sm">
                       <li className="flex justify-between">
                         <span className="text-slate-500">Per Day:</span>
-                        <span className="font-mono text-red-400">$0.20</span>
+                        <span className="font-mono text-red-400">{formatFiat(0.2)}</span>
                       </li>
                       <li className="flex justify-between">
                         <span className="text-slate-500">Per Week (7 days):</span>
-                        <span className="font-mono text-red-400">$1.40</span>
+                        <span className="font-mono text-red-400">{formatFiat(1.4)}</span>
                       </li>
                       <li className="flex justify-between">
                         <span className="text-slate-500">Per Month (30 days):</span>
-                        <span className="font-mono text-red-400">$6.00</span>
+                        <span className="font-mono text-red-400">{formatFiat(6)}</span>
                       </li>
                       <li className="flex justify-between border-t border-slate-700 pt-2">
                         <span className="text-slate-500">Per Year (365 days):</span>
-                        <span className="font-mono text-red-400 font-bold">$73.00</span>
+                        <span className="font-mono text-red-400 font-bold">{formatFiat(73)}</span>
                       </li>
                     </ul>
                   </div>
@@ -288,7 +290,7 @@ const TradingFeesPage: React.FC = () => {
                     <div className="flex justify-between items-center py-2 border-t border-slate-700/50">
                       <span className="text-slate-400">Min. Equity:</span>
                       <span className="font-mono text-lg font-bold text-white">
-                        ${tier.minEquity.toLocaleString()}
+                        {formatFiat(tier.minEquity)}
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-3">

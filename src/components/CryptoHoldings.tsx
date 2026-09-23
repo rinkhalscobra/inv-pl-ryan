@@ -29,7 +29,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
   userAssets = []
 }) => {
   const { t } = useTranslation();
-  const { convertUsdToEur, formatFiat } = useFiatCurrency();
+  const { code, convertUsdToEur, formatFiat } = useFiatCurrency();
   const { getCryptoDataBySymbol } = useBybitData();
   const [showBalances, setShowBalances] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -163,7 +163,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
       <div className="app-surface-primary rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
-            <Euro size={20} className="text-green-400" />
+            {code === 'EUR' ? <Euro size={20} className="text-green-400" /> : <DollarSign size={20} className="text-emerald-400" />}
             {t('wallet.totalPortfolioValue')}
           </h3>
           <button

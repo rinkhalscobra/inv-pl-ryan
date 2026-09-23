@@ -15,7 +15,8 @@ export default function AccountBalancesCard({
   btcBalance,
   currentPrice,
 }: AccountBalancesCardProps) {
-  const { formatFiat } = useFiatCurrency();
+  const { convertUsdToEur, formatEur, formatFiat, formatUsd } = useFiatCurrency();
+  const formattedEurBalance = formatEur(convertUsdToEur(usdtBalance));
 
   return (
     <div className="app-surface-primary rounded-xl p-5 sm:p-6">
@@ -26,14 +27,14 @@ export default function AccountBalancesCard({
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-sm font-bold text-emerald-300">€</div>
             <div><div className="text-sm font-medium text-white">EUR</div><div className="text-xs text-slate-500">Cash balance</div></div>
           </div>
-          <span className="truncate font-mono text-sm font-semibold text-white" title={formatFiat(usdtBalance)}>{formatFiat(usdtBalance)}</span>
+          <span className="truncate font-mono text-sm font-semibold text-white" title={formattedEurBalance}>{formattedEurBalance}</span>
         </div>
         <div className="flex min-w-0 items-center justify-between gap-3 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-sm font-bold text-emerald-300">$</div>
             <div><div className="text-sm font-medium text-white">USD</div><div className="text-xs text-slate-500">Cash balance</div></div>
           </div>
-          <span className="truncate font-mono text-sm font-semibold text-white">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usdBalance)}</span>
+          <span className="truncate font-mono text-sm font-semibold text-white">{formatUsd(usdBalance)}</span>
         </div>
         <div className="flex min-w-0 items-center justify-between gap-3 py-3">
           <div className="flex min-w-0 items-center gap-3">

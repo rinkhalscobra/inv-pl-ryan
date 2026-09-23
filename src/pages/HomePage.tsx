@@ -82,7 +82,7 @@ const HomePage: React.FC<HomePageProps> = ({
   userAssets = []
 }) => {
   const { t } = useTranslation();
-  const { formatFiat, formatFiatCompact } = useFiatCurrency();
+  const { formatFiat, formatFiatCompact, formatFiatPrice, formatTradingPair } = useFiatCurrency();
   const { fetchPortfolioSnapshots, portfolioSnapshots, createPortfolioSnapshot, coingeckoMarketCapData } = useDatabase();
   const { marketData, getPriceBySymbol } = useMarketData();
   const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol, quotesReady } = useBybitData();
@@ -914,7 +914,7 @@ const HomePage: React.FC<HomePageProps> = ({
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-white font-medium">{position.symbol}</div>
+                          <div className="truncate text-white font-medium">{formatTradingPair(position.symbol)}</div>
                           <div className="text-sm text-slate-400">
                             {side.toUpperCase()} • {position.leverage || 1}x
                           </div>
@@ -925,7 +925,7 @@ const HomePage: React.FC<HomePageProps> = ({
                           {unrealizedPnl >= 0 ? '+' : ''}{formatFiat(unrealizedPnl)}
                         </div>
                         <div className="text-sm text-slate-400">
-                          ${entryPrice.toFixed(2)} → ${currentPrice.toFixed(2)}
+                          {formatFiatPrice(entryPrice, 2)} → {formatFiatPrice(currentPrice, 2)}
                         </div>
                       </div>
                     </div>

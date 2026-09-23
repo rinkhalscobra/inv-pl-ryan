@@ -78,7 +78,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol } = useBybitData();
-  const { convertUsdToEur, formatEur, formatFiat } = useFiatCurrency();
+  const { code, convertUsdToEur, formatEur, formatFiat, formatUsd } = useFiatCurrency();
 
   // Helper function to format date safely
   const formatDate = (dateString: string | undefined) => {
@@ -241,7 +241,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
     const currency = transaction.currency?.toUpperCase() ||
       (transaction.description?.startsWith('CRM BTC balance adjustment:') ? 'BTC' : '');
     if (currency === 'EUR') return formatEur(transactionAmount);
-    if (currency === 'USD') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(transactionAmount);
+    if (currency === 'USD') return formatUsd(transactionAmount);
     if (currency === 'BTC') return `${transactionAmount.toFixed(8)} BTC`;
     return formatFiat(transactionAmount);
   };
@@ -408,10 +408,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
                   <span className="text-slate-300 font-medium">EUR</span>
                 </div>
                 <div className="text-xl font-bold text-white">
-                  {showBalance ? formatFiat(usdtBalance) : '••••••'}
+                  {showBalance ? formatEur(convertUsdToEur(usdtBalance)) : '••••••'}
                 </div>
                 <div className="text-slate-400 text-sm">
-                  {showBalance ? `Spendable cash: ${formatCurrency(walletBreakdownData.fiatAvailableBalance)}` : '••••••'}
+                  {showBalance ? `Spendable cash: ${formatEur(convertUsdToEur(walletBreakdownData.fiatAvailableBalance))}` : '••••••'}
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mt-4">
                   <button
@@ -436,10 +436,10 @@ const WalletPage: React.FC<WalletPageProps> = ({
                   <span className="font-medium text-slate-300">USD</span>
                 </div>
                 <div className="text-xl font-bold text-white">
-                  {showBalance ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usdBalance) : '••••••'}
+                  {showBalance ? formatUsd(usdBalance) : '••••••'}
                 </div>
                 <div className="text-sm text-slate-400">
-                  {showBalance ? `Spendable cash: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(walletBreakdownData.usdAvailableBalance)}` : '••••••'}
+                  {showBalance ? `Spendable cash: ${formatUsd(walletBreakdownData.usdAvailableBalance)}` : '••••••'}
                 </div>
                 <div className="mt-4 flex flex-col gap-3 md:flex-row">
                   <button onClick={() => { setFiatCurrency('USD'); setDepositMethod('bank_transfer'); setActiveTab('deposit'); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500"><ArrowDownLeft size={16} />Deposit</button>
@@ -897,7 +897,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                               <Euro size={13} className="text-white" />
                             </div>
                           )}
-                          <span className="text-white font-medium">{stake.asset_symbol === 'USDT' ? 'EUR' : stake.asset_symbol}</span>
+                          <span className="text-white font-medium">{stake.asset_symbol === 'USDT' ? code : stake.asset_symbol}</span>
                         </div>
                         <span className="text-green-400 font-bold text-sm">
                           {stake.apy_rate}% APY

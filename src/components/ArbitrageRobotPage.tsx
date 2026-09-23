@@ -21,6 +21,7 @@ import {
 import { DatabaseRobotState } from '../hooks/useDatabase';
 import { supabase } from '../lib/supabaseClient';
 import { useBybitData } from '../contexts/BybitDataContext';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface ArbitrageRobotPageProps {
   usdtBalance: number;
@@ -60,6 +61,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
 }) => {
   const { t } = useTranslation();
   const { prices, getPriceBySymbol } = useBybitData();
+  const { formatFiat, formatFiatPrice, formatTradingPair } = useFiatCurrency();
   useEffect(() => {
     const firstPair = [...prices.keys()].find(symbol => symbol.endsWith('USDT'));
     if (firstPair && !prices.has(selectedPair)) {
@@ -357,7 +359,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
             <div className={`${glassSoftClass} w-full rounded-lg border border-white/[0.08] px-4 py-2 sm:w-auto`}>
               <div className="text-xs text-slate-400">{t('header.availableBalance')}</div>
-              <div className="font-mono text-lg text-white">${actualAvailableBalance.toFixed(2)}</div>
+              <div className="font-mono text-lg text-white">{formatFiat(actualAvailableBalance)}</div>
             </div>
             
             <div className="flex w-full gap-3 sm:w-auto">
@@ -432,7 +434,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                     </div>
                     <div>
                       <div className="text-slate-400 text-sm">{t('robot.allocatedBalance')}</div>
-                      <div className="text-white font-bold text-xl">${localAllocatedBalance.toFixed(2)}</div>
+                      <div className="text-white font-bold text-xl">{formatFiat(localAllocatedBalance)}</div>
                     </div>
                   </div>
                   
@@ -500,7 +502,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                         </div>
                         {parseFloat(allocationAmount) > actualAvailableBalance && (
                           <p className="text-red-400 text-xs mt-1">
-                            {t('errors.insufficientBalance')} (Max: ${actualAvailableBalance.toFixed(2)})
+                            {t('errors.insufficientBalance')} (Max: {formatFiat(actualAvailableBalance)})
                           </p>
                         )}
                       </div>
@@ -526,7 +528,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                     </div>
                     <div>
                       <div className="text-slate-400 text-sm">{t('robot.todaysProfit')}</div>
-                      <div className="text-emerald-400 font-bold text-xl">+${displayedTodaysProfit.toFixed(2)}</div>
+                      <div className="text-emerald-400 font-bold text-xl">+{formatFiat(displayedTodaysProfit)}</div>
                     </div>
                   </div>
                   
@@ -561,17 +563,17 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className={`${glassSurfaceClass} rounded-lg p-3 border border-slate-700/50`}>
                     <div className="text-slate-400 text-sm mb-1">{t('robot.daily')}</div>
-                    <div className="text-emerald-400 font-bold text-lg">+${estimatedDailyProfit.toFixed(2)}</div>
+                    <div className="text-emerald-400 font-bold text-lg">+{formatFiat(estimatedDailyProfit)}</div>
                     <div className="text-xs text-slate-500">{t('robot.ofAllocatedBalance', { percentage: getDailyProfitPercentage() })}</div>
                   </div>
                   <div className={`${glassSurfaceClass} rounded-lg p-3 border border-slate-700/50`}>
                     <div className="text-slate-400 text-sm mb-1">{t('robot.monthly')}</div>
-                    <div className="text-emerald-400 font-bold text-lg">+${estimatedMonthlyProfit.toFixed(2)}</div>
+                    <div className="text-emerald-400 font-bold text-lg">+{formatFiat(estimatedMonthlyProfit)}</div>
                     <div className="text-xs text-slate-500">{t('robot.ofAllocatedBalance', { percentage: (getDailyProfitPercentage() * 30).toFixed(1) })}</div>
                   </div>
                   <div className={`${glassSurfaceClass} rounded-lg p-3 border border-slate-700/50`}>
                     <div className="text-slate-400 text-sm mb-1">{t('robot.yearly')}</div>
-                    <div className="text-emerald-400 font-bold text-lg">+${estimatedYearlyProfit.toFixed(2)}</div>
+                    <div className="text-emerald-400 font-bold text-lg">+{formatFiat(estimatedYearlyProfit)}</div>
                     <div className="text-xs text-slate-500">{t('robot.ofAllocatedBalance', { percentage: (getDailyProfitPercentage() * 365).toFixed(1) })}</div>
                   </div>
                 </div>
@@ -596,7 +598,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                     <div key={trade.id} className={`${glassSurfaceClass} rounded-xl p-4 border border-slate-700/40 hover:border-blue-500/30 ${glassHoverClass} transition-all duration-300 shadow-md`}>
                       <div className="flex justify-between items-center mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-white font-medium text-lg">{trade.pair}</span>
+                          <span className="text-white font-medium text-lg">{formatTradingPair(trade.pair)}</span>
                           <span className="text-xs px-3 py-1 rounded-full bg-blue-500/20 text-emerald-400 font-bold">
                             +{trade.profitPercentage.toFixed(2)}%
                           </span>
@@ -657,15 +659,15 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                             }`}>
                               {log.action}
                             </span>
-                            <span className="text-white font-medium">{log.pair}</span>
+                            <span className="text-white font-medium">{formatTradingPair(log.pair)}</span>
                           </div>
                           <span className="text-xs text-slate-400">
                             {new Date(log.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-slate-400">{log.exchange} â€¢ {log.amount} @ ${log.price}</span>
-                          <span className="text-emerald-400">+${log.profit}</span>
+                          <span className="text-slate-400">{log.exchange} · {log.amount} @ {formatFiatPrice(Number(log.price), 2)}</span>
+                          <span className="text-emerald-400">+{formatFiat(Number(log.profit))}</span>
                         </div>
                       </div>
                     ))

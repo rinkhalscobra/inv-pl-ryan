@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wallet, TrendingUp, TrendingDown, Lock, Euro, Info, Layers, Activity, Package } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Lock, Euro, DollarSign, Info, Layers, Activity, Package } from 'lucide-react';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface WalletBreakdownCardProps {
@@ -29,7 +29,8 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
   showDetails = true,
   showBalance = true
 }) => {
-  const { formatFiat: formatCurrency } = useFiatCurrency();
+  const { code, formatFiat: formatCurrency } = useFiatCurrency();
+  const CurrencyIcon = code === 'EUR' ? Euro : DollarSign;
   const displayCurrency = (amount: number) => showBalance ? formatCurrency(amount) : '••••••';
 
   if (loading) {
@@ -63,7 +64,7 @@ const WalletBreakdownCard: React.FC<WalletBreakdownCardProps> = ({
         {/* Total Balance */}
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Euro size={16} className="text-blue-400" />
+            <CurrencyIcon size={16} className="text-blue-400" />
             <span className="text-slate-300">Total Balance</span>
           </div>
           <span className="font-mono text-base font-semibold text-white">{displayCurrency(totalBalance)}</span>

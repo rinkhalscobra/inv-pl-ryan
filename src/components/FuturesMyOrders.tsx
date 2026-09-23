@@ -152,7 +152,7 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
 }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { formatFiat, formatFiatNumber, formatTradingPair } = useFiatCurrency();
+  const { symbol: displaySymbol, formatFiat, formatFiatNumber, formatTradingPair } = useFiatCurrency();
   const { loadPositionHistory, positionHistory, updateStopLossTakeProfit, loading, error } = useFuturesTrading();
   const { isConnected: cfdConnected, getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, isConnected: cryptoConnected, connectionState: cryptoConnectionState, getPriceDirection } = useBybitData();
@@ -330,7 +330,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
     const precision = getPricePrecision(symbol);
     return getInstrumentType(symbol) === 'forex'
       ? price.toFixed(precision)
-      : `€${formatFiatNumber(price, precision)}`;
+      : `${displaySymbol}${formatFiatNumber(price, precision)}`;
   };
 
 

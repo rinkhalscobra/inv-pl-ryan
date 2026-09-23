@@ -38,7 +38,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
   });
 
   const { getMarketDataBySymbol } = useMarketData();
-  const { formatFiatNumber, formatFiatCompact } = useFiatCurrency();
+  const { code, formatFiatNumber, formatFiatCompact } = useFiatCurrency();
   const instrument = CFD_INSTRUMENTS.find(item => item.symbol === selectedPair);
   const pairName = instrument?.name || selectedPair;
   const pairType = instrument?.type || 'forex';
@@ -122,7 +122,7 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
                   {displayPrice}
                 </span>
                 <span className="text-xl text-slate-400">
-                  {pairType === 'forex' ? 'RATE' : 'EUR'}
+                  {pairType === 'forex' ? 'RATE' : code}
                 </span>
               </div>
 

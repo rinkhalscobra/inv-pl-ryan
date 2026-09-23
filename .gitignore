@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.chrome-*
+.edge-test-*
 
 # Supabase CLI local project link metadata
 supabase/.temp/

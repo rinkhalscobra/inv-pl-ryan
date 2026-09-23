@@ -227,7 +227,8 @@ const RecordSection: React.FC<{
 
 const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const navigate = useNavigate();
-  const { convertEurToUsd, convertUsdToEur, formatFiat } = useFiatCurrency();
+  const { convertEurToUsd, convertUsdToEur, formatEur } = useFiatCurrency();
+  const formatBaseAsEur = (value: number) => formatEur(convertUsdToEur(value));
   const convertUsdToEurRef = useRef(convertUsdToEur);
   convertUsdToEurRef.current = convertUsdToEur;
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -750,9 +751,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             ['Customers', stats.total_users, Users],
             ['Pending KYC', stats.pending_kyc, FileText],
             ['Active robots', stats.active_robots, Bot],
-            ['Available EUR', formatFiat(stats.total_usdt), Coins],
+            ['Available EUR', formatBaseAsEur(stats.total_usdt), Coins],
             ['Available USD', formatUsd(stats.total_usd), DollarSign],
-            ['Robot allocation', formatFiat(stats.total_robot_allocated), Wallet]
+            ['Robot allocation', formatBaseAsEur(stats.total_robot_allocated), Wallet]
           ].map(([label, value, Icon]) => {
             const StatIcon = Icon as React.ElementType;
             return (
@@ -794,7 +795,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   </div>
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <span className={user.robot_active ? 'text-emerald-400' : 'text-slate-500'}>{user.robot_active ? 'Robot active' : user.kyc_status?.replaceAll('_', ' ')}</span>
-                    <span className="text-right font-mono text-slate-300"><span className="block">{formatFiat(asNumber(user.usdt_balance))}</span><span className="block text-[10px] text-emerald-300">{formatUsd(user.usd_balance)}</span></span>
+                    <span className="text-right font-mono text-slate-300"><span className="block">{formatBaseAsEur(asNumber(user.usdt_balance))}</span><span className="block text-[10px] text-emerald-300">{formatUsd(user.usd_balance)}</span></span>
                   </div>
                 </button>
               ))}
@@ -825,9 +826,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       <p className="mt-1 truncate text-sm text-slate-400">{profile.email} Â· {profile.id}</p>
                     </div>
                     <div className="grid grid-cols-4 gap-4 text-right text-sm">
-                      <div><div className="text-xs text-slate-500">EUR</div><div className="font-semibold text-white">{formatFiat(asNumber(workspace.balance.usdt_balance))}</div></div>
+                      <div><div className="text-xs text-slate-500">EUR</div><div className="font-semibold text-white">{formatBaseAsEur(asNumber(workspace.balance.usdt_balance))}</div></div>
                       <div><div className="text-xs text-slate-500">USD</div><div className="font-semibold text-white">{formatUsd(workspace.balance.usd_balance)}</div></div>
-                      <div><div className="text-xs text-slate-500">Robot</div><div className="font-semibold text-white">{formatFiat(asNumber(workspace.robot.allocated_balance))}</div></div>
+                      <div><div className="text-xs text-slate-500">Robot</div><div className="font-semibold text-white">{formatBaseAsEur(asNumber(workspace.robot.allocated_balance))}</div></div>
                       <div><div className="text-xs text-slate-500">KYC</div><div className="font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
                     </div>
                   </div>
@@ -848,7 +849,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   <div className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {[
-                        ['Total wallet', formatFiat(asNumber(workspace.balance.usdt_balance) + asNumber(workspace.balance.usd_balance) + asNumber(workspace.robot.allocated_balance)), Wallet],
+                        ['Total wallet', formatBaseAsEur(asNumber(workspace.balance.usdt_balance) + asNumber(workspace.balance.usd_balance) + asNumber(workspace.robot.allocated_balance)), Wallet],
                         ['Open positions', (workspace.futures_positions || []).length, TrendingUp],
                         ['Orders', (workspace.spot_orders || []).length + (workspace.futures_orders || []).length, ReceiptText],
                         ['Support cases', (workspace.conversations || []).length, Headphones]

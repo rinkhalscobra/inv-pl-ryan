@@ -11,7 +11,7 @@ interface HotTradingPairsProps {
 
 export default function HotTradingPairs({ onPairSelect, tradingMode }: HotTradingPairsProps) {
   const { marketData, getMarketDataBySymbol } = useMarketData();
-  const { formatFiatNumber } = useFiatCurrency();
+  const { symbol: displaySymbol, formatFiatNumber } = useFiatCurrency();
 
   const getTopPerformers = () => {
     const instruments = tradingMode === 'cfd' ? CFD_INSTRUMENTS.filter(i => i.active) : [];
@@ -103,7 +103,7 @@ export default function HotTradingPairs({ onPairSelect, tradingMode }: HotTradin
                 <div className="text-base font-bold text-white">
                   {pair.type === 'forex'
                     ? pair.price.toFixed(getPricePrecision(pair.symbol))
-                    : `€${formatFiatNumber(pair.price, getPricePrecision(pair.symbol))}`}
+                    : `${displaySymbol}${formatFiatNumber(pair.price, getPricePrecision(pair.symbol))}`}
                 </div>
 
                 <div className="flex items-center justify-between">

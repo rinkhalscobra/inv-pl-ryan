@@ -21,7 +21,7 @@ interface OrderBookProps {
 const OrderBook: React.FC<OrderBookProps> = ({ selectedPair, orderBook, tradingMode, compact = false }) => {
   const { getPriceBySymbol: getCryptoPrice, getCryptoDataBySymbol } = useBybitData();
   const { getPriceBySymbol: getCfdPrice } = useMarketData();
-  const { convertUsdToEur, formatFiatNumber } = useFiatCurrency();
+  const { code, formatFiatNumber } = useFiatCurrency();
   const [displayMode, setDisplayMode] = useState<'both' | 'bids' | 'asks'>('both');
   const isFutures = tradingMode === 'futures';
   const currentPrice = isFutures ? getCryptoPrice(selectedPair) : getCfdPrice(selectedPair);
@@ -44,7 +44,7 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair, orderBook, tradingM
   }, [currentPrice, usesNativeForexRate]);
   const formatPrice = (price: number) => usesNativeForexRate
     ? price.toFixed(pricePrecision)
-    : formatFiatNumber(convertUsdToEur(price), pricePrecision);
+    : formatFiatNumber(price, pricePrecision);
   const baseAsset = selectedPair.replace('USDT', '').split('/')[0];
 
   const renderLevel = (entry: OrderBookEntry, side: 'bid' | 'ask', index: number) => (
@@ -75,7 +75,7 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair, orderBook, tradingM
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-color:#475569_transparent] [scrollbar-width:thin]">
         {displayBook && <div className="sticky top-0 z-10 grid grid-cols-3 border-b border-white/[0.07] bg-[#0b0e11] p-2 text-[11px] text-slate-500">
-          <div>Price ({usesNativeForexRate ? 'Rate' : 'EUR'})</div>
+          <div>Price ({usesNativeForexRate ? 'Rate' : code})</div>
           <div className="text-right">Amount ({baseAsset})</div>
           <div className="text-right">Total ({baseAsset})</div>
         </div>}

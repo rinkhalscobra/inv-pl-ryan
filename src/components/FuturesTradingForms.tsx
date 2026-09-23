@@ -48,7 +48,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   onFuturesTrade
 }) => {
   const { t } = useTranslation();
-  const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
+  const { code, convertUsdToDisplay, convertDisplayToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getCryptoDataBySymbol, getPriceDirection, quotesReady } = useBybitData();
   const [quoteClock, setQuoteClock] = useState(Date.now());
   useEffect(() => {
@@ -138,13 +138,13 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     
     if (livePairPrice <= 0) return '';
     
-    const entryPrice = orderType === 'limit' ? convertEurToUsd(Number(limitPrice)) : livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertDisplayToUsd(Number(limitPrice)) : livePairPrice;
     if (!(entryPrice > 0)) return '';
     const targetMargin = (availableBalance ?? usdtBalance) * (percentage / 100);
     const amount = (targetMargin * leverage) / entryPrice;
     
     return amount.toFixed(6);
-  }, [availableBalance, convertEurToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
+  }, [availableBalance, convertDisplayToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
 
   // Calculate amount from percentage for short positions
   const calculateShortAmountFromPercentage = useCallback((percentage: number) => {
@@ -152,13 +152,13 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     
     if (livePairPrice <= 0) return '';
     
-    const entryPrice = orderType === 'limit' ? convertEurToUsd(Number(limitPrice)) : livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertDisplayToUsd(Number(limitPrice)) : livePairPrice;
     if (!(entryPrice > 0)) return '';
     const targetMargin = (availableBalance ?? usdtBalance) * (percentage / 100);
     const amount = (targetMargin * leverage) / entryPrice;
     
     return amount.toFixed(6);
-  }, [availableBalance, convertEurToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
+  }, [availableBalance, convertDisplayToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
 
   // Stop Loss / Take Profit states
   const [longStopLoss, setLongStopLoss] = useState<{ trigger_price: number; execution_type: 'market' | 'limit'; execution_price?: number } | null>(null);
@@ -185,6 +185,10 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
   }, [selectedPair]);
+
+  useEffect(() => {
+    setLimitPrice('');
+  }, [code]);
 
   // Generate leverage options based on max allowed leverage
   const generateLeverageOptions = () => {
@@ -260,7 +264,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const handleLong = async () => {
     const amount = parseFloat(longAmount);
-    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) : livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertDisplayToUsd(parseFloat(limitPrice)) : livePairPrice;
     
     if (!amount || amount <= 0) {
       setErrorMessage('Please enter a valid amount');
@@ -300,7 +304,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const handleShort = async () => {
     const amount = parseFloat(shortAmount);
-    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) : livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertDisplayToUsd(parseFloat(limitPrice)) : livePairPrice;
     
     if (!amount || amount <= 0) {
       setErrorMessage('Please enter a valid amount');
@@ -352,7 +356,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const calculateLongCost = () => {
     const amount = parseFloat(longAmount) || 0;
-    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) || 0 : livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertDisplayToUsd(parseFloat(limitPrice)) || 0 : livePairPrice;
     const notionalValue = amount * entryPrice;
     const requiredMargin = notionalValue / leverage;
     return requiredMargin;
@@ -360,7 +364,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
   const calculateShortCost = () => {
     const amount = parseFloat(shortAmount) || 0;
-    const entryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) || 0 : livePairPrice;
+    const entryPrice = orderType === 'limit' ? convertDisplayToUsd(parseFloat(limitPrice)) || 0 : livePairPrice;
     const notionalValue = amount * entryPrice;
     const requiredMargin = notionalValue / leverage;
     return requiredMargin;
@@ -379,7 +383,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     const activeSpreadInfo = isLong ? longSpreadInfo : shortSpreadInfo;
     const requiredMargin = isLong ? calculateLongCost() : calculateShortCost();
     const baseAsset = selectedPair.replace('USDT', '');
-    const orderEntryPrice = orderType === 'limit' ? convertEurToUsd(parseFloat(limitPrice)) || livePairPrice : livePairPrice;
+    const orderEntryPrice = orderType === 'limit' ? convertDisplayToUsd(parseFloat(limitPrice)) || livePairPrice : livePairPrice;
     const parsedAmount = Number(activeAmount) || 0;
     const liquidationPrice = calculateLiquidationPrice(
       activeSide,
@@ -450,7 +454,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
                   type="button"
                   onClick={() => {
                     setOrderType(type);
-                    if (type === 'limit' && !limitPrice && livePairPrice > 0) setLimitPrice(convertUsdToEur(livePairPrice).toFixed(4));
+                    if (type === 'limit' && !limitPrice && livePairPrice > 0) setLimitPrice(convertUsdToDisplay(livePairPrice).toFixed(4));
                   }}
                   className={`border-b-2 pb-2.5 text-xs font-semibold capitalize transition ${orderType === type ? 'border-violet-400 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
                 >
@@ -497,11 +501,11 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
 
             <label className="mb-1.5 flex items-center justify-between text-[11px] text-slate-500">
               <span>{orderType === 'market' ? 'Mark price' : 'Limit price'}</span>
-              <span className="text-slate-600">EUR</span>
+              <span className="text-slate-600">{code}</span>
             </label>
             {orderType === 'market' ? (
               <div className={`mb-3 flex h-11 items-center justify-between rounded-md border border-white/[0.09] bg-[#161a1e] px-3 font-mono text-sm tabular-nums ${priceColorClass} ${priceFlashClass}`}>
-                <span>{convertUsdToEur(livePairPrice).toFixed(4)}</span>
+                <span>{convertUsdToDisplay(livePairPrice).toFixed(4)}</span>
                 <span className="text-[10px] font-sans text-slate-600">Market</span>
               </div>
             ) : (
@@ -511,10 +515,10 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
                   inputMode="decimal"
                   value={limitPrice}
                   onChange={(event) => setLimitPrice(event.target.value)}
-                  placeholder={convertUsdToEur(livePairPrice).toFixed(4)}
+                  placeholder={convertUsdToDisplay(livePairPrice).toFixed(4)}
                   className="h-11 w-full rounded-md border border-white/[0.09] bg-[#161a1e] px-3 pr-14 font-mono text-sm text-white outline-none transition placeholder:text-slate-700 hover:border-white/[0.16] focus:border-violet-400/50 focus:ring-1 focus:ring-violet-400/20"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">EUR</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">{code}</span>
               </div>
             )}
 
@@ -713,11 +717,11 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
             <div className="mb-3">
               <label className="flex items-center gap-2 text-sm text-slate-400 mb-1 md:mb-3">
                 {getConnectionIndicator()}
-                {t('common.price')} (EUR)
+                {t('common.price')} ({code})
               </label>
               <input
                 type="text"
-                value={convertUsdToEur(livePairPrice).toFixed(4)}
+                value={convertUsdToDisplay(livePairPrice).toFixed(4)}
                 className={`w-full bg-transparent px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono ${priceColorClass} ${priceFlashClass}`}
                 readOnly
               />
@@ -859,12 +863,12 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
             <div className="mb-3">
               <label className="flex items-center gap-2 text-sm text-slate-400 mb-1 md:mb-3">
                 {getConnectionIndicator()}
-                {t('common.price')} (EUR)
+                {t('common.price')} ({code})
               </label>
               <input
                 id="short-price-input"
                 type="text"
-                value={convertUsdToEur(livePairPrice).toFixed(4)}
+                value={convertUsdToDisplay(livePairPrice).toFixed(4)}
                 className={`w-full bg-transparent px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono ${priceColorClass} ${priceFlashClass}`}
                 readOnly
               />

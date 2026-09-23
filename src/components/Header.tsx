@@ -29,13 +29,8 @@ import { User as UserType } from '@supabase/supabase-js';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constants/tradingPairs';
-import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { useFiatCurrency, type DisplayCurrency } from '../hooks/useFiatCurrency';
 import AppSelect from './AppSelect';
-
-type PortfolioCurrency = 'EUR' | 'USD';
-const usdPortfolioFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
-});
 
 interface HeaderProps {
   tradingMode: TradingMode;
@@ -71,7 +66,7 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { formatFiat, formatFiatPrice, formatTradingPair } = useFiatCurrency();
+  const { code: portfolioCurrency, setCurrency, convertUsdToEur, formatEur, formatFiat, formatFiatPrice, formatTradingPair, formatUsd } = useFiatCurrency();
   const { marketData: cfdMarketData, getPriceBySymbol: getCfdPrice } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice } = useBybitData();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -92,10 +87,6 @@ const Header: React.FC<HeaderProps> = ({
     }))
     : cfdMarketData;
   const [showBalances, setShowBalances] = useState(true);
-  const [portfolioCurrency, setPortfolioCurrency] = useState<PortfolioCurrency>(() => {
-    const saved = typeof window === 'undefined' ? null : window.localStorage.getItem('atlas:portfolio-currency');
-    return saved === 'USD' ? 'USD' : 'EUR';
-  });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -115,13 +106,7 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const currentPairPrice = getCurrentPairPrice();
-  const formatPortfolioValue = (value: number) => portfolioCurrency === 'USD'
-    ? usdPortfolioFormatter.format(Number.isFinite(value) ? value : 0)
-    : formatFiat(value);
-
-  useEffect(() => {
-    window.localStorage.setItem('atlas:portfolio-currency', portfolioCurrency);
-  }, [portfolioCurrency]);
+  const formatPortfolioValue = formatFiat;
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -412,7 +397,7 @@ const Header: React.FC<HeaderProps> = ({
 
                 <AppSelect
                   value={portfolioCurrency}
-                  onChange={event => setPortfolioCurrency(event.target.value as PortfolioCurrency)}
+                  onChange={event => setCurrency(event.target.value as DisplayCurrency)}
                   aria-label="Portfolio display currency"
                   className={`ml-2 w-[78px] rounded border border-white/[0.08] ${headerSurfaceBackgroundClass} px-2 py-1 text-[11px] font-semibold text-slate-200`}
                 >
@@ -461,11 +446,11 @@ const Header: React.FC<HeaderProps> = ({
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.07] pt-2.5 text-xs">
                       <span className="text-slate-400">EUR cash</span>
-                      <span className="truncate font-mono font-medium text-slate-200">{showBalances ? formatFiat(usdtBalance) : '••••••'}</span>
+                      <span className="truncate font-mono font-medium text-slate-200">{showBalances ? formatEur(convertUsdToEur(usdtBalance)) : '••••••'}</span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3 text-xs">
                       <span className="text-slate-400">USD cash</span>
-                      <span className="truncate font-mono font-medium text-slate-200">{showBalances ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usdBalance) : '••••••'}</span>
+                      <span className="truncate font-mono font-medium text-slate-200">{showBalances ? formatUsd(usdBalance) : '••••••'}</span>
                     </div>
                   </div>
 
@@ -574,7 +559,7 @@ const Header: React.FC<HeaderProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <AppSelect value={portfolioCurrency} onChange={event => setPortfolioCurrency(event.target.value as PortfolioCurrency)} aria-label="Portfolio display currency" className="w-[76px] rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-xs font-semibold text-slate-200">
+                  <AppSelect value={portfolioCurrency} onChange={event => setCurrency(event.target.value as DisplayCurrency)} aria-label="Portfolio display currency" className="w-[76px] rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-xs font-semibold text-slate-200">
                     <option value="EUR">EUR</option><option value="USD">USD</option>
                   </AppSelect>
                   <button

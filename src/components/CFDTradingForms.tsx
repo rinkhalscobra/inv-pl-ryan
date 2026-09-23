@@ -61,7 +61,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   onCFDTrade
 }) => {
   const { t } = useTranslation();
-  const { convertUsdToEur, convertEurToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
+  const { code, convertUsdToDisplay, convertDisplayToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol, refreshQuotes, quotesReady, error: quoteRefreshError } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
   const isTerminal = surfaceVariant === 'terminal';
@@ -159,7 +159,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   }, [quoteTimestamp]);
   const parsedLimitPrice = Number(limitPrice);
   const orderEntryPrice = orderType === 'limit'
-    ? priceIsUsd ? convertEurToUsd(parsedLimitPrice) : parsedLimitPrice
+    ? priceIsUsd ? convertDisplayToUsd(parsedLimitPrice) : parsedLimitPrice
     : livePairPrice;
 
 const getLotSize = (symbol: string): number => {
@@ -252,6 +252,10 @@ const getLotSize = (symbol: string): number => {
     setErrorMessage(null);
     setSuccessMessage(null);
   }, [selectedPair]);
+
+  useEffect(() => {
+    setLimitPrice('');
+  }, [code]);
 
   // Modal states
   const [showLongSLModal, setShowLongSLModal] = useState(false);
@@ -779,7 +783,7 @@ const getLotSize = (symbol: string): number => {
       {orderType === 'limit' && (
         <div className="mb-4 md:mb-6">
           <label htmlFor="cfd-limit-price" className="mb-2 block text-xs text-slate-400">
-            Limit price ({priceIsUsd ? 'EUR' : 'Rate'})
+            Limit price ({priceIsUsd ? code : 'Rate'})
           </label>
           <input
             id="cfd-limit-price"
@@ -787,7 +791,7 @@ const getLotSize = (symbol: string): number => {
             inputMode="decimal"
             value={limitPrice}
             onChange={(event) => setLimitPrice(event.target.value)}
-            placeholder={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
+            placeholder={(priceIsUsd ? convertUsdToDisplay(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
             className="w-full rounded-md border border-white/[0.09] bg-[#161a1e] px-3 py-3 font-mono text-sm text-white outline-none placeholder:text-slate-600 focus:border-violet-400/50"
           />
         </div>
@@ -809,10 +813,10 @@ const getLotSize = (symbol: string): number => {
           <div className="space-y-6">
             {/* Price Input */}
             <div className="mb-3">
-              <label className="block text-sm text-slate-400 mb-1 md:mb-3">Mark price ({priceIsUsd ? 'EUR' : 'Rate'})</label>
+              <label className="block text-sm text-slate-400 mb-1 md:mb-3">Mark price ({priceIsUsd ? code : 'Rate'})</label>
               <input
                 type="text"
-                value={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
+                value={(priceIsUsd ? convertUsdToDisplay(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
                 className="w-full bg-transparent text-white px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono"
                 readOnly
               />
@@ -948,10 +952,10 @@ const getLotSize = (symbol: string): number => {
           <div className="space-y-6">
             {/* Price Input */}
             <div className="mb-3">
-              <label className="block text-sm text-slate-400 mb-1 md:mb-3">Mark price ({priceIsUsd ? 'EUR' : 'Rate'})</label>
+              <label className="block text-sm text-slate-400 mb-1 md:mb-3">Mark price ({priceIsUsd ? code : 'Rate'})</label>
               <input
                 type="text"
-                value={(priceIsUsd ? convertUsdToEur(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
+                value={(priceIsUsd ? convertUsdToDisplay(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
                 className="w-full bg-transparent text-white px-4 py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all hover:border-slate-500/50 font-mono"
                 readOnly
               />

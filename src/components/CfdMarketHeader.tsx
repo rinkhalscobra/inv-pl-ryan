@@ -13,7 +13,7 @@ interface CfdMarketHeaderProps {
 
 export default function CfdMarketHeader({ selectedPair, currentPrice, onSelectPair }: CfdMarketHeaderProps) {
   const { getMarketDataBySymbol, getPriceBySymbol, quotesReady } = useMarketData();
-  const { formatFiatPrice, formatFiatCompact } = useFiatCurrency();
+  const { code, formatFiatPrice, formatFiatCompact } = useFiatCurrency();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [, setQuoteClock] = useState(0);
@@ -107,7 +107,7 @@ export default function CfdMarketHeader({ selectedPair, currentPrice, onSelectPa
         <div className="font-mono text-lg font-semibold tabular-nums text-emerald-400">{price > 0 ? formatPrice(price) : '--'}</div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
           <span className={`h-1.5 w-1.5 rounded-full ${quoteIsFresh ? 'bg-emerald-400' : quoteUnavailable ? 'bg-slate-500' : 'animate-pulse bg-sky-400'}`} />
-          {quoteIsFresh ? 'Market price' : quoteUnavailable ? 'Price unavailable' : 'Loading market'} {isForex ? '· rate' : '· EUR'}
+          {quoteIsFresh ? 'Market price' : quoteUnavailable ? 'Price unavailable' : 'Loading market'} {isForex ? '· rate' : `· ${code}`}
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-2">

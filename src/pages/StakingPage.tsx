@@ -32,6 +32,7 @@ import {
   X
 } from 'lucide-react';
 import { useDatabase } from '../hooks/useDatabase';
+import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface StakingPageProps {
   usdtBalance: number;
@@ -142,6 +143,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
   refreshBreakdown
 }) => {
   const { t } = useTranslation();
+  const { formatFiat } = useFiatCurrency();
   const { isConnected: isRealtimeConnected } = useMarketData();
   const { getCryptoDataBySymbol } = useBybitData();
   const ethUsdPrice = getCryptoDataBySymbol('ETHUSDT')?.price_usd || 0;
@@ -668,7 +670,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
                           </div>
                           <div>
                             <div className="text-sm text-slate-400 mb-1">{t('common.price')}</div>
-                            <div className="text-white font-medium">${(asset.price || 0).toLocaleString()}</div>
+                            <div className="text-white font-medium">{formatFiat(asset.price || 0)}</div>
                           </div>
                         </div>
                         
@@ -939,7 +941,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
                   <div className="text-2xl font-bold text-emerald-400" translate="no">
                     {calculatorResults.estimatedEarnings.toFixed(6)} {availableStakingAssets.find(a => a.id === calculatorAsset)?.symbol}
                   </div>
-                  <div className="text-sm text-slate-300" translate="no">≈ ${calculatorResults.estimatedEarningsUsd.toFixed(2)}</div>
+                  <div className="text-sm text-slate-300" translate="no">≈ {formatFiat(calculatorResults.estimatedEarningsUsd)}</div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4 text-sm">

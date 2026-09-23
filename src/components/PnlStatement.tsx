@@ -57,9 +57,9 @@ function isCfdSymbol(symbol: string): boolean {
   return cfdSymbolSet.has(symbol);
 }
 
-function getCurrencyForSymbol(symbol: string): string {
+function getCurrencyForSymbol(symbol: string, displayCurrency: 'EUR' | 'USD' = 'EUR'): string {
   void symbol;
-  return 'EUR';
+  return displayCurrency;
 }
 
 function formatDateTime(dateStr: string): string {
@@ -98,7 +98,8 @@ function buildHtmlDocument(
   tradeType: TradeType,
   dateFrom: string,
   dateTo: string,
-  cols: ColumnVisibility
+  cols: ColumnVisibility,
+  displayCurrency: 'EUR' | 'USD'
 ): string {
   const typeLabel = tradeType === 'all' ? 'All Trades' : tradeType === 'futures' ? 'Futures' : 'CFD';
   const dateRange = dateFrom || dateTo
@@ -131,7 +132,7 @@ function buildHtmlDocument(
       `<td>${row.side === 'long' ? 'BUY' : 'SELL'}</td>`,
       `<td>${row.amount.toFixed(4)}</td>`,
       `<td>${row.margin.toFixed(2)}</td>`,
-      `<td>${getCurrencyForSymbol(row.symbol)}</td>`,
+      `<td>${getCurrencyForSymbol(row.symbol, displayCurrency)}</td>`,
       `<td>${formatPrice(row.entry_price, row.symbol)}</td>`,
       `<td>${formatDateTime(row.open_time)}</td>`,
       `<td>${formatPrice(row.exit_price, row.symbol)}</td>`,
@@ -196,7 +197,7 @@ function buildHtmlDocument(
 
 const PnlStatement: React.FC = () => {
   const { t } = useTranslation();
-  const { convertUsdToEur, formatFiat } = useFiatCurrency();
+  const { code, convertUsdToDisplay, formatFiat } = useFiatCurrency();
   const [tradeType, setTradeType] = useState<TradeType>('all');
   const [loading, setLoading] = useState(true);
   const [allHistory, setAllHistory] = useState<PositionHistoryRow[]>([]);
@@ -290,14 +291,19 @@ const PnlStatement: React.FC = () => {
     return filteredHistory.reduce((sum, r) => sum + (r.spread_cost || 0), 0);
   }, [filteredHistory]);
 
-  const eurHistory = useMemo(() => filteredHistory.map(row => ({
+  const displayHistory = useMemo(() => filteredHistory.map(row => ({
     ...row,
-    margin: convertUsdToEur(row.margin),
-    pnl: convertUsdToEur(row.pnl),
-    accumulated_swap_cost: convertUsdToEur(row.accumulated_swap_cost || 0),
-    spread_cost: convertUsdToEur(row.spread_cost || 0),
-  })), [convertUsdToEur, filteredHistory]);
-  const totalProfitEur = convertUsdToEur(totalProfit);
+    margin: convertUsdToDisplay(row.margin),
+    pnl: convertUsdToDisplay(row.pnl),
+    entry_price: row.symbol.includes('/') ? row.entry_price : convertUsdToDisplay(row.entry_price),
+    exit_price: row.symbol.includes('/') ? row.exit_price : convertUsdToDisplay(row.exit_price),
+    accumulated_swap_cost: convertUsdToDisplay(row.accumulated_swap_cost || 0),
+    spread_cost: convertUsdToDisplay(row.spread_cost || 0),
+  })), [convertUsdToDisplay, filteredHistory]);
+  const totalProfitDisplay = convertUsdToDisplay(totalProfit);
+  const formatDisplayPrice = useCallback((price: number, symbol: string) => (
+    formatPrice(symbol.includes('/') ? price : convertUsdToDisplay(price), symbol)
+  ), [convertUsdToDisplay]);
 
   const totalPages = Math.max(1, Math.ceil(filteredHistory.length / ROWS_PER_PAGE));
   const paginatedRows = filteredHistory.slice(
@@ -310,8 +316,8 @@ const PnlStatement: React.FC = () => {
   }, [tradeType, dateFrom, dateTo]);
 
   const getHtmlContent = useCallback(() => {
-    return buildHtmlDocument(eurHistory, totalProfitEur, tradeType, dateFrom, dateTo, columns);
-  }, [eurHistory, totalProfitEur, tradeType, dateFrom, dateTo, columns]);
+    return buildHtmlDocument(displayHistory, totalProfitDisplay, tradeType, dateFrom, dateTo, columns, code);
+  }, [code, columns, dateFrom, dateTo, displayHistory, totalProfitDisplay, tradeType]);
 
   const handleDownloadHtml = () => {
     const html = getHtmlContent();
@@ -328,7 +334,7 @@ const PnlStatement: React.FC = () => {
   };
 
   const handleDownloadPdf = async () => {
-    await generateTradePdf(eurHistory, totalProfitEur, tradeType, dateFrom, dateTo, columns);
+    await generateTradePdf(displayHistory, totalProfitDisplay, tradeType, dateFrom, dateTo, columns, code);
   };
 
   const handleDownloadCsv = () => {
@@ -344,14 +350,14 @@ const PnlStatement: React.FC = () => {
 
     const csvRows = [headers.join(',')];
 
-    for (const row of eurHistory) {
+    for (const row of displayHistory) {
       const cells: string[] = [
         row.id.slice(0, 8),
         row.symbol,
         row.side === 'long' ? 'BUY' : 'SELL',
         row.amount.toFixed(4),
         row.margin.toFixed(2),
-        getCurrencyForSymbol(row.symbol),
+        getCurrencyForSymbol(row.symbol, code),
         formatPrice(row.entry_price, row.symbol),
         formatDateTime(row.open_time),
         formatPrice(row.exit_price, row.symbol),
@@ -367,7 +373,7 @@ const PnlStatement: React.FC = () => {
 
     csvRows.push('');
     const emptyCount = headers.length - 2;
-    csvRows.push(`Total Profit:${','.repeat(emptyCount)}${totalProfitEur.toFixed(2)}`);
+    csvRows.push(`Total Profit:${','.repeat(emptyCount)}${totalProfitDisplay.toFixed(2)}`);
 
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -577,10 +583,10 @@ const PnlStatement: React.FC = () => {
                       </td>
                       <td className="py-2.5 px-2 text-right text-slate-300">{row.amount.toFixed(4)}</td>
                       <td className="py-2.5 px-2 text-right text-slate-300">{formatFiat(row.margin)}</td>
-                      <td className="py-2.5 px-2 text-slate-300">EUR</td>
-                      <td className="py-2.5 px-2 text-right text-slate-300 font-mono text-xs">{formatPrice(row.entry_price, row.symbol)}</td>
+                      <td className="py-2.5 px-2 text-slate-300">{code}</td>
+                      <td className="py-2.5 px-2 text-right text-slate-300 font-mono text-xs">{formatDisplayPrice(row.entry_price, row.symbol)}</td>
                       <td className="py-2.5 px-2 text-slate-400 text-xs whitespace-nowrap">{formatDateTime(row.open_time)}</td>
-                      <td className="py-2.5 px-2 text-right text-slate-300 font-mono text-xs">{formatPrice(row.exit_price, row.symbol)}</td>
+                      <td className="py-2.5 px-2 text-right text-slate-300 font-mono text-xs">{formatDisplayPrice(row.exit_price, row.symbol)}</td>
                       <td className="py-2.5 px-2 text-slate-400 text-xs whitespace-nowrap">{formatDateTime(row.close_time)}</td>
                       {columns.sl && <td className="py-2.5 px-2 text-right text-slate-500">--</td>}
                       {columns.tp && <td className="py-2.5 px-2 text-right text-slate-500">--</td>}

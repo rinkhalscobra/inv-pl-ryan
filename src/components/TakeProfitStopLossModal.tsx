@@ -36,7 +36,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
   onConfirm
 }) => {
   const { t } = useTranslation();
-  const { convertEurToUsd, convertUsdToEur, formatFiat, formatFiatPrice } = useFiatCurrency();
+  const { code, convertDisplayToUsd, convertUsdToDisplay, formatFiat, formatFiatPrice } = useFiatCurrency();
   const [inputMode, setInputMode] = useState<InputMode>('price');
   const [priceValue, setPriceValue] = useState('');
   const [pnlValue, setPnlValue] = useState('');
@@ -58,9 +58,15 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    setPriceValue('');
+    setPnlValue('');
+    setExecutionPrice('');
+  }, [code]);
+
   const actualPositionSize = amount * lotSize;
   const displayPrice = (price: number) => priceIsUsd ? formatFiatPrice(price) : price.toFixed(5);
-  const parseDisplayPrice = (price: number) => priceIsUsd ? convertEurToUsd(price) : price;
+  const parseDisplayPrice = (price: number) => priceIsUsd ? convertDisplayToUsd(price) : price;
 
   const calculatePriceFromPnL = (targetPnL: number): number => {
     if (side === 'long') {
@@ -108,7 +114,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
       pnl = calculatePnLFromPrice(triggerPrice);
       percentage = calculatePercentageFromPrice(triggerPrice);
     } else if (inputMode === 'pnl' && pnlValue) {
-      pnl = convertEurToUsd(parseFloat(pnlValue));
+      pnl = convertDisplayToUsd(parseFloat(pnlValue));
       if (!isTP) {
         pnl = -Math.abs(pnl);
       }
@@ -130,7 +136,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
     }
 
     return { triggerPrice, pnl, percentage, roi };
-  }, [inputMode, priceValue, pnlValue, percentageValue, entryPrice, amount, leverage, side, actualPositionSize, convertEurToUsd, isTP, priceIsUsd]);
+  }, [inputMode, priceValue, pnlValue, percentageValue, entryPrice, amount, leverage, side, actualPositionSize, convertDisplayToUsd, isTP, priceIsUsd]);
 
   const handleInputChange = (mode: InputMode, value: string) => {
     const sanitized = value.replace(/[^0-9.]/g, '');
@@ -290,7 +296,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
 
               {inputMode === 'price' && (
                 <div>
-                  <label className="block text-sm text-slate-400 mb-2">Trigger Price ({priceIsUsd ? 'EUR' : 'Rate'})</label>
+                  <label className="block text-sm text-slate-400 mb-2">Trigger Price ({priceIsUsd ? code : 'Rate'})</label>
                   <input
                     type="text"
                     value={priceValue}
@@ -303,7 +309,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
 
               {inputMode === 'pnl' && (
                 <div>
-                  <label className="block text-sm text-slate-400 mb-2">Target PnL (EUR)</label>
+                  <label className="block text-sm text-slate-400 mb-2">Target PnL ({code})</label>
                   <input
                     type="text"
                     value={pnlValue}
@@ -318,16 +324,16 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
                       min="0"
                       max="100"
                       step="1"
-                      value={pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToEur((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}
+                      value={pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToDisplay((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}
                       onChange={(e) => {
                         const percentage = parseFloat(e.target.value);
-                        const margin = convertUsdToEur((actualPositionSize * entryPrice) / leverage);
+                        const margin = convertUsdToDisplay((actualPositionSize * entryPrice) / leverage);
                         const targetPnl = (percentage / 100) * margin;
                         handleInputChange('pnl', targetPnl.toFixed(2));
                       }}
                       className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider-thumb"
                       style={{
-                        background: `linear-gradient(to right, ${isTP ? '#10b981' : '#ef4444'} 0%, ${isTP ? '#10b981' : '#ef4444'} ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToEur((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToEur((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 100%)`
+                        background: `linear-gradient(to right, ${isTP ? '#10b981' : '#ef4444'} 0%, ${isTP ? '#10b981' : '#ef4444'} ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToDisplay((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToDisplay((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 100%)`
                       }}
                     />
                     <div className="flex justify-between text-xs text-slate-500">
@@ -420,7 +426,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
                     type="text"
                     value={executionPrice}
                     onChange={(e) => setExecutionPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                    placeholder={`Execution price (${priceIsUsd ? 'EUR' : 'rate'})`}
+                    placeholder={`Execution price (${priceIsUsd ? code : 'rate'})`}
                     className={`w-full mt-2 bg-slate-900/50 text-white px-4 py-3 rounded-lg border border-${colorClass}-500/30 focus:outline-none focus:ring-2 focus:ring-${colorClass}-500/50 font-mono`}
                   />
                 )}
@@ -540,7 +546,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
 
           {inputMode === 'price' && (
             <div>
-              <label className="block text-sm text-slate-400 mb-2">Trigger Price ({priceIsUsd ? 'EUR' : 'Rate'})</label>
+              <label className="block text-sm text-slate-400 mb-2">Trigger Price ({priceIsUsd ? code : 'Rate'})</label>
               <input
                 type="text"
                 value={priceValue}
@@ -553,7 +559,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
 
           {inputMode === 'pnl' && (
             <div>
-              <label className="block text-sm text-slate-400 mb-2">Target PnL (EUR)</label>
+              <label className="block text-sm text-slate-400 mb-2">Target PnL ({code})</label>
               <input
                 type="text"
                 value={pnlValue}
@@ -568,16 +574,16 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
                   min="0"
                   max="100"
                   step="1"
-                  value={pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToEur((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}
+                  value={pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToDisplay((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}
                   onChange={(e) => {
                     const percentage = parseFloat(e.target.value);
-                    const margin = convertUsdToEur((actualPositionSize * entryPrice) / leverage);
+                    const margin = convertUsdToDisplay((actualPositionSize * entryPrice) / leverage);
                     const targetPnl = (percentage / 100) * margin;
                     handleInputChange('pnl', targetPnl.toFixed(2));
                   }}
                   className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider-thumb"
                   style={{
-                    background: `linear-gradient(to right, ${isTP ? '#10b981' : '#ef4444'} 0%, ${isTP ? '#10b981' : '#ef4444'} ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToEur((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToEur((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 100%)`
+                    background: `linear-gradient(to right, ${isTP ? '#10b981' : '#ef4444'} 0%, ${isTP ? '#10b981' : '#ef4444'} ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToDisplay((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 ${pnlValue ? Math.min(100, Math.abs((parseFloat(pnlValue) / convertUsdToDisplay((actualPositionSize * entryPrice) / leverage)) * 100)) : 0}%, #334155 100%)`
                   }}
                 />
                 <div className="flex justify-between text-xs text-slate-500">
@@ -667,7 +673,7 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
               type="text"
               value={executionPrice}
               onChange={(e) => setExecutionPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-              placeholder={`Execution price (${priceIsUsd ? 'EUR' : 'rate'})`}
+              placeholder={`Execution price (${priceIsUsd ? code : 'rate'})`}
               className={`w-full mt-2 bg-slate-900/50 text-white px-4 py-3 rounded-lg border border-${colorClass}-500/30 focus:outline-none focus:ring-2 focus:ring-${colorClass}-500/50 font-mono`}
             />
           )}
@@ -703,5 +709,3 @@ const TakeProfitStopLossModal: React.FC<TakeProfitStopLossModalProps> = ({
 };
 
 export default TakeProfitStopLossModal;
-
-

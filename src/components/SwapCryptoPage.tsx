@@ -79,7 +79,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   fetchTransactions
 }) => {
   const { transactions } = useDatabase();
-  const { convertUsdToEur, eurUsdRate, formatFiat, formatEur } = useFiatCurrency();
+  const { code, convertUsdToEur, eurUsdRate, formatFiat, formatEur } = useFiatCurrency();
   const { marketData, snapshotData, getMarketDataBySymbol, refreshSnapshot, lastSnapshotTime } = useMarketData();
   const { getCryptoDataBySymbol, refreshQuote: refreshCryptoQuote, isConnected: isBybitConnected } = useBybitData();
 
@@ -107,11 +107,11 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   const [calculatedToAmountFullPrecision, setCalculatedToAmountFullPrecision] = useState<number | null>(null);
   const [, setCalculatedFromAmountFullPrecision] = useState<number | null>(null);
   const [fromCurrency, setFromCurrency] = useState<CryptoCurrency>(() => ({
-    symbol: 'EUR',
-    name: 'Euro',
+    symbol: code,
+    name: code === 'EUR' ? 'Euro' : 'US Dollar',
     iconUrl: '',
-    balance: convertUsdToEur(usdtBalance),
-    price: eurUsdRate
+    balance: code === 'EUR' ? convertUsdToEur(usdtBalance) : usdBalance,
+    price: code === 'EUR' ? eurUsdRate : 1
   }));
   const [toCurrency, setToCurrency] = useState<CryptoCurrency>(() => ({
     symbol: 'BTC',
@@ -328,6 +328,14 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       initialCurrencies.map(c => `${c.symbol}:$${c.price}`).join(', '));
     setIsLoadingCurrencies(false);
   }, [marketData, snapshotData, getCurrencyBalance, getPriceForSymbol]);
+
+  useEffect(() => {
+    setFromCurrency(previous => {
+      if (!['EUR', 'USD'].includes(previous.symbol) || previous.symbol === code) return previous;
+      const nextCurrency = availableCurrencies.find(currency => currency.symbol === code);
+      return nextCurrency || previous;
+    });
+  }, [availableCurrencies, code]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {

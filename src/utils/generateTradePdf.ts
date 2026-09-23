@@ -51,9 +51,9 @@ function formatPrice(price: number, symbol: string): string {
   return price.toFixed(6);
 }
 
-function getCurrencyForSymbol(symbol: string): string {
-  if (symbol.includes('/')) return symbol.split('/')[0];
-  return 'USD';
+function getCurrencyForSymbol(symbol: string, displayCurrency: 'EUR' | 'USD'): string {
+  void symbol;
+  return displayCurrency;
 }
 
 async function loadBrandLogo(): Promise<string> {
@@ -80,7 +80,8 @@ export async function generateTradePdf(
   tradeType: TradeType,
   dateFrom: string,
   dateTo: string,
-  cols: ColumnVisibility
+  cols: ColumnVisibility,
+  displayCurrency: 'EUR' | 'USD' = 'EUR'
 ) {
   const logo = await loadBrandLogo();
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -128,7 +129,7 @@ export async function generateTradePdf(
       row.side === 'long' ? 'BUY' : 'SELL',
       row.amount.toFixed(4),
       row.margin.toFixed(2),
-      getCurrencyForSymbol(row.symbol),
+      getCurrencyForSymbol(row.symbol, displayCurrency),
       formatPrice(row.entry_price, row.symbol),
       formatDateTime(row.open_time),
       formatPrice(row.exit_price, row.symbol),

@@ -25,7 +25,7 @@ const SearchablePairSelector: React.FC<SearchablePairSelectorProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const { getPriceBySymbol: getCfdPrice, connectionState: cfdConnectionState } = useMarketData();
   const { getPriceBySymbol: getCryptoPrice, connectionState: cryptoConnectionState, getPriceDirection } = useBybitData();
-  const { convertUsdToEur, formatTradingPair } = useFiatCurrency();
+  const { symbol: displaySymbol, convertUsdToDisplay, formatTradingPair } = useFiatCurrency();
 
   const connectionState = tradingMode === 'cfd' ? cfdConnectionState : cryptoConnectionState;
 
@@ -141,21 +141,21 @@ const SearchablePairSelector: React.FC<SearchablePairSelectorProps> = ({
       return price.toFixed(5);
     }
 
-    const displayPrice = convertUsdToEur(price);
+    const displayPrice = convertUsdToDisplay(price);
 
     if (type === 'commodity') {
       if (symbol.includes('XAU') || symbol.includes('XPT') || symbol.includes('XPD')) {
-        return `€${displayPrice.toFixed(2)}`;
+        return `${displaySymbol}${displayPrice.toFixed(2)}`;
       }
       if (symbol.includes('XAG')) {
-        return `€${displayPrice.toFixed(4)}`;
+        return `${displaySymbol}${displayPrice.toFixed(4)}`;
       }
-      return `€${displayPrice.toFixed(4)}`;
+      return `${displaySymbol}${displayPrice.toFixed(4)}`;
     }
 
-    if (displayPrice >= 1000) return `€${displayPrice.toFixed(2)}`;
-    if (displayPrice >= 1) return `€${displayPrice.toFixed(4)}`;
-    return `€${displayPrice.toFixed(6)}`;
+    if (displayPrice >= 1000) return `${displaySymbol}${displayPrice.toFixed(2)}`;
+    if (displayPrice >= 1) return `${displaySymbol}${displayPrice.toFixed(4)}`;
+    return `${displaySymbol}${displayPrice.toFixed(6)}`;
   };
 
   const getConnectionIndicator = () => {

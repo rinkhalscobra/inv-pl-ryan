@@ -10,7 +10,10 @@ export default defineConfig({
   },
   server: {
     port: 5174,
-    host: true
+    host: true,
+    watch: {
+      ignored: ['**/.chrome-*', '**/.edge-test-*']
+    }
   },
   build: {
     outDir: 'dist',

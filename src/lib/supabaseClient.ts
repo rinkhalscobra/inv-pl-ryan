@@ -220,6 +220,7 @@ export interface Database {
           id: string;
           user_id: string;
           usdt_balance: number;
+          usd_balance: number;
           btc_balance: number;
           created_at: string;
           updated_at: string;
@@ -228,6 +229,7 @@ export interface Database {
           id?: string;
           user_id: string;
           usdt_balance?: number;
+          usd_balance?: number;
           btc_balance?: number;
           created_at?: string;
           updated_at?: string;
@@ -236,6 +238,7 @@ export interface Database {
           id?: string;
           user_id?: string;
           usdt_balance?: number;
+          usd_balance?: number;
           btc_balance?: number;
           created_at?: string;
           updated_at?: string;

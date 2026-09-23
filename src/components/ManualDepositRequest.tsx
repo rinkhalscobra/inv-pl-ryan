@@ -1,21 +1,24 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import AppSelect from './AppSelect';
 
 interface ManualDepositRequestProps {
   onSubmitted?: () => void;
+  defaultCurrency?: 'EUR' | 'USD';
 }
 
 interface PendingRequest {
   id: string;
   amount: number;
-  currency: 'EUR';
+  currency: 'EUR' | 'USD';
   status: string;
   createdAt: string;
 }
 
-export default function ManualDepositRequest({ onSubmitted }: ManualDepositRequestProps) {
+export default function ManualDepositRequest({ onSubmitted, defaultCurrency = 'EUR' }: ManualDepositRequestProps) {
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<'EUR' | 'USD'>(defaultCurrency);
   const [request, setRequest] = useState<PendingRequest | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +55,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
   const submitRequest = async () => {
     const numericAmount = Number(amount);
     if (!Number.isFinite(numericAmount) || numericAmount < 10) {
-      setError('The minimum deposit is €10');
+      setError(`The minimum deposit is ${currency === 'EUR' ? '€' : '$'}10`);
       return;
     }
 
@@ -60,7 +63,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
     setError(null);
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('create-manual-deposit', {
-        body: { amount: numericAmount, currency: 'EUR' },
+        body: { amount: numericAmount, currency },
       });
       if (invokeError) {
         const context = (invokeError as { context?: Response }).context;
@@ -72,7 +75,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
       setRequest({
         id: String(data.transaction_id),
         amount: Number(data.amount),
-        currency: 'EUR',
+        currency,
         status: String(data.status),
         createdAt: String(data.created_at),
       });
@@ -91,9 +94,16 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
       {!request ? (
         <>
           <div>
+            <label className="mb-2 block text-sm text-slate-400">Deposit currency</label>
+            <AppSelect value={currency} onChange={event => setCurrency(event.target.value as 'EUR' | 'USD')} className="w-full">
+              <option value="EUR">Euro (EUR)</option>
+              <option value="USD">US Dollar (USD)</option>
+            </AppSelect>
+          </div>
+          <div>
             <label className="block text-sm text-slate-400 mb-2">Requested deposit amount</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">€</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{currency === 'EUR' ? '€' : '$'}</span>
               <input
                 type="number"
                 min="10"
@@ -104,7 +114,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
                 placeholder="Enter amount"
                 className="w-full app-input pl-8 pr-20 py-3 rounded-xl"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">EUR</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">{currency}</span>
             </div>
           </div>
 
@@ -162,7 +172,7 @@ export default function ManualDepositRequest({ onSubmitted }: ManualDepositReque
       )}
 
       <p className="text-xs text-slate-500 text-center">
-        Submit this after arranging your EUR bank transfer. Your balance is credited only after CRM review.
+        Submit this after arranging your {currency} bank transfer. Your balance is credited only after CRM review.
       </p>
     </div>
   );

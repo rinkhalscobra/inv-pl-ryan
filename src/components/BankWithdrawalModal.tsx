@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, CreditCard, ArrowUpRight, AlertTriangle, CheckCircle, Copy, ExternalLink, Building, User, Landmark } from 'lucide-react';
-import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface BankWithdrawalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  availableEur: number;
+  currency: 'EUR' | 'USD';
+  availableBalance: number;
   onWithdraw: (amount: number, bankDetails: {
     bankName: string;
     accountNumber: string;
@@ -17,10 +17,13 @@ interface BankWithdrawalModalProps {
 const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
   isOpen,
   onClose,
-  availableEur,
+  currency,
+  availableBalance,
   onWithdraw
 }) => {
-  const { formatEur } = useFiatCurrency();
+  const formatAmount = (value: number) => new Intl.NumberFormat(currency === 'EUR' ? 'en-IE' : 'en-US', {
+    style: 'currency', currency,
+  }).format(value);
   const [amount, setAmount] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -65,7 +68,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
 
   // Handle max button click
   const handleMaxClick = () => {
-    setAmount(availableEur.toFixed(2));
+    setAmount(availableBalance.toFixed(2));
   };
 
   // Handle form submission
@@ -75,12 +78,12 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
     // Validate input
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount < 100) {
-      setError('Minimum bank withdrawal is €100.00');
+      setError(`Minimum bank withdrawal is ${formatAmount(100)}`);
       return;
     }
     
-    if (parsedAmount > availableEur) {
-      setError('Insufficient EUR balance');
+    if (parsedAmount > availableBalance) {
+      setError(`Insufficient ${currency} balance`);
       return;
     }
     
@@ -107,7 +110,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
         beneficiaryName
       });
       
-      setSuccess(`Bank withdrawal of ${formatEur(parseFloat(amount))} initiated successfully`);
+      setSuccess(`Bank withdrawal of ${formatAmount(parseFloat(amount))} initiated successfully`);
       setTransactionId(newTransactionId);
       setStep('success');
     } catch (err: any) {
@@ -176,9 +179,9 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <div className="flex justify-between items-center mb-1 sm:mb-2">
-                <label className="text-xs sm:text-sm text-slate-400">Amount (EUR)</label>
+                <label className="text-xs sm:text-sm text-slate-400">Amount ({currency})</label>
                 <span className="text-xs text-slate-400 text-right">
-                  Available: {formatEur(availableEur)}
+                  Available: {formatAmount(availableBalance)}
                 </span>
               </div>
               <div className="relative">
@@ -201,11 +204,11 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
                   >
                     MAX
                   </button>
-                  <span className="text-slate-400">EUR</span>
+                  <span className="text-slate-400">{currency}</span>
                 </div>
               </div>
               <p className="text-xs text-slate-500 mt-0.5 sm:mt-1 ml-1">
-                Minimum withdrawal: €100.00
+                Minimum withdrawal: {formatAmount(100)}
               </p>
             </div>
 
@@ -269,13 +272,13 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
               <div className="flex justify-between items-center mb-1 sm:mb-2">
                 <span className="text-xs sm:text-sm text-slate-400">Withdrawal Fee (0.5%)</span>
                 <span className="text-xs sm:text-sm text-white">
-                  {formatEur(calculateFee())}
+                  {formatAmount(calculateFee())}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs sm:text-sm text-slate-400">Estimated EUR Payout</span>
+                <span className="text-xs sm:text-sm text-slate-400">Estimated {currency} Payout</span>
                 <span className="text-xs sm:text-sm text-white">
-                  {formatEur(calculateAmountToReceive())}
+                  {formatAmount(calculateAmountToReceive())}
                 </span>
               </div>
             </div>
@@ -311,7 +314,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
             <div className="app-surface-muted rounded-xl p-3 sm:p-4">
               <div className="text-center mb-3 sm:mb-4">
                 <div className="text-xs sm:text-sm text-slate-400 mb-1">You are about to withdraw</div>
-                <div className="text-xl sm:text-2xl font-bold text-white">{formatEur(parseFloat(amount))}</div>
+                <div className="text-xl sm:text-2xl font-bold text-white">{formatAmount(parseFloat(amount))}</div>
               </div>
               
               <div className="space-y-2 sm:space-y-3">
@@ -333,12 +336,12 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Fee (0.5%)</span>
-                  <span className="text-white text-right">{formatEur(calculateFee())}</span>
+                  <span className="text-white text-right">{formatAmount(calculateFee())}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-slate-400 mr-2">Estimated EUR Payout</span>
+                  <span className="text-slate-400 mr-2">Estimated {currency} Payout</span>
                   <span className="text-white font-medium text-right">
-                    {formatEur(calculateAmountToReceive())}
+                    {formatAmount(calculateAmountToReceive())}
                   </span>
                 </div>
               </div>
@@ -392,11 +395,11 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
               <div className="space-y-2 sm:space-y-3">
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Amount</span>
-                  <span className="text-white text-right">{formatEur(parseFloat(amount))}</span>
+                  <span className="text-white text-right">{formatAmount(parseFloat(amount))}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-slate-400 mr-2">Estimated EUR Payout</span>
-                  <span className="text-white text-right">{formatEur(calculateAmountToReceive())}</span>
+                  <span className="text-slate-400 mr-2">Estimated {currency} Payout</span>
+                  <span className="text-white text-right">{formatAmount(calculateAmountToReceive())}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Bank</span>

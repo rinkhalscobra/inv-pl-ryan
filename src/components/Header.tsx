@@ -40,6 +40,7 @@ interface HeaderProps {
   currentPrice: number;
   marketData?: MarketData;
   usdtBalance: number;
+  usdBalance: number;
   btcBalance: number;
   totalPortfolioValue: number;
   user: UserType;
@@ -56,6 +57,7 @@ const Header: React.FC<HeaderProps> = ({
   setSelectedPair,
   currentPrice,
   usdtBalance,
+  usdBalance,
   totalPortfolioValue,
   user,
   signOut,
@@ -436,8 +438,12 @@ const Header: React.FC<HeaderProps> = ({
                       {showBalances ? formatFiat(totalPortfolioValue) : '••••••'}
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.07] pt-2.5 text-xs">
-                      <span className="text-slate-400">Cash balance</span>
+                      <span className="text-slate-400">EUR cash</span>
                       <span className="truncate font-mono font-medium text-slate-200">{showBalances ? formatFiat(usdtBalance) : '••••••'}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                      <span className="text-slate-400">USD cash</span>
+                      <span className="truncate font-mono font-medium text-slate-200">{showBalances ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usdBalance) : '••••••'}</span>
                     </div>
                   </div>
 

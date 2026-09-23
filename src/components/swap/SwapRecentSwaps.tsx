@@ -17,7 +17,11 @@ export default function SwapRecentSwaps({ transactions, formatEur, formatFiat }:
             <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="break-words text-sm font-medium text-white">{tx.description}</span>
               <span className={`shrink-0 text-xs ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {tx.amount > 0 ? '+' : ''}{tx.currency?.toUpperCase() === 'EUR' ? formatEur(tx.amount) : formatFiat(tx.amount)}
+                {tx.amount > 0 ? '+' : ''}{tx.currency?.toUpperCase() === 'EUR'
+                  ? formatEur(tx.amount)
+                  : tx.currency?.toUpperCase() === 'USD'
+                    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(tx.amount)
+                    : formatFiat(tx.amount)}
               </span>
             </div>
             <div className="text-xs text-slate-400">{new Date(tx.created_at).toLocaleString()}</div>

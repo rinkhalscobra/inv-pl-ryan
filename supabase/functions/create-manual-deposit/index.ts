@@ -36,11 +36,12 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const amount = Number(body.amount);
     const currency = String(body.currency || "EUR").toUpperCase();
-    if (currency !== "EUR") {
-      return jsonResponse({ success: false, error: "Only EUR fiat deposits are supported" }, 400);
+    if (!["EUR", "USD"].includes(currency)) {
+      return jsonResponse({ success: false, error: "Only EUR and USD fiat deposits are supported" }, 400);
     }
     if (!Number.isFinite(amount) || amount < 10 || amount > 1_000_000) {
-      return jsonResponse({ success: false, error: "Deposit amount must be between €10 and €1,000,000" }, 400);
+      const symbol = currency === "EUR" ? "€" : "$";
+      return jsonResponse({ success: false, error: `Deposit amount must be between ${symbol}10 and ${symbol}1,000,000` }, 400);
     }
 
     const { data: transaction, error: insertError } = await supabaseAdmin
@@ -51,7 +52,7 @@ Deno.serve(async (req: Request) => {
         amount,
         currency,
         status: "pending",
-        description: "Manual EUR bank deposit request - awaiting CRM review",
+        description: `Manual ${currency} bank deposit request - awaiting CRM review`,
       })
       .select("id, amount, currency, status, created_at")
       .single();

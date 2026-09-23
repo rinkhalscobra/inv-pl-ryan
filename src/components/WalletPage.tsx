@@ -37,6 +37,7 @@ import ManualDepositRequest from './ManualDepositRequest';
 
 interface WalletPageProps {
   usdtBalance: number;
+  usdBalance: number;
   btcBalance: number;
   transactions: DatabaseTransaction[];
   kycStatus: 'not_verified' | 'pending' | 'verified';
@@ -64,6 +65,7 @@ const errorMessage = (error: unknown, fallback: string) =>
 
 const WalletPage: React.FC<WalletPageProps> = ({
   usdtBalance,
+  usdBalance,
   btcBalance,
   transactions,
   kycStatus,
@@ -95,6 +97,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   const [showBalance, setShowBalance] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [showBankWithdrawalModal, setShowBankWithdrawalModal] = useState(false);
+  const [fiatCurrency, setFiatCurrency] = useState<'EUR' | 'USD'>('EUR');
   const [showCryptoWithdrawalModal, setShowCryptoWithdrawalModal] = useState(false);
   
   const actualBtcPrice = getBybitPrice('BTCUSDT');
@@ -164,8 +167,9 @@ const WalletPage: React.FC<WalletPageProps> = ({
   }): Promise<string> => {
     try {
       if (kycStatus !== 'verified') throw new Error('Identity verification is required before withdrawing funds.');
-      const { data, error: rpcError } = await supabase.rpc('request_bank_withdrawal', {
-        p_amount_eur: amount,
+      const { data, error: rpcError } = await supabase.rpc('request_fiat_withdrawal', {
+        p_currency: fiatCurrency,
+        p_amount: amount,
         p_bank_name: bankDetails.bankName,
         p_account_number: bankDetails.accountNumber,
         p_routing_number: bankDetails.routingNumber,
@@ -237,6 +241,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
     const currency = transaction.currency?.toUpperCase() ||
       (transaction.description?.startsWith('CRM BTC balance adjustment:') ? 'BTC' : '');
     if (currency === 'EUR') return formatEur(transactionAmount);
+    if (currency === 'USD') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(transactionAmount);
     if (currency === 'BTC') return `${transactionAmount.toFixed(8)} BTC`;
     return formatFiat(transactionAmount);
   };
@@ -394,7 +399,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
             </div>
 
             {/* Asset Breakdown */}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <div className="app-surface-muted min-w-0 rounded-xl border border-white/[0.06] p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
@@ -410,18 +415,35 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mt-4">
                   <button
-                    onClick={() => { setDepositMethod('bank_transfer'); setActiveTab('deposit'); }}
+                    onClick={() => { setFiatCurrency('EUR'); setDepositMethod('bank_transfer'); setActiveTab('deposit'); }}
                     className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 md:gap-2 md:text-sm"
                   >
                     <ArrowDownLeft size={16} />
                     Deposit
                   </button>
                   <button 
-                    onClick={() => setShowBankWithdrawalModal(true)}
+                    onClick={() => { setFiatCurrency('EUR'); setShowBankWithdrawalModal(true); }}
                     className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 md:gap-2 md:text-sm">
                       <ArrowUpRight size={16} />
                       Withdraw
                     </button>
+                </div>
+              </div>
+
+              <div className="app-surface-muted min-w-0 rounded-xl border border-white/[0.06] p-4">
+                <div className="mb-2 flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500"><DollarSign size={18} className="text-white" /></div>
+                  <span className="font-medium text-slate-300">USD</span>
+                </div>
+                <div className="text-xl font-bold text-white">
+                  {showBalance ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usdBalance) : '••••••'}
+                </div>
+                <div className="text-sm text-slate-400">
+                  {showBalance ? `Spendable cash: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(walletBreakdownData.usdAvailableBalance)}` : '••••••'}
+                </div>
+                <div className="mt-4 flex flex-col gap-3 md:flex-row">
+                  <button onClick={() => { setFiatCurrency('USD'); setDepositMethod('bank_transfer'); setActiveTab('deposit'); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500"><ArrowDownLeft size={16} />Deposit</button>
+                  <button onClick={() => { setFiatCurrency('USD'); setShowBankWithdrawalModal(true); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20"><ArrowUpRight size={16} />Withdraw</button>
                 </div>
               </div>
 
@@ -738,7 +760,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                             </div>
                             <div>
                               <div className="text-sm text-slate-400">Currency</div>
-                              <div className="text-white font-medium">EUR</div>
+                              <div className="text-white font-medium">{fiatCurrency}</div>
                             </div>
                           </div>
                         ) : (
@@ -751,9 +773,11 @@ const WalletPage: React.FC<WalletPageProps> = ({
                       </div>
 
                       <ManualDepositRequest
+                        key={fiatCurrency}
+                        defaultCurrency={fiatCurrency}
                         onSubmitted={() => setMessage({
                           type: 'success',
-                          text: 'EUR bank deposit request submitted for CRM review.',
+                          text: `${fiatCurrency} bank deposit request submitted for CRM review.`,
                         })}
                       />
                     </div>
@@ -966,6 +990,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
         {activeTab === 'holdings' && (
           <CryptoHoldings
             usdtBalance={usdtBalance}
+            usdBalance={usdBalance}
             btcBalance={btcBalance}
             currentBtcPrice={actualBtcPrice}
             userAssets={userAssets}
@@ -981,7 +1006,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
       <BankWithdrawalModal 
         isOpen={showBankWithdrawalModal}
         onClose={() => setShowBankWithdrawalModal(false)}
-        availableEur={convertUsdToEur(walletBreakdownData.fiatAvailableBalance)}
+        currency={fiatCurrency}
+        availableBalance={fiatCurrency === 'EUR' ? convertUsdToEur(walletBreakdownData.fiatAvailableBalance) : walletBreakdownData.usdAvailableBalance}
         onWithdraw={handleBankWithdrawalSubmit} 
       />
 

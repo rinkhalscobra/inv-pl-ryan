@@ -147,6 +147,7 @@ export interface PortfolioSnapshot {
   snapshot_date: string;
   total_value: number;
   usdt_balance: number;
+  usd_balance: number;
   btc_balance: number;
   btc_price: number;
   created_at: string;
@@ -174,7 +175,7 @@ export interface CoinGeckoToken {
 
 export const useDatabase = () => {
   const { user, loading: authLoading } = useAuth();
-  const [balances, setBalances] = useState({ usdt_balance: 0, btc_balance: 0 });
+  const [balances, setBalances] = useState({ usdt_balance: 0, usd_balance: 0, btc_balance: 0 });
   const [robotState, setRobotState] = useState<DatabaseRobotState | null>(null);
   const [transactions, setTransactions] = useState<DatabaseTransaction[]>([]);
   const [userStakes, setUserStakes] = useState<DatabaseUserStake[]>([]);
@@ -205,6 +206,7 @@ export const useDatabase = () => {
       if (data) {
         setBalances({
           usdt_balance: parseFloat(data.usdt_balance),
+          usd_balance: parseFloat(data.usd_balance || 0),
           btc_balance: parseFloat(data.btc_balance)
         });
       }
@@ -480,7 +482,7 @@ export const useDatabase = () => {
   }, [fetchBalances, fetchRobotState, fetchTransactions, fetchUserStakes, fetchUserProfile, user]);
 
   // Update balances
-  const updateBalances = useCallback(async (updates: { usdt_balance?: number, btc_balance?: number }) => {
+  const updateBalances = useCallback(async (updates: { usdt_balance?: number, usd_balance?: number, btc_balance?: number }) => {
     if (!user) throw new Error('No user found');
 
     const { error } = await supabase
@@ -492,6 +494,7 @@ export const useDatabase = () => {
 
     setBalances(prev => ({
       usdt_balance: updates.usdt_balance !== undefined ? updates.usdt_balance : prev.usdt_balance,
+      usd_balance: updates.usd_balance !== undefined ? updates.usd_balance : prev.usd_balance,
       btc_balance: updates.btc_balance !== undefined ? updates.btc_balance : prev.btc_balance
     }));
   }, [user]);
@@ -697,6 +700,7 @@ export const useDatabase = () => {
   const createPortfolioSnapshot = useCallback(async (
     totalValue: number,
     usdtBalance: number,
+    usdBalance: number,
     btcBalance: number,
     btcPrice: number
   ) => {
@@ -712,6 +716,7 @@ export const useDatabase = () => {
           snapshot_date: today,
           total_value: totalValue,
           usdt_balance: usdtBalance,
+          usd_balance: usdBalance,
           btc_balance: btcBalance,
           btc_price: btcPrice
         }], {

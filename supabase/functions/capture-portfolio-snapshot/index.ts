@@ -71,7 +71,7 @@ serve(async (req) => {
         // Get user's balances
         const { data: balanceData, error: balanceError } = await supabase
           .from('balances')
-          .select('usdt_balance, btc_balance')
+          .select('usdt_balance, usd_balance, btc_balance')
           .eq('user_id', user.id)
           .single();
           
@@ -82,6 +82,7 @@ serve(async (req) => {
         }
         
         const usdtBalance = parseFloat(balanceData.usdt_balance);
+        const usdBalance = parseFloat(balanceData.usd_balance || '0');
         const btcBalance = parseFloat(balanceData.btc_balance);
 
         const { data: robotState } = await supabase
@@ -93,7 +94,7 @@ serve(async (req) => {
         const robotAllocatedBalance = parseFloat(robotState?.allocated_balance?.toString() || '0') || 0;
 
         const btcValue = btcBalance * btcPrice;
-        const totalValue = usdtBalance + btcValue + robotAllocatedBalance;
+        const totalValue = usdtBalance + usdBalance + btcValue + robotAllocatedBalance;
         
         // Check if a snapshot already exists for this user and date
         const { data: existingSnapshot, error: checkError } = await supabase
@@ -116,6 +117,7 @@ serve(async (req) => {
             .update({
               total_value: totalValue,
               usdt_balance: usdtBalance,
+              usd_balance: usdBalance,
               btc_balance: btcBalance,
               btc_price: btcPrice
             })
@@ -137,6 +139,7 @@ serve(async (req) => {
               snapshot_date: todayFormatted,
               total_value: totalValue,
               usdt_balance: usdtBalance,
+              usd_balance: usdBalance,
               btc_balance: btcBalance,
               btc_price: btcPrice
             }]);

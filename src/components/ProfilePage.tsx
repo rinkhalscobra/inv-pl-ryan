@@ -36,6 +36,7 @@ import { useFiatCurrency } from '../hooks/useFiatCurrency';
 interface ProfilePageProps {
   user: UserType;
   usdtBalance?: number;
+  usdBalance?: number;
   btcBalance?: number;
   currentPrice?: number;
   onSignOut: () => void;
@@ -62,6 +63,7 @@ interface ClientAccountSummary {
 const ProfilePage: React.FC<ProfilePageProps> = ({
   user,
   usdtBalance,
+  usdBalance,
   btcBalance,
   currentPrice,
   onSignOut,
@@ -841,6 +843,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
           <AccountBalancesCard
             title={t('profile.accountBalances')}
             usdtBalance={usdtBalance || 0}
+            usdBalance={usdBalance || 0}
             btcBalance={btcBalance || 0}
             currentPrice={currentPrice || 0}
           />

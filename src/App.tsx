@@ -230,19 +230,20 @@ const handleUpdatePassword = async (newPassword: string) => {
   // Wallet values update from live prices without re-querying Supabase on every tick.
   const walletBreakdown = useWalletBreakdown(
     balances.usdt_balance,
+    balances.usd_balance,
     balances.btc_balance,
     currentBtcPrice,
     getCurrentPrice
   );
   const {
     unrealizedPnl,
-    availableBalance,
+    fiatAvailableBalance,
     refreshBreakdown,
     futuresUsedMargin,
     futuresOrdersReserved
   } = walletBreakdown;
 
-  const actualAvailableBalance = useMemo(() => Math.max(0, availableBalance), [availableBalance]);
+  const actualAvailableBalance = useMemo(() => Math.max(0, fiatAvailableBalance), [fiatAvailableBalance]);
   const usdtAvailableMargin = useMemo(() => (
     Math.max(0, balances.usdt_balance - futuresUsedMargin - futuresOrdersReserved)
   ), [balances.usdt_balance, futuresOrdersReserved, futuresUsedMargin]);
@@ -250,7 +251,7 @@ const handleUpdatePassword = async (newPassword: string) => {
   // Get current price for selected pair
   // Calculate total portfolio value
  const totalPortfolioValue = useMemo(() => {
-  let total = balances.usdt_balance; // Start with USDT balance
+  let total = balances.usdt_balance + balances.usd_balance;
 
   // Use the same BTC price as displayed in wallet (real-time price)
   const btcUsdtPrice = getCurrentPrice('BTCUSDT');
@@ -570,6 +571,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                     currentPrice={currentSelectedPairPrice}
                     marketData={(marketData || []).find(data => data.symbol === selectedPair)}
                     usdtBalance={balances.usdt_balance}
+                    usdBalance={balances.usd_balance}
                     btcBalance={balances.btc_balance}
                     totalPortfolioValue={totalPortfolioValue}
                     user={user}
@@ -584,6 +586,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                       <HomePage
                         currentBtcPrice={currentSelectedPairPrice}
                         usdtBalance={balances.usdt_balance}
+                        usdBalance={balances.usd_balance}
                         btcBalance={balances.btc_balance}
                         marketData={marketData}
                         futuresPositions={activePositions}
@@ -597,6 +600,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                     {tradingMode === 'swap' && (
                       <SwapCryptoPage
                         usdtBalance={balances.usdt_balance}
+                        usdBalance={balances.usd_balance}
                         btcBalance={balances.btc_balance}
                         currentBtcPrice={currentSelectedPairPrice}
                         onSwap={handleSwap}
@@ -740,6 +744,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                     {tradingMode === 'wallet' && (
                       <WalletPage 
                         usdtBalance={balances.usdt_balance}
+                        usdBalance={balances.usd_balance}
                         btcBalance={balances.btc_balance}
                         kycStatus={kycStatus}
                         transactions={transactions}
@@ -757,6 +762,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                         user={user}
                         onSignOut={signOut}
                         usdtBalance={balances.usdt_balance}
+                        usdBalance={balances.usd_balance}
                         btcBalance={balances.btc_balance}
                         currentPrice={currentBtcPrice}
                         kycStatus={kycStatus}

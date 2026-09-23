@@ -48,6 +48,7 @@ interface AdminUser extends JsonRow {
   is_admin?: boolean;
   created_at?: string;
   usdt_balance?: number;
+  usd_balance?: number;
   btc_balance?: number;
   robot_allocated_balance?: number;
   robot_active?: boolean;
@@ -58,6 +59,7 @@ interface CRMStats {
   pending_kyc: number;
   active_robots: number;
   total_usdt: number;
+  total_usd: number;
   total_robot_allocated: number;
 }
 
@@ -117,6 +119,7 @@ const emptyStats: CRMStats = {
   pending_kyc: 0,
   active_robots: 0,
   total_usdt: 0,
+  total_usd: 0,
   total_robot_allocated: 0
 };
 
@@ -142,6 +145,7 @@ const money = (value: unknown, digits = 2) => asNumber(value).toLocaleString('en
   minimumFractionDigits: digits,
   maximumFractionDigits: digits
 });
+const formatUsd = (value: unknown) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(asNumber(value));
 
 const dateTime = (value: unknown) => {
   if (!value) return 'â€”';
@@ -246,7 +250,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [clientOnboarding, setClientOnboarding] = useState<ClientOnboardingSummary | null>(null);
   const [showTaxId, setShowTaxId] = useState(false);
   const [kycDocumentUrls, setKycDocumentUrls] = useState<{ id?: string; selfie?: string }>({});
-  const [balanceForm, setBalanceForm] = useState({ usdt: '0', btc: '0' });
+  const [balanceForm, setBalanceForm] = useState({ usdt: '0', usd: '0', btc: '0' });
   const [robotForm, setRobotForm] = useState<Record<string, string | boolean>>({});
   const [assetForm, setAssetForm] = useState({ symbol: '', balance: '0' });
   const [manualProfit, setManualProfit] = useState('');
@@ -345,7 +349,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         min_leverage_futures: asText(profile.min_leverage_futures),
         max_leverage_futures: asText(profile.max_leverage_futures)
       });
-      setBalanceForm({ usdt: convertUsdToEurRef.current(asNumber(balance.usdt_balance)).toFixed(2), btc: asText(balance.btc_balance || 0) });
+      setBalanceForm({ usdt: convertUsdToEurRef.current(asNumber(balance.usdt_balance)).toFixed(2), usd: asNumber(balance.usd_balance).toFixed(2), btc: asText(balance.btc_balance || 0) });
       setRobotForm({
         is_active: Boolean(robot.is_active),
         strategy: asText(robot.strategy || 'triangular'),
@@ -448,6 +452,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     const { error } = await supabase.rpc('admin_set_user_balances', {
       p_target_user_id: selectedUserId,
       p_usdt_balance: convertEurToUsd(Number(balanceForm.usdt)),
+      p_usd_balance: Number(balanceForm.usd),
       p_btc_balance: Number(balanceForm.btc),
       p_reason: reason
     });
@@ -740,12 +745,13 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
           {[
             ['Customers', stats.total_users, Users],
             ['Pending KYC', stats.pending_kyc, FileText],
             ['Active robots', stats.active_robots, Bot],
             ['Available EUR', formatFiat(stats.total_usdt), Coins],
+            ['Available USD', formatUsd(stats.total_usd), DollarSign],
             ['Robot allocation', formatFiat(stats.total_robot_allocated), Wallet]
           ].map(([label, value, Icon]) => {
             const StatIcon = Icon as React.ElementType;
@@ -788,7 +794,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   </div>
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <span className={user.robot_active ? 'text-emerald-400' : 'text-slate-500'}>{user.robot_active ? 'Robot active' : user.kyc_status?.replaceAll('_', ' ')}</span>
-                    <span className="font-mono text-slate-300">{formatFiat(asNumber(user.usdt_balance))}</span>
+                    <span className="text-right font-mono text-slate-300"><span className="block">{formatFiat(asNumber(user.usdt_balance))}</span><span className="block text-[10px] text-emerald-300">{formatUsd(user.usd_balance)}</span></span>
                   </div>
                 </button>
               ))}
@@ -818,8 +824,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       </div>
                       <p className="mt-1 truncate text-sm text-slate-400">{profile.email} Â· {profile.id}</p>
                     </div>
-                    <div className="grid grid-cols-3 gap-4 text-right text-sm">
+                    <div className="grid grid-cols-4 gap-4 text-right text-sm">
                       <div><div className="text-xs text-slate-500">EUR</div><div className="font-semibold text-white">{formatFiat(asNumber(workspace.balance.usdt_balance))}</div></div>
+                      <div><div className="text-xs text-slate-500">USD</div><div className="font-semibold text-white">{formatUsd(workspace.balance.usd_balance)}</div></div>
                       <div><div className="text-xs text-slate-500">Robot</div><div className="font-semibold text-white">{formatFiat(asNumber(workspace.robot.allocated_balance))}</div></div>
                       <div><div className="text-xs text-slate-500">KYC</div><div className="font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
                     </div>
@@ -841,7 +848,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   <div className="space-y-5">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {[
-                        ['Total wallet', formatFiat(asNumber(workspace.balance.usdt_balance) + asNumber(workspace.robot.allocated_balance)), Wallet],
+                        ['Total wallet', formatFiat(asNumber(workspace.balance.usdt_balance) + asNumber(workspace.balance.usd_balance) + asNumber(workspace.robot.allocated_balance)), Wallet],
                         ['Open positions', (workspace.futures_positions || []).length, TrendingUp],
                         ['Orders', (workspace.spot_orders || []).length + (workspace.futures_orders || []).length, ReceiptText],
                         ['Support cases', (workspace.conversations || []).length, Headphones]
@@ -946,8 +953,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   <div className="space-y-5">
                     <section className={`${panelClass} p-5`}>
                       <h3 className="mb-4 font-semibold text-white">Primary balances</h3>
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-4 md:grid-cols-3">
                         <label className="text-xs text-slate-400">EUR balance<input type="number" min="0" step="0.01" value={balanceForm.usdt} onChange={event => setBalanceForm(current => ({ ...current, usdt: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
+                        <label className="text-xs text-slate-400">USD balance<input type="number" min="0" step="0.01" value={balanceForm.usd} onChange={event => setBalanceForm(current => ({ ...current, usd: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                         <label className="text-xs text-slate-400">BTC balance<input type="number" min="0" step="0.00000001" value={balanceForm.btc} onChange={event => setBalanceForm(current => ({ ...current, btc: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                       </div>
                       <button onClick={saveBalances} disabled={saving !== null || !reason.trim()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-500 px-4 py-3 font-semibold text-white disabled:opacity-50">{saving === 'balances' ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}Save wallet balances</button>

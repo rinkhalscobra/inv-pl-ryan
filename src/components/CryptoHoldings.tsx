@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bitcoin, Eye, EyeOff, TrendingUp, TrendingDown, Info, Search, Euro } from 'lucide-react';
+import { Bitcoin, Eye, EyeOff, TrendingUp, TrendingDown, Info, Search, Euro, DollarSign } from 'lucide-react';
 import { DatabaseUserAsset } from '../hooks/useDatabase';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface CryptoHoldingsProps {
   usdtBalance: number;
+  usdBalance: number;
   btcBalance: number;
   currentBtcPrice: number;
   userAssets?: DatabaseUserAsset[];
@@ -23,6 +24,7 @@ interface CryptoAsset {
 
 const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
   usdtBalance,
+  usdBalance,
   btcBalance,
   userAssets = []
 }) => {
@@ -57,6 +59,15 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
         change24h: 0
       });
       portfolioValue += usdtBalance;
+    }
+
+    if (usdBalance > 0) {
+      assetList.push({
+        symbol: 'USD', name: 'US Dollar',
+        icon: <DollarSign size={20} className="text-emerald-400" />,
+        balance: usdBalance, usdValue: usdBalance, change24h: 0,
+      });
+      portfolioValue += usdBalance;
     }
     
     // Add BTC if balance > 0
@@ -134,7 +145,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
     setCryptoAssets(assetList);
     setTotalValue(portfolioValue);
     setTotalChange(totalChangePercentage);
-  }, [usdtBalance, btcBalance, userAssets, getPriceForSymbol, getCryptoDataBySymbol, convertUsdToEur]);
+  }, [usdtBalance, usdBalance, btcBalance, userAssets, getPriceForSymbol, getCryptoDataBySymbol, convertUsdToEur]);
 
   // Filter assets based on search term
   const filteredAssets = cryptoAssets.filter(asset => {
@@ -215,7 +226,7 @@ const CryptoHoldings: React.FC<CryptoHoldingsProps> = ({
               </div>
               <div className="text-right">
                 <div className="font-bold text-white">
-                  {showBalances ? asset.balance.toFixed(asset.symbol === 'EUR' ? 2 : 6) : '••••••'}
+                  {showBalances ? asset.balance.toFixed(['EUR', 'USD'].includes(asset.symbol) ? 2 : 6) : '••••••'}
                 </div>
                 <div className="flex items-center justify-end gap-1 text-sm">
                   <span className="text-slate-400">

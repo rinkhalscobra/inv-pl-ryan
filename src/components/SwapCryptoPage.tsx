@@ -13,6 +13,7 @@ import type { SwapCurrency } from './swap/types';
 
 interface SwapCryptoPageProps {
   usdtBalance: number;
+  usdBalance: number;
   btcBalance: number;
   currentBtcPrice: number;
   onSwap: (fromCurrency: string, toCurrency: string, amount: number, toAmountReceived?: number) => Promise<boolean>;
@@ -48,6 +49,7 @@ const CRYPTO_ICON_URLS: Record<string, string> = {
 // Define the allowed swap symbols
 const ALLOWED_SWAP_SYMBOLS = [
   { symbol: 'EUR', name: 'Euro' },
+  { symbol: 'USD', name: 'US Dollar' },
   { symbol: 'BTC', name: 'Bitcoin' },
   { symbol: 'ETH', name: 'Ethereum' },
   { symbol: 'USDC', name: 'USD Coin' },
@@ -69,6 +71,7 @@ const ALLOWED_SWAP_SYMBOLS = [
 
 const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   usdtBalance,
+  usdBalance,
   btcBalance,
   currentBtcPrice,
   onSwap,
@@ -87,6 +90,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
 
   // Twelve Data spot prices are stored in Supabase in USD for swap valuation.
   const getPriceForSymbol = useCallback((symbol: string): number => {
+    if (symbol === 'USD') return 1;
     if (symbol === 'EUR') {
       const quote = getMarketDataBySymbol('EUR/USD');
       const age = Date.now() - Date.parse(quote?.timestamp || '');
@@ -118,7 +122,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
   }));
   const refreshSwapQuotes = useCallback(() => {
     void Promise.all([fromCurrency.symbol, toCurrency.symbol]
-      .filter(symbol => symbol !== 'EUR')
+      .filter(symbol => symbol !== 'EUR' && symbol !== 'USD')
       .map(symbol => refreshCryptoQuote(`${symbol}USDT`, true)));
     refreshSnapshot();
   }, [fromCurrency.symbol, toCurrency.symbol, refreshCryptoQuote, refreshSnapshot]);
@@ -250,9 +254,10 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
 
   const getCurrencyBalance = useCallback((symbol: string): number => {
     if (symbol === 'EUR') return convertUsdToEur(usdtBalance);
+    if (symbol === 'USD') return usdBalance;
     if (symbol === 'BTC') return btcBalance;
     return userAssets.find(asset => asset.asset_symbol === symbol)?.balance || 0;
-  }, [btcBalance, convertUsdToEur, userAssets, usdtBalance]);
+  }, [btcBalance, convertUsdToEur, usdBalance, userAssets, usdtBalance]);
 
   // Update currency balances and prices when market data changes (but not if prices are locked)
   useEffect(() => {
@@ -300,7 +305,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       const name = allowedCrypto.name;
 
       // Get icon URL from static mapping
-      const iconUrl = symbol === 'EUR'
+      const iconUrl = symbol === 'EUR' || symbol === 'USD'
         ? ''
         : CRYPTO_ICON_URLS[symbol] || 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png';
 
@@ -569,7 +574,7 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
       const maxSwappable = Math.max(0, fromCurrency.balance - buffer);
       
       // Round down to appropriate decimal places to prevent floating-point inaccuracies
-      const decimals = fromCurrency.symbol === 'EUR' ? 2 : 6;
+      const decimals = ['EUR', 'USD'].includes(fromCurrency.symbol) ? 2 : 6;
       const maxSwappableValue = Math.floor(maxSwappable * Math.pow(10, decimals)) / Math.pow(10, decimals);
       const maxSwappableString = maxSwappableValue.toFixed(decimals);
       
@@ -806,8 +811,8 @@ const SwapCryptoPage: React.FC<SwapCryptoPageProps> = ({
     return amount * 0.001; // 0.1% fee
   };
 
-  const getAmountDecimals = (symbol: string) => symbol === 'EUR' ? 2 : 6;
-  const getInputDecimals = (symbol: string) => symbol === 'EUR' ? 2 : 8;
+  const getAmountDecimals = (symbol: string) => ['EUR', 'USD'].includes(symbol) ? 2 : 6;
+  const getInputDecimals = (symbol: string) => ['EUR', 'USD'].includes(symbol) ? 2 : 8;
   const formatAssetAmount = (amount: number, symbol: string) =>
     amount.toFixed(getAmountDecimals(symbol));
   const formatBalance = (currency: CryptoCurrency) =>

@@ -60,6 +60,7 @@ const MARKET_OVERVIEW_ICON_URLS: Record<string, string> = {
 
 interface HomePageProps {
   usdtBalance: number;
+  usdBalance: number;
   btcBalance: number;
   futuresPositions: FuturesPosition[];
   transactions: Transaction[];
@@ -71,6 +72,7 @@ interface HomePageProps {
 
 const HomePage: React.FC<HomePageProps> = ({
   usdtBalance,
+  usdBalance,
   btcBalance,
   futuresPositions,
   transactions,
@@ -129,10 +131,10 @@ const HomePage: React.FC<HomePageProps> = ({
   const marketFeedAvailable = quotesReady && currentBtcPrice > 0;
   
   // Calculate actual portfolio value if not provided or is zero
-  const actualPortfolioValue = totalPortfolioValue > 0 ? totalPortfolioValue : (usdtBalance + (btcBalance * currentBtcPrice));
+  const actualPortfolioValue = totalPortfolioValue > 0 ? totalPortfolioValue : (usdtBalance + usdBalance + (btcBalance * currentBtcPrice));
   
   // Check if data is still loading
-  const isDataLoading = actualPortfolioValue === 0 && (usdtBalance === 0 && btcBalance === 0 && currentBtcPrice === 0);
+  const isDataLoading = actualPortfolioValue === 0 && (usdtBalance === 0 && usdBalance === 0 && btcBalance === 0 && currentBtcPrice === 0);
   
   // Calculate total PnL from futures positions
   const totalPositionsPnl = futuresPositions.reduce((sum, position) => {
@@ -204,6 +206,7 @@ const HomePage: React.FC<HomePageProps> = ({
       snapshot_date: todaySnapshotDate,
       total_value: portfolioPerformanceValue,
       usdt_balance: usdtBalance,
+      usd_balance: usdBalance,
       btc_balance: btcBalance,
       btc_price: currentBtcPrice,
       created_at: nowIso
@@ -242,6 +245,7 @@ const HomePage: React.FC<HomePageProps> = ({
     isDataLoading,
     portfolioPerformanceValue,
     portfolioSnapshots,
+    usdBalance,
     usdtBalance
   ]);
 
@@ -307,8 +311,8 @@ const HomePage: React.FC<HomePageProps> = ({
       value: portfolioPerformanceValue,
       timestamp: now
     };
-    void createPortfolioSnapshot(portfolioPerformanceValue, usdtBalance, btcBalance, currentBtcPrice);
-  }, [btcBalance, createPortfolioSnapshot, currentBtcPrice, isDataLoading, portfolioPerformanceValue, usdtBalance]);
+    void createPortfolioSnapshot(portfolioPerformanceValue, usdtBalance, usdBalance, btcBalance, currentBtcPrice);
+  }, [btcBalance, createPortfolioSnapshot, currentBtcPrice, isDataLoading, portfolioPerformanceValue, usdBalance, usdtBalance]);
   
   // Get top performing assets
   const getTopPerformingAssets = () => {
@@ -640,13 +644,13 @@ const HomePage: React.FC<HomePageProps> = ({
               <DollarSign size={18} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-[13px] text-slate-400">Available balance</div>
-              <div className="text-lg font-bold text-white sm:text-xl" translate="no">{formatFiat(usdtBalance)}</div>
+              <div className="text-[13px] text-slate-400">Available cash</div>
+              <div className="text-lg font-bold text-white sm:text-xl" translate="no">{formatFiat(usdtBalance + usdBalance)}</div>
             </div>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
-            <div className="text-slate-400">BTC holdings</div>
-            <div className="text-white" translate="no">{btcBalance.toFixed(6)} BTC</div>
+            <div className="text-slate-400">USD cash</div>
+            <div className="text-white" translate="no">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(usdBalance)}</div>
           </div>
         </div>
       </div>

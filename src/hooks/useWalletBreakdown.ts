@@ -11,6 +11,7 @@ export interface WalletBreakdown {
   unrealizedPnl: number;
   availableBalance: number;
   fiatAvailableBalance: number;
+  usdAvailableBalance: number;
   btcAvailableBalance: number;
   robotAllocatedBalance: number;
   stakedAmount: number;
@@ -20,6 +21,7 @@ export interface WalletBreakdown {
 
 interface WalletSources {
   usdtBalance: number;
+  usdBalance: number;
   btcBalance: number;
   assets: Array<{ asset_symbol: string; balance: number }>;
   positions: Array<{ margin: number; unrealized_pnl: number }>;
@@ -30,6 +32,7 @@ interface WalletSources {
 
 const emptySources: WalletSources = {
   usdtBalance: 0,
+  usdBalance: 0,
   btcBalance: 0,
   assets: [],
   positions: [],
@@ -45,6 +48,7 @@ const asNumber = (value: unknown) => {
 
 export const useWalletBreakdown = (
   usdtBalanceProp?: number,
+  usdBalanceProp?: number,
   btcBalanceProp?: number,
   btcPriceProp?: number,
   getPriceFn?: (symbol: string) => number
@@ -65,7 +69,7 @@ export const useWalletBreakdown = (
 
     try {
       const [balancesResult, assetsResult, positionsResult, ordersResult, robotResult, stakesResult] = await Promise.all([
-        supabase.from('balances').select('usdt_balance, btc_balance').eq('user_id', user.id).single(),
+        supabase.from('balances').select('usdt_balance, usd_balance, btc_balance').eq('user_id', user.id).single(),
         supabase.from('user_assets').select('asset_symbol, balance').eq('user_id', user.id),
         supabase.from('futures_positions').select('margin, unrealized_pnl').eq('user_id', user.id).eq('is_open', true),
         supabase.from('futures_orders').select('reserved_margin').eq('user_id', user.id).eq('status', 'open'),
@@ -79,6 +83,7 @@ export const useWalletBreakdown = (
 
       setSources({
         usdtBalance: asNumber(balancesResult.data?.usdt_balance),
+        usdBalance: asNumber(balancesResult.data?.usd_balance),
         btcBalance: asNumber(balancesResult.data?.btc_balance),
         assets: (assetsResult.data || []).map(asset => ({
           asset_symbol: String(asset.asset_symbol).toUpperCase(),
@@ -146,6 +151,7 @@ export const useWalletBreakdown = (
 
   const breakdown = useMemo<WalletBreakdown>(() => {
     const usdtBalance = usdtBalanceProp ?? sources.usdtBalance;
+    const usdBalance = usdBalanceProp ?? sources.usdBalance;
     const btcBalance = btcBalanceProp ?? sources.btcBalance;
     const getPrice = (symbol: string) => {
       const price = getPriceFn?.(symbol) || 0;
@@ -155,7 +161,7 @@ export const useWalletBreakdown = (
     const missingPrices = new Set<string>();
     if (btcBalance > 0 && btcPrice <= 0) missingPrices.add('BTC');
 
-    let liquidBalance = usdtBalance + btcBalance * btcPrice;
+    let liquidBalance = usdtBalance + usdBalance + btcBalance * btcPrice;
     for (const asset of sources.assets) {
       if (asset.balance <= 0 || asset.asset_symbol === 'USDT' || asset.asset_symbol === 'BTC') continue;
       const price = getPrice(`${asset.asset_symbol}USDT`);
@@ -193,6 +199,7 @@ export const useWalletBreakdown = (
       unrealizedPnl,
       availableBalance,
       fiatAvailableBalance,
+      usdAvailableBalance: Math.max(0, usdBalance),
       btcAvailableBalance: Math.max(0, btcBalance),
       robotAllocatedBalance: sources.robotAllocatedBalance,
       stakedAmount,
@@ -201,7 +208,7 @@ export const useWalletBreakdown = (
         ? `Live price unavailable for: ${Array.from(missingPrices).join(', ')}`
         : null),
     };
-  }, [btcBalanceProp, btcPriceProp, error, getPriceFn, loading, sources, usdtBalanceProp]);
+  }, [btcBalanceProp, btcPriceProp, error, getPriceFn, loading, sources, usdtBalanceProp, usdBalanceProp]);
 
   return {
     ...breakdown,

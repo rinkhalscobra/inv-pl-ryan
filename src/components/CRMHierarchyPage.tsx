@@ -1,7 +1,7 @@
 ﻿import AppSelect from './AppSelect';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, ChevronDown, ExternalLink, Loader2, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ChevronDown, ExternalLink, Loader2, Plus, RefreshCw, Search, ShieldCheck, UserCog, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { openClientDashboard } from '../lib/clientAccess';
 
@@ -105,6 +105,7 @@ export default function CRMHierarchyPage() {
 
   const retention = hierarchy.people.filter(person => person.role === 'retention');
   const agents = hierarchy.people.filter(person => person.role === 'agent');
+  const admins = hierarchy.people.filter(person => person.role === 'admin');
   const clients = hierarchy.people.filter(person => person.role === 'client');
   const agentManager = new Map(hierarchy.agent_assignments.map(item => [item.agent_id, item.retention_id]));
   const clientAgent = new Map(hierarchy.client_assignments.map(item => [item.client_id, item.agent_id]));
@@ -128,6 +129,9 @@ export default function CRMHierarchyPage() {
     || agents.filter(agent => agentManager.get(agent.id) === manager.id).some(agentContainsSearch);
   const visibleUnassignedAgents = unassignedAgents.filter(agentContainsSearch);
   const visibleRetention = retention.filter(managerContainsSearch);
+  const visibleAdmins = admins.filter(personMatchesTeamSearch);
+
+  const openAccountDetails = (person: Person) => navigate(`/admin/accounts/${person.id}`);
 
   const toggleExpanded = (id: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
     setter(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
@@ -300,7 +304,8 @@ export default function CRMHierarchyPage() {
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
         {notice && <div role="status" className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{notice}</div>}
 
-        <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className={`${panel} p-4`}><div className="text-xs text-slate-400">Administrators</div><div className="mt-1 text-2xl font-bold">{admins.length}</div><div className="mt-1 text-[11px] text-slate-500">Full platform access</div></div>
           <div className={`${panel} p-4`}><div className="text-xs text-slate-400">Retention managers</div><div className="mt-1 text-2xl font-bold">{retention.length}</div><div className="mt-1 text-[11px] text-slate-500">Team supervisors</div></div>
           <div className={`${panel} p-4`}><div className="text-xs text-slate-400">Agents</div><div className="mt-1 text-2xl font-bold">{agents.length}</div><div className="mt-1 text-[11px] text-slate-500">Client managers</div></div>
           <div className={`${panel} p-4`}><div className="text-xs text-slate-400">Assigned clients</div><div className="mt-1 text-2xl font-bold">{assignedClientIds.size}</div><div className="mt-1 text-[11px] text-slate-500">Visible to CRM staff</div></div>
@@ -308,7 +313,7 @@ export default function CRMHierarchyPage() {
         </div>
 
         <div className="mb-5 flex items-center gap-6 border-b border-white/[0.09]" role="tablist" aria-label="Team management sections">
-          <button type="button" role="tab" aria-selected={activeSection === 'teams'} onClick={() => setActiveSection('teams')} className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition ${activeSection === 'teams' ? 'border-violet-400 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}><Users size={16} />Organization <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px]">{retention.length + agents.length}</span></button>
+          <button type="button" role="tab" aria-selected={activeSection === 'teams'} onClick={() => setActiveSection('teams')} className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition ${activeSection === 'teams' ? 'border-violet-400 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}><Users size={16} />Organization <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px]">{admins.length + retention.length + agents.length}</span></button>
           <button type="button" role="tab" aria-selected={activeSection === 'clients'} onClick={() => setActiveSection('clients')} className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-semibold transition ${activeSection === 'clients' ? 'border-violet-400 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}><AlertCircle size={16} />Account setup <span className={`rounded-full px-2 py-0.5 text-[11px] ${unassignedClients.length > 0 ? 'bg-amber-400/10 text-amber-300' : 'bg-white/[0.07]'}`}>{unassignedClients.length}</span></button>
         </div>
 
@@ -374,6 +379,17 @@ export default function CRMHierarchyPage() {
               )}
             </section>
 
+            {visibleAdmins.length > 0 && <section className={`${panel} overflow-hidden`}>
+              <div className="border-b border-white/[0.08] px-5 py-4"><h2 className="font-semibold">Administrators</h2><p className="mt-1 text-xs text-slate-400">Accounts with full CRM and platform access.</p></div>
+              <div className="divide-y divide-white/[0.07]">{visibleAdmins.map(admin => <div key={admin.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0"><div className="truncate text-sm font-semibold">{nameOf(admin)}</div><div className="truncate text-xs text-slate-500">{admin.email}</div></div>
+                <div className="flex items-center gap-2">
+                  <AppSelect aria-label={`Role for ${admin.email}`} value="admin" onChange={event => changeRole(admin, event.target.value as CRMRole)} disabled={busy !== null} className={`${selectClass} w-36`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect>
+                  <button type="button" onClick={() => openAccountDetails(admin)} className="flex items-center gap-1.5 rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><UserCog size={14} />Open details</button>
+                </div>
+              </div>)}</div>
+            </section>}
+
             <section className={`${panel} flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between`}>
               <div>
                 <h2 className="text-sm font-semibold text-slate-200">Search organization</h2>
@@ -409,10 +425,9 @@ export default function CRMHierarchyPage() {
                     <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access role
                       <AppSelect aria-label={`Role for ${agent.email}`} value="agent" onChange={event => changeRole(agent, event.target.value as CRMRole)} disabled={busy !== null} className={`${selectClass} mt-1 w-full`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect>
                     </label>
-                    <button type="button" onClick={() => toggleExpanded(agent.id, setExpandedAgentIds)} aria-expanded={agentExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-white/[0.12] px-3 text-xs font-semibold text-slate-200 hover:border-violet-400/50 hover:text-white">
-                      {agentExpanded ? 'Hide clients' : 'View clients'}
-                      <ChevronDown size={15} className={`transition-transform ${agentExpanded ? 'rotate-180' : ''}`} />
-                    </button>
+                    <div className="flex gap-2"><button type="button" onClick={() => openAccountDetails(agent)} className="flex h-[38px] items-center justify-center gap-1.5 rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><UserCog size={14} />Details</button><button type="button" onClick={() => toggleExpanded(agent.id, setExpandedAgentIds)} aria-expanded={agentExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-white/[0.12] px-3 text-xs font-semibold text-slate-200 hover:border-violet-400/50 hover:text-white">
+                      {agentExpanded ? 'Hide clients' : 'View clients'}<ChevronDown size={15} className={`transition-transform ${agentExpanded ? 'rotate-180' : ''}`} />
+                    </button></div>
                   </div>
                   {agentExpanded && <div className="border-t border-white/[0.05] bg-black/10"><div className="flex items-center justify-between px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><span>Clients assigned to {nameOf(agent)}</span><span>{visibleAgentClients.length}</span></div>{visibleAgentClients.length === 0 ? <div className="px-4 py-5 text-center text-xs text-slate-500">No clients assigned to this agent.</div> : visibleAgentClients.map(renderAssignedClient)}</div>}
                 </div>;
@@ -441,10 +456,9 @@ export default function CRMHierarchyPage() {
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access role
                     <AppSelect aria-label={`Role for ${manager.email}`} value="retention" onChange={event => changeRole(manager, event.target.value as CRMRole)} disabled={busy !== null} className={`${selectClass} mt-1 w-full`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect>
                   </label>
-                  <button type="button" onClick={() => toggleExpanded(manager.id, setExpandedManagerIds)} aria-expanded={managerExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.06] px-3 text-xs font-semibold text-violet-200 hover:border-violet-400/50 hover:bg-violet-500/[0.1]">
-                    {managerExpanded ? 'Hide team' : 'View team'}
-                    <ChevronDown size={15} className={`transition-transform ${managerExpanded ? 'rotate-180' : ''}`} />
-                  </button>
+                  <div className="flex gap-2"><button type="button" onClick={() => openAccountDetails(manager)} className="flex h-[38px] items-center justify-center gap-1.5 rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><UserCog size={14} />Details</button><button type="button" onClick={() => toggleExpanded(manager.id, setExpandedManagerIds)} aria-expanded={managerExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.06] px-3 text-xs font-semibold text-violet-200 hover:border-violet-400/50 hover:bg-violet-500/[0.1]">
+                    {managerExpanded ? 'Hide team' : 'View team'}<ChevronDown size={15} className={`transition-transform ${managerExpanded ? 'rotate-180' : ''}`} />
+                  </button></div>
                 </div>
 
                 {managerExpanded && <>
@@ -465,10 +479,9 @@ export default function CRMHierarchyPage() {
                       <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access role
                         <AppSelect aria-label={`Role for ${agent.email}`} value="agent" onChange={event => changeRole(agent, event.target.value as CRMRole)} disabled={busy !== null} className={`${selectClass} mt-1 w-full`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect>
                       </label>
-                      <button type="button" onClick={() => toggleExpanded(agent.id, setExpandedAgentIds)} aria-expanded={agentExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-white/[0.12] px-3 text-xs font-semibold text-slate-200 hover:border-violet-400/50 hover:text-white">
-                        {agentExpanded ? 'Hide clients' : 'View clients'}
-                        <ChevronDown size={15} className={`transition-transform ${agentExpanded ? 'rotate-180' : ''}`} />
-                      </button>
+                      <div className="flex gap-2"><button type="button" onClick={() => openAccountDetails(agent)} className="flex h-[38px] items-center justify-center gap-1.5 rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 text-xs font-semibold text-violet-200 hover:bg-violet-500/20"><UserCog size={14} />Details</button><button type="button" onClick={() => toggleExpanded(agent.id, setExpandedAgentIds)} aria-expanded={agentExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-white/[0.12] px-3 text-xs font-semibold text-slate-200 hover:border-violet-400/50 hover:text-white">
+                        {agentExpanded ? 'Hide clients' : 'View clients'}<ChevronDown size={15} className={`transition-transform ${agentExpanded ? 'rotate-180' : ''}`} />
+                      </button></div>
                     </div>
                     {agentExpanded && <div className="mt-4 overflow-hidden rounded-lg border border-white/[0.07] bg-[#101620]"><div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5"><div><div className="text-xs font-semibold text-slate-300">Assigned clients</div><div className="text-[11px] text-slate-500">Only this agent and the supervising retention manager can access them.</div></div><span className="text-xs text-slate-500">{agentClients.length}</span></div>{agentClients.length === 0 ? <div className="px-4 py-5 text-center text-xs text-slate-500">No clients assigned to this agent.</div> : agentClients.map(renderAssignedClient)}</div>}
                   </div>;

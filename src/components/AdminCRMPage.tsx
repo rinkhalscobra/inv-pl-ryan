@@ -1,6 +1,6 @@
 ﻿import AppSelect from './AppSelect';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Activity,
   ArrowLeft,
@@ -228,6 +228,8 @@ const RecordSection: React.FC<{
 
 const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const navigate = useNavigate();
+  const { accountId } = useParams<{ accountId?: string }>();
+  const focusedAccountId = accountId || null;
   const { convertEurToUsd, convertUsdToEur, formatEur } = useFiatCurrency();
   const formatBaseAsEur = (value: number) => formatEur(convertUsdToEur(value));
   const convertUsdToEurRef = useRef(convertUsdToEur);
@@ -236,7 +238,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [stats, setStats] = useState<CRMStats>(emptyStats);
   const [search, setSearch] = useState('');
   const [kycFilter, setKycFilter] = useState<'pending' | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(focusedAccountId);
+  const [accountRole, setAccountRole] = useState<'client' | 'agent' | 'retention' | 'admin'>('client');
   const [workspace, setWorkspace] = useState<UserWorkspace | null>(null);
   const [tab, setTab] = useState<CRMTab>('dashboard');
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -271,6 +274,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
   const loadUsers = useCallback(async (query = '') => {
     if (!isAdmin) return;
+    if (focusedAccountId) {
+      setSelectedUserId(focusedAccountId);
+      setLoadingUsers(false);
+      return;
+    }
     setLoadingUsers(true);
     const { data, error } = await supabase.rpc('admin_get_users', {
       p_search: query.trim() || null,
@@ -290,7 +298,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setSelectedUserId(current => current && nextUsers.some(user => user.id === current)
       ? current
       : nextUsers[0]?.id || null);
-  }, [isAdmin, kycFilter, showError]);
+  }, [focusedAccountId, isAdmin, kycFilter, showError]);
 
   const loadWorkspace = useCallback(async (userId: string) => {
     const requestId = ++workspaceRequestId.current;
@@ -305,10 +313,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setKycReviewReason('');
     setMessage(current => current?.type === 'error' ? null : current);
     try {
-      const [{ data, error }, { data: taxData, error: taxError }, { data: onboardingData, error: onboardingError }] = await Promise.all([
+      const [{ data, error }, { data: taxData, error: taxError }, { data: onboardingData, error: onboardingError }, { data: roleData, error: roleError }] = await Promise.all([
         supabase.rpc('admin_get_user_workspace', { p_target_user_id: userId }),
         supabase.rpc('admin_get_kyc_tax_id', { p_target_user_id: userId }),
-        supabase.rpc('admin_get_client_onboarding', { p_target_user_id: userId })
+        supabase.rpc('admin_get_client_onboarding', { p_target_user_id: userId }),
+        supabase.rpc('admin_get_account_role', { p_target_user_id: userId })
       ]);
       if (requestId !== workspaceRequestId.current) return;
       if (error || !data) {
@@ -327,6 +336,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         setMessage({ type: 'error', text: `Client account identifiers: ${errorText(onboardingError)}` });
       } else {
         setClientOnboarding((onboardingData as ClientOnboardingSummary | null) || null);
+      }
+      if (roleError) {
+        setMessage({ type: 'error', text: `Account access role: ${errorText(roleError)}` });
+      } else if (roleData === 'client' || roleData === 'agent' || roleData === 'retention' || roleData === 'admin') {
+        setAccountRole(roleData);
       }
       const next = data as UserWorkspace;
       setWorkspace(next);
@@ -395,9 +409,14 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   }, [showError]);
 
   useEffect(() => {
+    if (focusedAccountId) {
+      setSelectedUserId(focusedAccountId);
+      setLoadingUsers(false);
+      return;
+    }
     const timeout = window.setTimeout(() => void loadUsers(search), 250);
     return () => window.clearTimeout(timeout);
-  }, [loadUsers, search]);
+  }, [focusedAccountId, loadUsers, search]);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setCurrentAdminId(data.user?.id || ''));
@@ -431,7 +450,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   };
 
   const changeClientRole = async (role: 'client' | 'agent' | 'retention' | 'admin') => {
-    if (!selectedUserId || role === 'client') return;
+    if (!selectedUserId || role === accountRole) return;
     setSaving('access-role');
     setMessage(null);
     try {
@@ -440,10 +459,12 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         p_role: role
       });
       if (error) throw new Error(error.message);
+      setAccountRole(role);
       setWorkspace(null);
       setClientOnboarding(null);
-      setMessage({ type: 'success', text: `Account changed to ${role}. It is now available in Team hierarchy.` });
-      await loadUsers(search);
+      setMessage({ type: 'success', text: `Account access changed to ${role}.` });
+      if (focusedAccountId) await loadWorkspace(selectedUserId);
+      else await loadUsers(search);
     } catch (error) {
       showError(error);
     } finally {
@@ -747,21 +768,21 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <button onClick={() => navigate('/dashboard')} className="rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-slate-400 transition hover:border-purple-500/50 hover:text-white" aria-label="Back to trading platform">
+              <button onClick={() => navigate(focusedAccountId ? '/admin/hierarchy' : '/dashboard')} className="rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-slate-400 transition hover:border-purple-500/50 hover:text-white" aria-label={focusedAccountId ? 'Back to team hierarchy' : 'Back to trading platform'}>
                 <ArrowLeft size={22} />
               </button>
               <div className="rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 p-2.5 shadow-lg shadow-purple-500/20">
                 <ShieldCheck size={25} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Client accounts</h1>
-                <p className="text-sm text-slate-400">Search clients and manage their accounts, funds and platform activity.</p>
+                <h1 className="text-2xl font-bold text-white">{focusedAccountId ? 'Account details' : 'Client accounts'}</h1>
+                <p className="text-sm text-slate-400">{focusedAccountId ? 'Manage this account, funds, platform activity and access settings.' : 'Search clients and manage their accounts, funds and platform activity.'}</p>
               </div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" aria-current="page" className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/60 bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/15"><Users size={16} />Clients</button>
-            <button onClick={() => navigate('/admin/hierarchy')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Team hierarchy</button>
+            <button type="button" onClick={() => navigate('/admin/clients')} aria-current={!focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${!focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />Clients</button>
+            <button onClick={() => navigate('/admin/hierarchy')} aria-current={focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />Team hierarchy</button>
             <button onClick={() => navigate('/admin/leads')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Lead inbox</button>
             <button onClick={() => navigate('/admin/ip-access')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><ShieldCheck size={16} />IP access</button>
             <button onClick={() => void refreshAll()} className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 hover:border-purple-500/50 hover:text-white">
@@ -770,7 +791,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {!focusedAccountId && <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <button type="button" onClick={() => setKycFilter(null)} aria-pressed={kycFilter === null} className={`${panelClass} p-4 text-left transition hover:border-violet-400/60 hover:bg-slate-900 ${kycFilter === null ? 'border-violet-400/50 ring-1 ring-violet-400/20' : ''}`}>
             <div className="mb-2 flex items-center gap-2 text-xs text-slate-400"><Users size={15} />Customers</div>
             <div className="truncate text-xl font-bold text-white">{stats.total_users}</div>
@@ -787,7 +808,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             <div className="mb-2 flex items-center gap-2 text-xs text-slate-400"><Wallet size={15} />Robot allocation</div>
             <div className="truncate text-xl font-bold text-white">{formatBaseAsEur(stats.total_robot_allocated)}</div>
           </div>
-        </div>
+        </div>}
 
         {message && (
           <div className={`mb-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${message.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
@@ -795,8 +816,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
           </div>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className={`${panelClass} h-fit overflow-hidden xl:sticky xl:top-4`}>
+        <div className={focusedAccountId ? '' : 'grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]'}>
+          {!focusedAccountId && <aside className={`${panelClass} h-fit overflow-hidden xl:sticky xl:top-4`}>
             <div className="border-b border-slate-700/70 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
@@ -833,7 +854,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                 </button>
               ))}
             </div>
-          </aside>
+          </aside>}
 
           <main className="min-w-0">
             {!selectedUserId ? (
@@ -866,7 +887,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       <div><div className="text-xs text-slate-500">KYC</div><div className="font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
                       <div className="min-w-[130px] text-left">
                         <div className="text-xs text-slate-500">Access role</div>
-                        <AppSelect value="client" disabled={saving === 'access-role'} onChange={event => void changeClientRole(event.target.value as 'client' | 'agent' | 'retention' | 'admin')} aria-label={`Change access role for ${displayName(profile)}`} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-xs font-semibold text-white outline-none hover:border-violet-400 disabled:opacity-50">
+                        <AppSelect value={accountRole} disabled={saving === 'access-role'} onChange={event => void changeClientRole(event.target.value as 'client' | 'agent' | 'retention' | 'admin')} aria-label={`Change access role for ${displayName(profile)}`} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-xs font-semibold text-white outline-none hover:border-violet-400 disabled:opacity-50">
                           <option value="client">Client</option>
                           <option value="agent">Agent</option>
                           <option value="retention">Retention</option>

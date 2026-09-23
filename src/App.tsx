@@ -817,6 +817,16 @@ const handleUpdatePassword = async (newPassword: string) => {
               )
             } />
 
+            <Route path="/admin/accounts/:accountId" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
+              ) : user ? (
+                isAdmin ? <AdminIpGate><AdminCRMPage isAdmin /></AdminIpGate> : <Navigate to="/dashboard" replace />
+              ) : (
+                <Navigate to="/auth" replace />
+              )
+            } />
+
             <Route path="/admin/hierarchy" element={
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>

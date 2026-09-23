@@ -833,6 +833,14 @@ const handleUpdatePassword = async (newPassword: string) => {
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
               ) : user ? (
+                isAdmin ? <Navigate to="/admin/clients" replace /> : <Navigate to="/dashboard" replace />
+              ) : <Navigate to="/auth" replace />
+            } />
+
+            <Route path="/admin/clients" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying administrator access...</div>
+              ) : user ? (
                 isAdmin ? <AdminIpGate><AdminCRMPage isAdmin /></AdminIpGate> : <Navigate to="/dashboard" replace />
               ) : (
                 <Navigate to="/auth" replace />
@@ -867,7 +875,7 @@ const handleUpdatePassword = async (newPassword: string) => {
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>
               ) : user ? (
-                isAdmin ? <Navigate to="/admin" replace /> :
+                isAdmin ? <Navigate to="/admin/clients" replace /> :
                   crmRole === 'agent' || crmRole === 'retention' ? <CRMStaffPage role={crmRole} /> : <Navigate to="/dashboard" replace />
               ) : <Navigate to="/auth" replace />
             } />

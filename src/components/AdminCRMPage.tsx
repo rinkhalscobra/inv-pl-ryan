@@ -709,12 +709,13 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                 <ShieldCheck size={25} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Administration CRM</h1>
-                <p className="text-sm text-slate-400">Manage customers, funds, robot returns and platform records.</p>
+                <h1 className="text-2xl font-bold text-white">Client accounts</h1>
+                <p className="text-sm text-slate-400">Search clients and manage their accounts, funds and platform activity.</p>
               </div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button type="button" aria-current="page" className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/60 bg-violet-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/15"><Users size={16} />Clients</button>
             <button onClick={() => navigate('/admin/hierarchy')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Team hierarchy</button>
             <button onClick={() => navigate('/admin/leads')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Lead inbox</button>
             <button onClick={() => navigate('/admin/ip-access')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><ShieldCheck size={16} />IP access</button>

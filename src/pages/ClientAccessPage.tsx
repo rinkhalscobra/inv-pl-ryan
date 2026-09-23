@@ -48,7 +48,14 @@ export default function ClientAccessPage() {
       setError('This client access link is missing or has expired.');
     };
 
-    processLocation();
+    // The bootstrap removes the one-time token from the address bar before
+    // React mounts. If that bootstrap is already running, use it directly so
+    // the page never mistakes the intentionally cleared hash for a bad link.
+    if (clientAccessBootstrapPromise) {
+      startAuthentication('', null, clientAccessBootstrapPromise);
+    } else {
+      processLocation();
+    }
     window.addEventListener('hashchange', processLocation);
     return () => {
       cancelled = true;

@@ -12,6 +12,32 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 });
 const uuid = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
+async function hasFinancialActivity(admin: ReturnType<typeof createClient>, userId: string) {
+  const [balanceResult, transactionsResult, positionsResult, ordersResult, stakesResult, assetsResult, robotResult] = await Promise.all([
+    admin.from("balances").select("usdt_balance,usd_balance,btc_balance").eq("user_id", userId).maybeSingle(),
+    admin.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    admin.from("futures_positions").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    admin.from("futures_orders").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    admin.from("user_stakes").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    admin.from("user_assets").select("id").eq("user_id", userId).neq("balance", 0).limit(1),
+    admin.from("robot_states").select("allocated_balance,is_active").eq("user_id", userId).maybeSingle(),
+  ]);
+  const lookupError = [balanceResult, transactionsResult, positionsResult, ordersResult, stakesResult, assetsResult, robotResult]
+    .find(result => result.error)?.error;
+  if (lookupError) throw lookupError;
+  const balance = balanceResult.data;
+  const robot = robotResult.data;
+  return Number(balance?.usdt_balance || 0) !== 0 ||
+    Number(balance?.usd_balance || 0) !== 0 ||
+    Number(balance?.btc_balance || 0) !== 0 ||
+    Number(transactionsResult.count || 0) > 0 ||
+    Number(positionsResult.count || 0) > 0 ||
+    Number(ordersResult.count || 0) > 0 ||
+    Number(stakesResult.count || 0) > 0 ||
+    (assetsResult.data?.length || 0) > 0 ||
+    Number(robot?.allocated_balance || 0) !== 0 || robot?.is_active === true;
+}
+
 Deno.serve(async request => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -94,23 +120,74 @@ Deno.serve(async request => {
     if (rateError) return json({ error: "Client access audit could not be verified" }, 500);
     if ((count || 0) >= 10) return json({ error: "Too many client sessions were opened. Wait one minute and try again." }, 429);
 
+    const normalizedTargetEmail = String(target.email).toLowerCase();
+    const { data: selectedAuth, error: selectedAuthError } = await admin.auth.admin.getUserById(targetId);
+    const selectedAuthMatches = !selectedAuthError && selectedAuth.user &&
+      selectedAuth.user.email?.toLowerCase() === normalizedTargetEmail;
+
+    // Remove inactive duplicate login records before generating an email based
+    // link. Without this, GoTrue can resolve the same email to a different UUID.
+    if (selectedAuthMatches) {
+      const { data: authDirectory, error: directoryError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      if (directoryError) return json({ error: "The client authentication directory could not be checked" }, 500);
+      const duplicateAuthUsers = authDirectory.users.filter(user =>
+        user.id !== targetId && user.email?.toLowerCase() === normalizedTargetEmail
+      );
+      for (const duplicate of duplicateAuthUsers) {
+        let duplicateHasActivity = true;
+        try {
+          duplicateHasActivity = await hasFinancialActivity(admin, duplicate.id);
+        } catch (lookupError) {
+          console.error("Duplicate client activity check failed", { duplicateUserId: duplicate.id, lookupError });
+          return json({ error: "The duplicate client account could not be verified safely" }, 500);
+        }
+        if (duplicateHasActivity) {
+          return json({ error: "A duplicate login with financial activity exists for this email. Manual account review is required." }, 409);
+        }
+        const { error: deleteDuplicateError } = await admin.auth.admin.deleteUser(duplicate.id, false);
+        if (deleteDuplicateError) return json({ error: "The empty duplicate login could not be removed" }, 500);
+      }
+    }
+
     const { data: link, error: linkError } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: String(target.email),
     });
     const tokenHash = link?.properties?.hashed_token;
     if (linkError || !tokenHash) return json({ error: linkError?.message || "Client session could not be created" }, 500);
+    const authUserId = link?.user?.id;
+    if (!authUserId) return json({ error: "The client authentication account could not be identified" }, 500);
+
+    // Email based link generation can select the wrong UUID when legacy data
+    // contains duplicate auth accounts. Prefer the exact CRM UUID when it is a
+    // valid auth account and remove only a verified empty duplicate.
+    if (authUserId !== targetId) {
+      if (selectedAuthMatches) {
+        return json({ error: "The selected client login could not be resolved" }, 409);
+      } else {
+        // A public CRM profile without its own auth identity is moved to the
+        // inactive auth UUID selected for that same email.
+        const { data: repair, error: repairError } = await admin.rpc("crm_merge_orphan_client_identity", {
+          p_source_user_id: targetId,
+          p_auth_user_id: authUserId,
+        });
+        if (repairError || repair?.success !== true) {
+          console.error("CRM client identity repair failed", { targetId, authUserId, error: repairError?.message });
+          return json({ error: repairError?.message || repair?.error || "The client account identity requires administrator review" }, 409);
+        }
+      }
+    }
 
     const { error: auditError } = await admin.from("admin_action_logs").insert({
       admin_user_id: actorId,
-      target_user_id: targetId,
+      target_user_id: authUserId,
       action: "crm_client_session_issued",
       after_data: { actor_role: actorRole, assignment_type: assignmentType },
       reason: "Authorized CRM staff opened an assigned client dashboard",
     });
     if (auditError) return json({ error: "Client session was not opened because the audit record could not be saved" }, 500);
 
-    return json({ token_hash: tokenHash });
+    return json({ token_hash: tokenHash, client_user_id: authUserId });
   } catch (error) {
     console.error("CRM client access error", error);
     return json({ error: error instanceof Error ? error.message : "Client access failed" }, 500);

@@ -430,6 +430,27 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     }
   };
 
+  const changeClientRole = async (role: 'client' | 'agent' | 'retention' | 'admin') => {
+    if (!selectedUserId || role === 'client') return;
+    setSaving('access-role');
+    setMessage(null);
+    try {
+      const { error } = await supabase.rpc('crm_admin_set_role', {
+        p_user_id: selectedUserId,
+        p_role: role
+      });
+      if (error) throw new Error(error.message);
+      setWorkspace(null);
+      setClientOnboarding(null);
+      setMessage({ type: 'success', text: `Account changed to ${role}. It is now available in Team hierarchy.` });
+      await loadUsers(search);
+    } catch (error) {
+      showError(error);
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const saveProfile = () => runMutation('profile', async () => {
     const changes = {
       ...profileForm,
@@ -838,11 +859,20 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       </div>
                       <p className="mt-1 truncate text-sm text-slate-400">{profile.email} Â· {profile.id}</p>
                     </div>
-                    <div className="grid grid-cols-4 gap-4 text-right text-sm">
+                    <div className="grid grid-cols-2 gap-4 text-right text-sm sm:grid-cols-5">
                       <div><div className="text-xs text-slate-500">EUR</div><div className="font-semibold text-white">{formatBaseAsEur(asNumber(workspace.balance.usdt_balance))}</div></div>
                       <div><div className="text-xs text-slate-500">USD</div><div className="font-semibold text-white">{formatUsd(workspace.balance.usd_balance)}</div></div>
                       <div><div className="text-xs text-slate-500">Robot</div><div className="font-semibold text-white">{formatBaseAsEur(asNumber(workspace.robot.allocated_balance))}</div></div>
                       <div><div className="text-xs text-slate-500">KYC</div><div className="font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
+                      <div className="min-w-[130px] text-left">
+                        <div className="text-xs text-slate-500">Access role</div>
+                        <AppSelect value="client" disabled={saving === 'access-role'} onChange={event => void changeClientRole(event.target.value as 'client' | 'agent' | 'retention' | 'admin')} aria-label={`Change access role for ${displayName(profile)}`} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-xs font-semibold text-white outline-none hover:border-violet-400 disabled:opacity-50">
+                          <option value="client">Client</option>
+                          <option value="agent">Agent</option>
+                          <option value="retention">Retention</option>
+                          <option value="admin">Admin</option>
+                        </AppSelect>
+                      </div>
                     </div>
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-800 pt-4">

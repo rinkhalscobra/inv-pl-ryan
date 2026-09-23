@@ -1,34 +1,24 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { clientAccessBootstrapPromise } from '../lib/supabaseClient';
 
 export default function ClientAccessPage() {
-  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const hash = new URLSearchParams(window.location.hash.slice(1));
-    const tokenHash = hash.get('token_hash');
-    const waiting = hash.has('waiting');
-    if (waiting) return;
-    window.history.replaceState({}, document.title, '/client-access');
-    if (!tokenHash) {
+    if (hash.has('waiting')) return;
+    if (!clientAccessBootstrapPromise) {
       setError('This client access link is missing or has expired.');
       return;
     }
-    let active = true;
-    void supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' }).then(({ data, error: verifyError }) => {
-      if (!active) return;
-      if (verifyError || !data.session) {
-        setError(verifyError?.message || 'The client session could not be created.');
-        return;
-      }
-      sessionStorage.setItem('crm_client_user_id', data.user?.id || '');
-      navigate('/dashboard', { replace: true });
+    const timeout = window.setTimeout(() => setError('Client authentication timed out. Close this tab and open the client dashboard again.'), 15_000);
+    void clientAccessBootstrapPromise.then(result => {
+      window.clearTimeout(timeout);
+      if (result) setError(result);
     });
-    return () => { active = false; };
-  }, [navigate]);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   return <main className="flex min-h-screen items-center justify-center bg-[#0d1118] px-4 text-slate-100">
     <section className="w-full max-w-md rounded-2xl border border-white/[0.1] bg-[#151b26] p-7 text-center shadow-2xl">

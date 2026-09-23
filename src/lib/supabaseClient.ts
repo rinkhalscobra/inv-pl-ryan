@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const clientAccessBootstrap = typeof window !== 'undefined' && window.location.pathname === '/client-access';
+const clientAccessHash = clientAccessBootstrap ? new URLSearchParams(window.location.hash.slice(1)) : null;
+const clientAccessTokenHash = clientAccessHash?.get('token_hash') || null;
 if (clientAccessBootstrap) sessionStorage.setItem('crm_client_session', 'true');
 export const isCrmClientSession = typeof window !== 'undefined' && sessionStorage.getItem('crm_client_session') === 'true';
 
@@ -48,6 +50,22 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     timeout: 30000
   }
 });
+
+// Complete the isolated CRM handoff before React mounts. This avoids development
+// StrictMode running the callback effect twice and consuming a one-time token.
+export const clientAccessBootstrapPromise: Promise<string | null> | null = clientAccessTokenHash
+  ? (() => {
+      window.history.replaceState({}, document.title, '/client-access');
+      return supabase.auth.verifyOtp({ token_hash: clientAccessTokenHash, type: 'magiclink' })
+        .then(({ data, error }) => {
+          if (error || !data.session) return error?.message || 'The client session could not be created.';
+          sessionStorage.setItem('crm_client_user_id', data.user?.id || '');
+          window.location.replace('/dashboard');
+          return null;
+        })
+        .catch(error => error instanceof Error ? error.message : 'The client session could not be created.');
+    })()
+  : null;
 
 // Enhanced test connection function with better error handling
 export const testSupabaseConnection = async () => {

@@ -7,10 +7,8 @@ import {
   Bell,
   Bot,
   CheckCircle2,
-  Coins,
   CreditCard,
   Database,
-  DollarSign,
   FileText,
   Eye,
   EyeOff,
@@ -747,13 +745,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
             ['Customers', stats.total_users, Users],
             ['Pending KYC', stats.pending_kyc, FileText],
             ['Active robots', stats.active_robots, Bot],
-            ['Available EUR', formatBaseAsEur(stats.total_usdt), Coins],
-            ['Available USD', formatUsd(stats.total_usd), DollarSign],
             ['Robot allocation', formatBaseAsEur(stats.total_robot_allocated), Wallet]
           ].map(([label, value, Icon]) => {
             const StatIcon = Icon as React.ElementType;

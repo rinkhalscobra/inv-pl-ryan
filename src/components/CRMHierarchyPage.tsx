@@ -1,7 +1,7 @@
 ﻿import AppSelect from './AppSelect';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, ArrowRight, ExternalLink, Loader2, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, ChevronDown, ExternalLink, Loader2, Plus, RefreshCw, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { openClientDashboard } from '../lib/clientAccess';
 
@@ -45,6 +45,9 @@ export default function CRMHierarchyPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'clients' | 'teams'>('teams');
   const [openingClientId, setOpeningClientId] = useState('');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [expandedAgentIds, setExpandedAgentIds] = useState<string[]>([]);
+  const [expandedManagerIds, setExpandedManagerIds] = useState<string[]>([]);
 
   const closeCreateUser = () => {
     setShowCreateUser(false);
@@ -117,6 +120,18 @@ export default function CRMHierarchyPage() {
   const clientsForAgent = (agentId: string) => clients.filter(client => clientAgent.get(client.id) === agentId);
   const directClientsForRetention = (retentionId: string) => clients.filter(client => clientRetention.get(client.id) === retentionId);
   const unassignedAgents = agents.filter(agent => !agentManager.has(agent.id));
+  const normalizedTeamSearch = teamSearch.trim().toLowerCase();
+  const personMatchesTeamSearch = (person: Person) => !normalizedTeamSearch || `${nameOf(person)} ${person.email} ${person.id}`.toLowerCase().includes(normalizedTeamSearch);
+  const agentContainsSearch = (agent: Person) => personMatchesTeamSearch(agent) || clientsForAgent(agent.id).some(personMatchesTeamSearch);
+  const managerContainsSearch = (manager: Person) => personMatchesTeamSearch(manager)
+    || directClientsForRetention(manager.id).some(personMatchesTeamSearch)
+    || agents.filter(agent => agentManager.get(agent.id) === manager.id).some(agentContainsSearch);
+  const visibleUnassignedAgents = unassignedAgents.filter(agentContainsSearch);
+  const visibleRetention = retention.filter(managerContainsSearch);
+
+  const toggleExpanded = (id: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    setter(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+  };
 
   const openStaffSetup = (role: 'agent' | 'retention') => {
     setSetupRole(role);
@@ -370,12 +385,33 @@ export default function CRMHierarchyPage() {
               )}
             </section>
 
-            {unassignedAgents.length > 0 && <section className="overflow-hidden rounded-xl border border-amber-400/20 bg-[#151b26]">
+            <section className={`${panel} flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between`}>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-200">Search organization</h2>
+                <p className="mt-1 text-xs text-slate-500">Find a retention manager, agent, or client by name, email, or account ID.</p>
+              </div>
+              <div className="relative w-full sm:w-[360px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
+                <input
+                  value={teamSearch}
+                  onChange={event => setTeamSearch(event.target.value)}
+                  placeholder="Search teams and clients"
+                  aria-label="Search teams and clients"
+                  className={`${selectClass} w-full pl-9 pr-9`}
+                />
+                {teamSearch && <button type="button" onClick={() => setTeamSearch('')} aria-label="Clear organization search" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={15} /></button>}
+              </div>
+            </section>
+
+            {visibleUnassignedAgents.length > 0 && <section className="overflow-hidden rounded-xl border border-amber-400/20 bg-[#151b26]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-400/15 bg-amber-400/[0.04] px-5 py-4"><div className="flex items-start gap-3"><div className="rounded-lg bg-amber-400/10 p-2 text-amber-300"><AlertCircle size={18} /></div><div><h2 className="font-semibold">Action required: assign agent managers</h2><p className="mt-1 text-xs text-slate-400">These agents can manage their clients, but no retention manager currently supervises them.</p></div></div><span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-bold text-amber-300">{unassignedAgents.length} unassigned</span></div>
-              <div className="divide-y divide-white/[0.07]">{unassignedAgents.map(agent => {
+              <div className="divide-y divide-white/[0.07]">{visibleUnassignedAgents.map(agent => {
                 const agentClients = clientsForAgent(agent.id);
+                const agentMatches = personMatchesTeamSearch(agent);
+                const visibleAgentClients = normalizedTeamSearch && !agentMatches ? agentClients.filter(personMatchesTeamSearch) : agentClients;
+                const agentExpanded = expandedAgentIds.includes(agent.id) || (!!normalizedTeamSearch && !agentMatches);
                 return <div key={agent.id}>
-                  <div className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(240px,1fr)_130px_minmax(220px,280px)_150px] lg:items-end">
+                  <div className="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(240px,1fr)_130px_minmax(220px,280px)_150px_auto] lg:items-end">
                     <div className="min-w-0"><div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Agent account</div><div className="mt-1 truncate text-sm font-semibold">{nameOf(agent)}</div><div className="truncate text-xs text-slate-500">{agent.email}</div></div>
                     <div><div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Assigned clients</div><div className="mt-1 text-lg font-semibold">{agentClients.length}</div></div>
                     <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Retention manager
@@ -384,8 +420,12 @@ export default function CRMHierarchyPage() {
                     <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access role
                       <AppSelect aria-label={`Role for ${agent.email}`} value="agent" onChange={event => changeRole(agent, event.target.value as CRMRole)} disabled={busy !== null} className={`${selectClass} mt-1 w-full`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect>
                     </label>
+                    <button type="button" onClick={() => toggleExpanded(agent.id, setExpandedAgentIds)} aria-expanded={agentExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-white/[0.12] px-3 text-xs font-semibold text-slate-200 hover:border-violet-400/50 hover:text-white">
+                      {agentExpanded ? 'Hide clients' : 'View clients'}
+                      <ChevronDown size={15} className={`transition-transform ${agentExpanded ? 'rotate-180' : ''}`} />
+                    </button>
                   </div>
-                  {agentClients.length > 0 && <div className="border-t border-white/[0.05] bg-black/10"><div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Clients currently assigned to {nameOf(agent)}</div>{agentClients.map(renderAssignedClient)}</div>}
+                  {agentExpanded && <div className="border-t border-white/[0.05] bg-black/10"><div className="flex items-center justify-between px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><span>Clients assigned to {nameOf(agent)}</span><span>{visibleAgentClients.length}</span></div>{visibleAgentClients.length === 0 ? <div className="px-4 py-5 text-center text-xs text-slate-500">No clients assigned to this agent.</div> : visibleAgentClients.map(renderAssignedClient)}</div>}
                 </div>;
               })}</div>
             </section>}
@@ -394,38 +434,57 @@ export default function CRMHierarchyPage() {
 
             {loading ? <div className={`${panel} p-10 text-center text-sm text-slate-400`}>Loading organization...</div> : retention.length === 0 ? (
               <div className={`${panel} p-10 text-center`}><Users size={24} className="mx-auto text-slate-500" /><p className="mt-3 text-sm font-semibold">No retention team exists yet</p><p className="mt-1 text-xs text-slate-500">Use Create retention role above, then assign agents to that manager.</p></div>
-            ) : <div className="space-y-5">{retention.map(manager => {
-              const managerAgents = agents.filter(agent => agentManager.get(agent.id) === manager.id);
-              const directClients = directClientsForRetention(manager.id);
-              const teamClientCount = directClients.length + managerAgents.reduce((total, agent) => total + clientsForAgent(agent.id).length, 0);
+            ) : visibleRetention.length === 0 && visibleUnassignedAgents.length === 0 ? (
+              <div className={`${panel} p-10 text-center`}><Search size={23} className="mx-auto text-slate-500" /><p className="mt-3 text-sm font-semibold">No organization matches found</p><p className="mt-1 text-xs text-slate-500">Try a different name, email, or account ID.</p></div>
+            ) : <div className="space-y-5">{visibleRetention.map(manager => {
+              const allManagerAgents = agents.filter(agent => agentManager.get(agent.id) === manager.id);
+              const allDirectClients = directClientsForRetention(manager.id);
+              const managerMatches = personMatchesTeamSearch(manager);
+              const managerAgents = normalizedTeamSearch && !managerMatches ? allManagerAgents.filter(agentContainsSearch) : allManagerAgents;
+              const directClients = normalizedTeamSearch && !managerMatches ? allDirectClients.filter(personMatchesTeamSearch) : allDirectClients;
+              const teamClientCount = allDirectClients.length + allManagerAgents.reduce((total, agent) => total + clientsForAgent(agent.id).length, 0);
+              const managerExpanded = expandedManagerIds.includes(manager.id) || (!!normalizedTeamSearch && !managerMatches);
               return <section key={manager.id} className={`${panel} overflow-hidden`}>
-                <div className="grid gap-4 border-b border-white/[0.08] bg-violet-500/[0.04] p-5 lg:grid-cols-[minmax(260px,1fr)_100px_100px_160px] lg:items-end">
+                <div className={`grid gap-4 bg-violet-500/[0.04] p-5 lg:grid-cols-[minmax(260px,1fr)_100px_100px_160px_auto] lg:items-end ${managerExpanded ? 'border-b border-white/[0.08]' : ''}`}>
                   <div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-wider text-violet-300">Retention manager</div><div className="mt-1 truncate text-base font-semibold">{nameOf(manager)}</div><div className="truncate text-xs text-slate-400">{manager.email}</div></div>
-                  <div><div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Agents</div><div className="mt-1 text-xl font-bold">{managerAgents.length}</div></div>
+                  <div><div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Agents</div><div className="mt-1 text-xl font-bold">{allManagerAgents.length}</div></div>
                   <div><div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Clients</div><div className="mt-1 text-xl font-bold">{teamClientCount}</div></div>
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access role
                     <AppSelect aria-label={`Role for ${manager.email}`} value="retention" onChange={event => changeRole(manager, event.target.value as CRMRole)} disabled={busy !== null} className={`${selectClass} mt-1 w-full`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect>
                   </label>
+                  <button type="button" onClick={() => toggleExpanded(manager.id, setExpandedManagerIds)} aria-expanded={managerExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.06] px-3 text-xs font-semibold text-violet-200 hover:border-violet-400/50 hover:bg-violet-500/[0.1]">
+                    {managerExpanded ? 'Hide team' : 'View team'}
+                    <ChevronDown size={15} className={`transition-transform ${managerExpanded ? 'rotate-180' : ''}`} />
+                  </button>
                 </div>
 
-                {directClients.length > 0 && <div className="border-b border-white/[0.07]"><div className="flex items-center justify-between bg-black/10 px-4 py-2.5"><div><div className="text-xs font-semibold text-slate-300">Direct clients</div><div className="text-[11px] text-slate-500">Managed directly by {nameOf(manager)}, without an agent.</div></div><span className="text-xs text-slate-500">{directClients.length}</span></div>{directClients.map(renderAssignedClient)}</div>}
+                {managerExpanded && <>
+                  {directClients.length > 0 && <div className="border-b border-white/[0.07]"><div className="flex items-center justify-between bg-black/10 px-4 py-2.5"><div><div className="text-xs font-semibold text-slate-300">Direct clients</div><div className="text-[11px] text-slate-500">Managed directly by {nameOf(manager)}, without an agent.</div></div><span className="text-xs text-slate-500">{directClients.length}</span></div>{directClients.map(renderAssignedClient)}</div>}
 
-                <div className="bg-black/[0.06] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Agents reporting to {nameOf(manager)}</div>
-                {managerAgents.length === 0 ? <div className="m-4 rounded-lg border border-dashed border-white/[0.1] p-6 text-center"><p className="text-sm text-slate-400">No agents report to this manager.</p><p className="mt-1 text-xs text-slate-600">Assign an agent from the Action required section above.</p></div> : <div className="divide-y divide-white/[0.07]">{managerAgents.map(agent => {
-                  const agentClients = clientsForAgent(agent.id);
+                  <div className="bg-black/[0.06] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Agents reporting to {nameOf(manager)}</div>
+                  {managerAgents.length === 0 ? <div className="m-4 rounded-lg border border-dashed border-white/[0.1] p-6 text-center"><p className="text-sm text-slate-400">No agents report to this manager.</p><p className="mt-1 text-xs text-slate-600">Assign an agent from the Action required section above.</p></div> : <div className="divide-y divide-white/[0.07]">{managerAgents.map(agent => {
+                  const allAgentClients = clientsForAgent(agent.id);
+                  const agentMatches = personMatchesTeamSearch(agent);
+                  const agentClients = normalizedTeamSearch && !managerMatches && !agentMatches ? allAgentClients.filter(personMatchesTeamSearch) : allAgentClients;
+                  const agentExpanded = expandedAgentIds.includes(agent.id) || (!!normalizedTeamSearch && !managerMatches && !agentMatches);
                   return <div key={agent.id} className="p-4 sm:p-5">
-                    <div className="grid gap-4 lg:grid-cols-[minmax(240px,1fr)_minmax(220px,280px)_150px] lg:items-end">
-                      <div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-wider text-sky-300">Agent</div><div className="mt-1 truncate text-sm font-semibold">{nameOf(agent)}</div><div className="truncate text-xs text-slate-500">{agent.email} · {agentClients.length} assigned clients</div></div>
+                    <div className="grid gap-4 lg:grid-cols-[minmax(240px,1fr)_minmax(220px,280px)_150px_auto] lg:items-end">
+                      <div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-wider text-sky-300">Agent</div><div className="mt-1 truncate text-sm font-semibold">{nameOf(agent)}</div><div className="truncate text-xs text-slate-500">{agent.email} · {allAgentClients.length} assigned clients</div></div>
                       <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Reports to
                         <AppSelect aria-label={`Retention manager for ${agent.email}`} value={manager.id} disabled={busy !== null} onChange={event => void run(`agent-${agent.id}`, async () => { const { error } = await supabase.rpc('crm_admin_assign_agent', { p_agent_id: agent.id, p_retention_id: event.target.value || null }); return { error }; }, 'Agent assignment updated.')} className={`${selectClass} mt-1 w-full`}><option value="">Unassigned</option>{retention.map(item => <option key={item.id} value={item.id}>{nameOf(item)}</option>)}</AppSelect>
                       </label>
                       <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access role
                         <AppSelect aria-label={`Role for ${agent.email}`} value="agent" onChange={event => changeRole(agent, event.target.value as CRMRole)} disabled={busy !== null} className={`${selectClass} mt-1 w-full`}><option value="client">Client</option><option value="agent">Agent</option><option value="retention">Retention</option><option value="admin">Admin</option></AppSelect>
                       </label>
+                      <button type="button" onClick={() => toggleExpanded(agent.id, setExpandedAgentIds)} aria-expanded={agentExpanded} className="flex h-[38px] items-center justify-center gap-2 rounded-lg border border-white/[0.12] px-3 text-xs font-semibold text-slate-200 hover:border-violet-400/50 hover:text-white">
+                        {agentExpanded ? 'Hide clients' : 'View clients'}
+                        <ChevronDown size={15} className={`transition-transform ${agentExpanded ? 'rotate-180' : ''}`} />
+                      </button>
                     </div>
-                    <div className="mt-4 overflow-hidden rounded-lg border border-white/[0.07] bg-[#101620]"><div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5"><div><div className="text-xs font-semibold text-slate-300">Assigned clients</div><div className="text-[11px] text-slate-500">Only this agent and the supervising retention manager can access them.</div></div><span className="text-xs text-slate-500">{agentClients.length}</span></div>{agentClients.length === 0 ? <div className="px-4 py-5 text-center text-xs text-slate-500">No clients assigned to this agent.</div> : agentClients.map(renderAssignedClient)}</div>
+                    {agentExpanded && <div className="mt-4 overflow-hidden rounded-lg border border-white/[0.07] bg-[#101620]"><div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5"><div><div className="text-xs font-semibold text-slate-300">Assigned clients</div><div className="text-[11px] text-slate-500">Only this agent and the supervising retention manager can access them.</div></div><span className="text-xs text-slate-500">{agentClients.length}</span></div>{agentClients.length === 0 ? <div className="px-4 py-5 text-center text-xs text-slate-500">No clients assigned to this agent.</div> : agentClients.map(renderAssignedClient)}</div>}
                   </div>;
-                })}</div>}
+                  })}</div>}
+                </>}
               </section>;
             })}</div>}
           </div>

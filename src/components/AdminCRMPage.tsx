@@ -429,6 +429,12 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     else { workspaceRequestId.current += 1; setWorkspace(null); setWorkspaceError(null); setTaxSubmission(null); setClientOnboarding(null); setKycDocumentUrls({}); setLoadingWorkspace(false); }
   }, [loadWorkspace, selectedUserId]);
 
+  useEffect(() => {
+    if (accountRole !== 'client' && tab !== 'dashboard' && tab !== 'profile') {
+      setTab('dashboard');
+    }
+  }, [accountRole, tab]);
+
   const refreshAll = async () => {
     await loadUsers(search);
     if (selectedUserId) await loadWorkspace(selectedUserId);
@@ -733,9 +739,12 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   }
 
   const profile = workspace?.profile;
-  const tabs: Array<{ key: CRMTab; label: string; icon: React.ElementType }> = [
+  const primaryTabs: Array<{ key: CRMTab; label: string; icon: React.ElementType }> = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { key: 'profile', label: 'Profile', icon: UserCog },
+    { key: 'profile', label: 'Profile', icon: UserCog }
+  ];
+  const clientTabs: Array<{ key: CRMTab; label: string; icon: React.ElementType }> = [
+    ...primaryTabs,
     { key: 'wallet', label: 'Wallet', icon: Wallet },
     { key: 'swap', label: 'Swap', icon: RefreshCw },
     { key: 'futures', label: 'Futures', icon: TrendingUp },
@@ -749,6 +758,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     { key: 'notifications', label: 'Notifications', icon: Bell },
     { key: 'audit', label: 'Audit', icon: Database }
   ];
+  const tabs = accountRole === 'client' ? clientTabs : primaryTabs;
 
   const managedSection = (title: string, table: string, rows: JsonRow[], removable = true) => (
     <RecordSection

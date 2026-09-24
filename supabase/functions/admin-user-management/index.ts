@@ -54,6 +54,7 @@ Deno.serve(async (request: Request) => {
       owner_role?: string | null;
       owner_id?: string | null;
       office_id?: string | null;
+      confirmation_code?: string;
       password?: string;
       confirmation_email?: string;
       reason?: string;
@@ -153,6 +154,39 @@ Deno.serve(async (request: Request) => {
         return json({ error: `Account was not created: ${finalizeError.message}` }, 400);
       }
       return json({ success: true, user_id: newUserId, message: "Account created" });
+    }
+
+    if (body.action === "delete_office") {
+      const officeId = body.office_id?.trim() || "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(officeId)) {
+        return json({ error: "Select a valid Office" }, 400);
+      }
+      const { data: office, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("id", officeId).maybeSingle();
+      if (officeError || !office) return json({ error: "Office not found" }, 404);
+      if ((body.confirmation_code || "").trim().toUpperCase() !== String(office.code).toUpperCase()) {
+        return json({ error: `Enter ${office.code} to confirm Office deletion` }, 400);
+      }
+      const { data: officeUsers, error: usersError } = await admin.from("users").select("id,email,is_admin").eq("office_id", officeId);
+      if (usersError) return json({ error: "Office users could not be verified" }, 500);
+      if ((officeUsers || []).some(user => user.id === actorId || user.is_admin === true)) {
+        return json({ error: "Move global Administrators out of this Office before deleting it" }, 400);
+      }
+      for (const user of officeUsers || []) {
+        const { data: authAccount, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+        if (lookupError && !/not found/i.test(lookupError.message)) {
+          return json({ error: `Deletion stopped while checking ${user.email}. Retry after reviewing this account.` }, 500);
+        }
+        if (authAccount?.user) {
+          const { error: deleteError } = await admin.auth.admin.deleteUser(user.id, false);
+          if (deleteError) return json({ error: `Deletion stopped at ${user.email}: ${deleteError.message}` }, 500);
+        }
+      }
+      const { data: deleted, error: deleteDataError } = await admin.rpc("crm_service_delete_office_data", {
+        p_actor_id: actorId,
+        p_office_id: officeId,
+      });
+      if (deleteDataError) return json({ error: `Authentication accounts were processed, but Office cleanup failed: ${deleteDataError.message}` }, 500);
+      return json({ success: true, deletion: deleted, auth_users_deleted: officeUsers?.length || 0, message: `${office.name} and all of its users and leads were deleted` });
     }
 
     const targetUserId = body.target_user_id?.trim();

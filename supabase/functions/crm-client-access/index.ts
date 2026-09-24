@@ -65,7 +65,9 @@ Deno.serve(async request => {
     ]);
     if (actorError || staffError || !actor) return json({ error: "CRM access could not be verified" }, 403);
     const actorRole = actor.is_admin === true ? "admin" : String(staffRole?.role || "client");
-    if (!["admin", "agent", "retention"].includes(actorRole)) return json({ error: "CRM staff access required" }, 403);
+    if (!["admin", "workflow_manager", "desk_manager", "agent", "retention_manager", "retention"].includes(actorRole)) {
+      return json({ error: "CRM staff access required" }, 403);
+    }
 
     if (actorRole === "admin") {
       const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
@@ -82,35 +84,12 @@ Deno.serve(async request => {
       return json({ error: "The selected account is not a client" }, 403);
     }
 
-    let allowed = actorRole === "admin";
-    let assignmentType = actorRole === "admin" ? "administrator" : "";
-    if (actorRole === "agent") {
-      const { data, error } = await admin.from("crm_client_agent_assignments")
-        .select("client_id").eq("client_id", targetId).eq("agent_id", actorId).maybeSingle();
-      if (error) return json({ error: "Client assignment could not be verified" }, 500);
-      allowed = !!data;
-      assignmentType = "agent";
-    }
-    if (actorRole === "retention") {
-      const { data: direct, error: directError } = await admin.from("crm_client_retention_assignments")
-        .select("client_id").eq("client_id", targetId).eq("retention_id", actorId).maybeSingle();
-      if (directError) return json({ error: "Client assignment could not be verified" }, 500);
-      if (direct) {
-        allowed = true;
-        assignmentType = "direct_retention";
-      } else {
-        const { data: clientAgent, error: clientAgentError } = await admin.from("crm_client_agent_assignments")
-          .select("agent_id").eq("client_id", targetId).maybeSingle();
-        if (clientAgentError) return json({ error: "Client assignment could not be verified" }, 500);
-        if (clientAgent?.agent_id) {
-          const { data: managedAgent, error: managedError } = await admin.from("crm_agent_retention_assignments")
-            .select("agent_id").eq("agent_id", clientAgent.agent_id).eq("retention_id", actorId).maybeSingle();
-          if (managedError) return json({ error: "Client assignment could not be verified" }, 500);
-          allowed = !!managedAgent;
-          assignmentType = "retention_agent";
-        }
-      }
-    }
+    const { data: allowed, error: accessError } = await admin.rpc("crm_actor_can_view_client", {
+      p_actor_id: actorId,
+      p_client_id: targetId,
+    });
+    if (accessError) return json({ error: "Client assignment could not be verified" }, 500);
+    const assignmentType = actorRole;
     if (!allowed) return json({ error: "This client is not assigned to your CRM scope" }, 403);
 
     const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();

@@ -48,18 +48,19 @@
     "youWon": "You Won",
     "claimPrize": "Claim Prize",
     "howToPlay": "How to Play",
-    "howToPlayDesc": "Make a deposit and spin the wheel to win a percentage bonus of your last deposit amount!",
+    "howToPlayDesc": "Use a spin earned from a deposit or granted by support to win a percentage bonus of its reference amount!",
     "prizes": "Available Prizes",
     "prizesDesc": "Win between 5% to 100% of your last deposit",
     "lastDeposit": "Last Deposit",
+    "crmBonusSpin": "CRM Bonus Spin",
     "potentialWin": "Potential Win",
     "spinsRemaining": "Spins Remaining",
     "rulesTitle": "Rules",
-    "rule1": "Each deposit grants you one spin",
-    "rule2": "Win percentage applies to your last deposit",
+    "rule1": "Each deposit or promotional grant provides one spin",
+    "rule2": "The win percentage applies to the displayed reference amount",
     "rule3": "Bonus is credited instantly to your account",
     "rule4": "Higher deposits unlock better prize pools",
-    "noEligibleDeposit": "No eligible deposits. Make a deposit to spin the wheel!"
+    "noEligibleDeposit": "No spins are available. Make a deposit or wait for a promotional spin!"
   },
   "navigation": {
     "home": "Home",

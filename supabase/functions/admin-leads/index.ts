@@ -97,8 +97,8 @@ async function syncSheet(admin: SupabaseClient, source: { id: string; name: stri
 }
 
 async function registerLead(admin: SupabaseClient, leadId: string, actorId: string, ownerRole: string | null, ownerId: string | null) {
-  if ((ownerRole === null) !== (ownerId === null) || (ownerRole !== null && !["agent", "retention"].includes(ownerRole)) || (ownerId !== null && !uuid(ownerId))) {
-    throw new Error("Select a valid agent or retention owner");
+  if ((ownerRole === null) !== (ownerId === null) || (ownerRole !== null && ownerRole !== "agent") || (ownerId !== null && !uuid(ownerId))) {
+    throw new Error("Select a valid sales agent");
   }
   const startedAt = new Date().toISOString();
   let step = "claim lead";
@@ -259,7 +259,7 @@ Deno.serve(async request => {
       const [leadResult, sourceResult, ownerResult] = await Promise.all([
         query,
         admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").order("created_at", { ascending: false }).limit(100),
-        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name)").in("role", ["agent", "retention"]),
+        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name)").eq("role", "agent"),
       ]);
       if (leadResult.error || sourceResult.error || ownerResult.error) throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message);
       return json({ leads: leadResult.data || [], total: leadResult.count || 0, sources: sourceResult.data || [], owners: ownerResult.data || [] });

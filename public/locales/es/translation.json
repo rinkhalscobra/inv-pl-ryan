@@ -52,18 +52,19 @@
     "youWon": "Has Ganado",
     "claimPrize": "Reclamar Premio",
     "howToPlay": "Cómo Jugar",
-    "howToPlayDesc": "¡Haz un depósito y gira la ruleta para ganar un bono porcentual de tu último depósito!",
+    "howToPlayDesc": "Usa un giro obtenido con un depósito o concedido por soporte para ganar un bono porcentual del importe de referencia.",
     "prizes": "Premios Disponibles",
     "prizesDesc": "Gana entre 5% y 100% de tu último depósito",
     "lastDeposit": "Último Depósito",
+    "crmBonusSpin": "Giro de bonificación CRM",
     "potentialWin": "Ganancia Potencial",
     "spinsRemaining": "Giros Restantes",
     "rulesTitle": "Reglas",
-    "rule1": "Cada depósito te otorga un giro",
-    "rule2": "El porcentaje ganado se aplica a tu último depósito",
+    "rule1": "Cada depósito o promoción te otorga un giro",
+    "rule2": "El porcentaje ganado se aplica al importe de referencia mostrado",
     "rule3": "El bono se acredita instantáneamente a tu cuenta",
     "rule4": "Depósitos mayores desbloquean mejores premios",
-    "noEligibleDeposit": "No hay depósitos elegibles. ¡Haz un depósito para girar la ruleta!"
+    "noEligibleDeposit": "No hay giros disponibles. Haz un depósito o espera un giro promocional."
   },
   "navigation": {
     "home": "Inicio",

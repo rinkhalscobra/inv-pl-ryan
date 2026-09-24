@@ -109,6 +109,7 @@ interface UserWorkspace {
   support_messages: JsonRow[];
   notes: JsonRow[];
   audit_logs: JsonRow[];
+  wheel_spin_grants: JsonRow[];
 }
 
 interface AdminCRMPageProps {
@@ -126,7 +127,7 @@ const emptyStats: CRMStats = {
 
 const fieldClass = 'w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20';
 const panelClass = 'rounded-2xl border border-slate-700/70 bg-slate-900/75 shadow-xl shadow-black/10';
-const preferredRecordColumns = ['symbol', 'pair', 'subject', 'message', 'content', 'chain', 'address', 'txid', 'type', 'side', 'direction', 'outcome', 'asset_symbol', 'challenge_id', 'action', 'amount', 'staked_amount', 'current_balance', 'commission_amount', 'price_amount', 'ticket_count', 'total_tickets', 'rank', 'prize_amount', 'payment_status', 'status', 'claimed', 'paid_out', 'is_open', 'created_at'];
+const preferredRecordColumns = ['symbol', 'pair', 'subject', 'message', 'content', 'chain', 'address', 'txid', 'type', 'side', 'direction', 'outcome', 'asset_symbol', 'challenge_id', 'action', 'reference_amount', 'currency', 'configured_percentage', 'winning_percentage', 'winning_amount', 'amount', 'staked_amount', 'current_balance', 'commission_amount', 'price_amount', 'ticket_count', 'total_tickets', 'rank', 'prize_amount', 'payment_status', 'status', 'claimed', 'paid_out', 'is_open', 'claimed_at', 'revoked_at', 'created_at'];
 const immutableRecordFields = new Set(['id', 'user_id', 'referrer_id', 'referred_user_id', 'created_at', 'updated_at']);
 
 const asNumber = (value: unknown): number => {
@@ -149,9 +150,9 @@ const money = (value: unknown, digits = 2) => asNumber(value).toLocaleString('en
 const formatUsd = (value: unknown) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(asNumber(value));
 
 const dateTime = (value: unknown) => {
-  if (!value) return 'â€”';
+  if (!value) return '—';
   const valueDate = new Date(String(value));
-  return Number.isNaN(valueDate.getTime()) ? 'â€”' : valueDate.toLocaleString();
+  return Number.isNaN(valueDate.getTime()) ? '—' : valueDate.toLocaleString();
 };
 
 const displayName = (user: AdminUser) => {
@@ -160,10 +161,24 @@ const displayName = (user: AdminUser) => {
 };
 
 const compactValue = (value: unknown) => {
-  if (value === null || value === undefined || value === '') return 'â€”';
+  if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+};
+
+const recordColumnLabel = (column: string) => {
+  if (column === 'configured_percentage') return 'Preset result';
+  if (column === 'winning_percentage') return 'Actual result';
+  return column.replaceAll('_', ' ');
+};
+
+const recordValue = (column: string, value: unknown) => {
+  if (column.endsWith('_at')) return dateTime(value);
+  if (column.endsWith('_percentage')) {
+    return value === null || value === undefined || value === '' ? '—' : `${compactValue(value)}%`;
+  }
+  return compactValue(value);
 };
 
 const RecordSection: React.FC<{
@@ -198,7 +213,7 @@ const RecordSection: React.FC<{
           <table className="w-full min-w-[520px] text-left text-sm">
             <thead className="bg-slate-950/40 text-xs uppercase text-slate-500">
               <tr>
-                {columns.map(column => <th key={column} className="px-4 py-3">{column.replaceAll('_', ' ')}</th>)}
+                {columns.map(column => <th key={column} className="px-4 py-3">{recordColumnLabel(column)}</th>)}
                 {(onEdit || onDelete) && <th className="px-4 py-3 text-right">Controls</th>}
               </tr>
             </thead>
@@ -207,7 +222,7 @@ const RecordSection: React.FC<{
                 <tr key={asText(row.id) || index} className="text-slate-300 hover:bg-white/[0.02]">
                   {columns.map(column => (
                     <td key={column} className="max-w-[240px] truncate px-4 py-3">
-                      {column.endsWith('_at') ? dateTime(row[column]) : compactValue(row[column])}
+                      {recordValue(column, row[column])}
                     </td>
                   ))}
                   {(onEdit || onDelete) && (
@@ -239,7 +254,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [search, setSearch] = useState('');
   const [kycFilter, setKycFilter] = useState<'pending' | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(focusedAccountId);
-  const [accountRole, setAccountRole] = useState<'client' | 'agent' | 'retention' | 'admin'>('client');
+  type AccountRole = 'client' | 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention' | 'admin';
+  const [accountRole, setAccountRole] = useState<AccountRole>('client');
   const [workspace, setWorkspace] = useState<UserWorkspace | null>(null);
   const [tab, setTab] = useState<CRMTab>('dashboard');
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -261,6 +277,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [assetForm, setAssetForm] = useState({ symbol: '', balance: '0' });
   const [manualProfit, setManualProfit] = useState('');
   const [depositForm, setDepositForm] = useState({ currency: 'EUR', amount: '', reference: '' });
+  const [wheelGrantPercentage, setWheelGrantPercentage] = useState('5');
   const [note, setNote] = useState('');
   const [notification, setNotification] = useState('');
   const [supportConversationId, setSupportConversationId] = useState('');
@@ -314,11 +331,12 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setKycReviewReason('');
     setMessage(current => current?.type === 'error' ? null : current);
     try {
-      const [{ data, error }, { data: taxData, error: taxError }, { data: onboardingData, error: onboardingError }, { data: roleData, error: roleError }] = await Promise.all([
+      const [{ data, error }, { data: taxData, error: taxError }, { data: onboardingData, error: onboardingError }, { data: roleData, error: roleError }, { data: wheelGrantData, error: wheelGrantError }] = await Promise.all([
         supabase.rpc('admin_get_user_workspace', { p_target_user_id: userId }),
         supabase.rpc('admin_get_kyc_tax_id', { p_target_user_id: userId }),
         supabase.rpc('admin_get_client_onboarding', { p_target_user_id: userId }),
-        supabase.rpc('admin_get_account_role', { p_target_user_id: userId })
+        supabase.rpc('admin_get_account_role', { p_target_user_id: userId }),
+        supabase.rpc('admin_get_user_wheel_grants', { p_target_user_id: userId })
       ]);
       if (requestId !== workspaceRequestId.current) return;
       if (error || !data) {
@@ -340,10 +358,16 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       }
       if (roleError) {
         setMessage({ type: 'error', text: `Account access role: ${errorText(roleError)}` });
-      } else if (roleData === 'client' || roleData === 'agent' || roleData === 'retention' || roleData === 'admin') {
-        setAccountRole(roleData);
+      } else if (['client', 'workflow_manager', 'desk_manager', 'agent', 'retention_manager', 'retention', 'admin'].includes(String(roleData))) {
+        setAccountRole(roleData as AccountRole);
       }
-      const next = data as UserWorkspace;
+      if (wheelGrantError) {
+        setMessage({ type: 'error', text: `Wheel spin grants: ${errorText(wheelGrantError)}` });
+      }
+      const next = {
+        ...(data as Omit<UserWorkspace, 'wheel_spin_grants'>),
+        wheel_spin_grants: wheelGrantError ? [] : ((wheelGrantData as JsonRow[] | null) || [])
+      } as UserWorkspace;
       setWorkspace(next);
       const profile = next.profile || ({} as AdminUser);
       const balance = next.balance || {};
@@ -456,7 +480,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     }
   };
 
-  const changeClientRole = async (role: 'client' | 'agent' | 'retention' | 'admin') => {
+  const changeClientRole = async (role: AccountRole) => {
     if (!selectedUserId || role === accountRole) return;
     setSaving('access-role');
     setMessage(null);
@@ -560,6 +584,27 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     if (!error) setDepositForm(current => ({ ...current, amount: '', reference: '' }));
     return { error };
   }, `${depositForm.currency} deposit added`);
+
+  const grantWheelSpin = () => runMutation('wheel-grant', async () => {
+    const { error } = await supabase.rpc('admin_grant_wheel_spin', {
+      p_target_user_id: selectedUserId,
+      p_winning_percentage: Number(wheelGrantPercentage),
+      p_reason: reason.trim()
+    });
+    return { error };
+  }, `Wheel spin preset to ${wheelGrantPercentage}% and granted`);
+
+  const revokeWheelSpin = (row: JsonRow) => {
+    if (!window.confirm('Revoke this unused wheel spin? This action is audited.')) return;
+    void runMutation('wheel-revoke', async () => {
+      const { error } = await supabase.rpc('admin_revoke_wheel_spin', {
+        p_target_user_id: selectedUserId,
+        p_grant_id: row.id,
+        p_reason: reason.trim()
+      });
+      return { error };
+    }, 'Wheel spin revoked');
+  };
 
   const addNote = () => runMutation('note', async () => {
     const { error } = await supabase.rpc('admin_add_user_note', {
@@ -784,6 +829,12 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
   const cryptoRows = (rows: JsonRow[]) => (rows || []).filter(row => asText(row.symbol).toUpperCase().endsWith('USDT'));
   const cfdRows = (rows: JsonRow[]) => (rows || []).filter(row => !asText(row.symbol).toUpperCase().endsWith('USDT'));
+  const latestCompletedWheelDeposit = (workspace?.transactions || []).find(item =>
+    item.type === 'deposit'
+    && item.status === 'completed'
+    && !item.wheel_spun
+    && ['EUR', 'USD'].includes(asText(item.currency).toUpperCase())
+  );
 
   return (
     <div className="min-h-screen bg-slate-950/20 p-4 md:p-6">
@@ -910,9 +961,12 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       <div><div className="text-xs text-slate-500">KYC</div><div className="font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
                       <div className="min-w-[130px] text-left">
                         <div className="text-xs text-slate-500">Access role</div>
-                        <AppSelect value={accountRole} disabled={saving === 'access-role'} onChange={event => void changeClientRole(event.target.value as 'client' | 'agent' | 'retention' | 'admin')} aria-label={`Change access role for ${displayName(profile)}`} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-xs font-semibold text-white outline-none hover:border-violet-400 disabled:opacity-50">
+                        <AppSelect value={accountRole} disabled={saving === 'access-role'} onChange={event => void changeClientRole(event.target.value as AccountRole)} aria-label={`Change access role for ${displayName(profile)}`} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-xs font-semibold text-white outline-none hover:border-violet-400 disabled:opacity-50">
                           <option value="client">Client</option>
+                          <option value="workflow_manager">Workflow Manager</option>
+                          <option value="desk_manager">Desk Manager</option>
                           <option value="agent">Agent</option>
+                          <option value="retention_manager">Retention Manager</option>
                           <option value="retention">Retention</option>
                           <option value="admin">Admin</option>
                         </AppSelect>
@@ -992,7 +1046,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-200">Tax ID review could not load. Refresh CRM to try again.</div>
                       ) : taxSubmission ? (
                         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Tax ID</div><div className="mt-2 flex items-center gap-3"><span className="min-w-0 break-all font-mono text-sm text-white">{showTaxId ? taxSubmission.tax_id : `â€¢â€¢â€¢â€¢ ${taxSubmission.tax_id.slice(-4)}`}</span><button type="button" onClick={() => setShowTaxId(value => !value)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label={showTaxId ? 'Hide Tax ID' : 'Reveal Tax ID'}>{showTaxId ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Tax ID</div><div className="mt-2 flex items-center gap-3"><span className="min-w-0 break-all font-mono text-sm text-white">{showTaxId ? taxSubmission.tax_id : `•••• ${taxSubmission.tax_id.slice(-4)}`}</span><button type="button" onClick={() => setShowTaxId(value => !value)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label={showTaxId ? 'Hide Tax ID' : 'Reveal Tax ID'}>{showTaxId ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Submitted</div><div className="mt-2 text-sm text-white">{dateTime(taxSubmission.submitted_at)}</div>{taxSubmission.reviewed_at && <div className="mt-1 text-xs text-slate-400">Reviewed {dateTime(taxSubmission.reviewed_at)}</div>}</div>
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Identity document</div>{kycDocumentUrls.id ? <button type="button" onClick={() => void openKycDocument(kycDocumentUrls.id!)} className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open document</button> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
                           <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Selfie</div>{kycDocumentUrls.selfie ? <button type="button" onClick={() => void openKycDocument(kycDocumentUrls.selfie!)} className="mt-2 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200"><FileText size={16} />Open selfie</button> : <div className="mt-2 text-sm text-slate-500">Unavailable</div>}</div>
@@ -1127,7 +1181,35 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
                 {tab === 'wheel' && (
                   <div className="space-y-5">
-                    {managedSection('Spin Wheel rewards', 'transactions', (workspace.transactions || []).filter(item => Boolean(item.wheel_spun) || asText(item.type).includes('wheel')))}
+                    <section className={`${panelClass} p-5`}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="flex items-center gap-2 font-semibold text-white"><Gift size={18} className="text-violet-300" />Grant a valid wheel spin</h3>
+                          <p className="mt-1 max-w-3xl text-xs text-slate-400">Choose the exact result. The bonus base and currency are taken automatically from this client's latest unused completed deposit.</p>
+                        </div>
+                        <div className="rounded-lg border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-xs text-violet-200">
+                          {(workspace.wheel_spin_grants || []).filter(item => item.status === 'available').length} available
+                        </div>
+                      </div>
+                      <div className="mt-5 grid gap-3 md:grid-cols-[minmax(240px,1fr)_180px_auto]">
+                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 px-4 py-2.5">
+                          <div className="text-xs text-slate-500">Automatic bonus base: latest eligible deposit</div>
+                          <div className="mt-1 font-mono text-sm font-semibold text-white">
+                            {latestCompletedWheelDeposit
+                              ? (asText(latestCompletedWheelDeposit.currency).toUpperCase() === 'EUR'
+                                ? formatEur(asNumber(latestCompletedWheelDeposit.amount))
+                                : formatUsd(latestCompletedWheelDeposit.amount))
+                              : 'No unused completed EUR or USD deposit'}
+                          </div>
+                        </div>
+                        <label className="text-xs text-slate-400">Wheel result<AppSelect value={wheelGrantPercentage} onChange={event => setWheelGrantPercentage(event.target.value)} className={`${fieldClass} mt-1.5`}><option value="0">No win</option><option value="5">5%</option><option value="10">10%</option><option value="20">20%</option><option value="50">50%</option><option value="70">70%</option><option value="80">80%</option><option value="100">100%</option></AppSelect></label>
+                        <button type="button" onClick={grantWheelSpin} disabled={saving !== null || !selectedUserId || !latestCompletedWheelDeposit || !reason.trim()} className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/15 hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40">{saving === 'wheel-grant' ? <Loader2 size={17} className="animate-spin" /> : <Gift size={17} />}Grant spin</button>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-500">Example: if the latest deposit is €1,000 and you select 20%, the wheel lands on 20% and credits €200 when the client spins.</p>
+                    </section>
+                    <RecordSection title="Available CRM wheel spins" rows={(workspace.wheel_spin_grants || []).filter(item => item.status === 'available')} emptyText="No unused CRM wheel spins" onDelete={revokeWheelSpin} />
+                    <RecordSection title="CRM wheel spin history" rows={(workspace.wheel_spin_grants || []).filter(item => item.status !== 'available')} emptyText="No claimed or revoked CRM wheel spins" />
+                    {managedSection('Wheel bonus transactions', 'transactions', (workspace.transactions || []).filter(item => Boolean(item.wheel_spun) || asText(item.type).includes('wheel')))}
                     {managedSection('Giveaway tickets', 'giveaway_tickets', workspace.giveaway_tickets)}
                     {managedSection('Giveaway entries', 'giveaway_entries', workspace.giveaway_entries)}
                     {managedSection('Giveaway winnings', 'giveaway_winners', workspace.giveaway_winners)}

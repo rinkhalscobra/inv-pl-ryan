@@ -1,29 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-interface EligibleDeposit {
+interface WheelEligibility {
   id: string;
+  source_type: 'deposit' | 'crm_grant';
   amount: number;
-  currency?: string;
-  exchange_rate?: number;
+  currency: string;
   created_at: string;
 }
 
+export interface WheelSpinOutcome {
+  percentage: number;
+  winning_amount: number;
+  currency: string;
+}
+
 interface WheelSpinResult {
-  eligibleDeposit: EligibleDeposit | null;
+  eligibleDeposit: WheelEligibility | null;
   loading: boolean;
   error: string | null;
-  spinWheel: (percentage: number) => Promise<void>;
+  spinWheel: () => Promise<WheelSpinOutcome>;
   refreshEligibility: () => Promise<void>;
 }
 
 export const useWheelSpin = (userId: string | undefined): WheelSpinResult => {
-  const [eligibleDeposit, setEligibleDeposit] = useState<EligibleDeposit | null>(null);
+  const [eligibleDeposit, setEligibleDeposit] = useState<WheelEligibility | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchEligibleDeposit = async () => {
+  const fetchEligibleDeposit = useCallback(async () => {
     if (!userId) {
+      setEligibleDeposit(null);
       setLoading(false);
       return;
     }
@@ -31,101 +38,42 @@ export const useWheelSpin = (userId: string | undefined): WheelSpinResult => {
     try {
       setLoading(true);
       setError(null);
-
-      const { data, error: fetchError } = await supabase
-        .from('transactions')
-        .select('id, amount, currency, exchange_rate, created_at')
-        .eq('user_id', userId)
-        .eq('type', 'deposit')
-        .eq('status', 'completed')
-        .eq('wheel_spun', false)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
+      const { data, error: fetchError } = await supabase.rpc('get_wheel_spin_eligibility');
       if (fetchError) throw fetchError;
-
-      setEligibleDeposit(data);
+      setEligibleDeposit((data as WheelEligibility | null) || null);
     } catch (err) {
-      console.error('Error fetching eligible deposit:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch deposit');
+      console.error('Error fetching wheel eligibility:', err);
+      setError(err instanceof Error ? err.message : 'Failed to check wheel eligibility');
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
-  const spinWheel = async (percentage: number) => {
-    if (!eligibleDeposit || !userId) {
-      throw new Error('No eligible deposit found');
+  const spinWheel = async (): Promise<WheelSpinOutcome> => {
+    if (!eligibleDeposit || !userId) throw new Error('No eligible wheel spin found');
+
+    const { data, error: spinError } = await supabase.rpc('claim_wheel_spin', {
+      p_source_type: eligibleDeposit.source_type,
+      p_source_id: eligibleDeposit.id,
+    });
+    if (spinError) throw new Error(spinError.message);
+
+    const outcome = data as WheelSpinOutcome | null;
+    if (!outcome || !Number.isFinite(Number(outcome.percentage))) {
+      throw new Error('The wheel result could not be confirmed');
     }
 
-    try {
-      const winningAmount = Number((eligibleDeposit.amount * percentage) / 100);
-      const winningLedgerAmount = eligibleDeposit.currency === 'EUR'
-        ? winningAmount * Number(eligibleDeposit.exchange_rate || 1.1)
-        : winningAmount;
-
-      console.log('Processing wheel spin:', { userId, percentage, winningAmount, depositId: eligibleDeposit.id });
-
-      const { data: updateData, error: updateError } = await supabase
-        .from('transactions')
-        .update({
-          wheel_spun: true,
-          wheel_winning_percentage: percentage,
-          wheel_winning_amount: winningLedgerAmount,
-        })
-        .eq('id', eligibleDeposit.id)
-        .select();
-
-      if (updateError) {
-        console.error('Error updating transaction:', updateError);
-        throw new Error(`Failed to update transaction: ${updateError.message}`);
-      }
-
-      console.log('Transaction updated:', updateData);
-
-      if (percentage > 0) {
-        const { data: balanceData, error: balanceError } = await supabase.rpc('update_user_balance', {
-          p_user_id: userId,
-          p_amount: winningLedgerAmount,
-          p_operation: 'add',
-        });
-
-        if (balanceError) {
-          console.error('Error updating balance:', balanceError);
-          throw new Error(`Failed to update balance: ${balanceError.message}`);
-        }
-
-        console.log('Balance updated:', balanceData);
-
-        const { data: txData, error: txError } = await supabase.from('transactions').insert({
-          user_id: userId,
-          type: 'wheel_bonus',
-          amount: winningLedgerAmount,
-          description: `Wheel spin bonus: ${percentage}% of ${eligibleDeposit.currency === 'EUR' ? '€' : '$'}${eligibleDeposit.amount}`,
-          status: 'completed',
-        }).select();
-
-        if (txError) {
-          console.error('Error creating bonus transaction:', txError);
-          throw new Error(`Failed to create bonus transaction: ${txError.message}`);
-        }
-
-        console.log('Bonus transaction created:', txData);
-      } else {
-        console.log('No win - skipping balance credit');
-      }
-
-      await fetchEligibleDeposit();
-    } catch (err) {
-      console.error('Error processing wheel spin:', err);
-      throw err;
-    }
+    await fetchEligibleDeposit();
+    return {
+      percentage: Number(outcome.percentage),
+      winning_amount: Number(outcome.winning_amount || 0),
+      currency: String(outcome.currency || eligibleDeposit.currency),
+    };
   };
 
   useEffect(() => {
-    fetchEligibleDeposit();
-  }, [userId]);
+    void fetchEligibleDeposit();
+  }, [fetchEligibleDeposit]);
 
   return {
     eligibleDeposit,

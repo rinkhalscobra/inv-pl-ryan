@@ -10,17 +10,18 @@ interface WheelSegment {
   label: string;
   value: string;
   color: string;
-  probability: number;
 }
 
 const SpinTheWheel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { eligibleDeposit, loading: depositLoading, error: depositError, spinWheel } = useWheelSpin(user?.id);
-  const { formatEur, formatFiat } = useFiatCurrency();
-  const formatDepositAmount = (amount: number) => eligibleDeposit?.currency === 'EUR'
-    ? formatEur(amount)
-    : formatFiat(amount);
+  const { formatEur, formatFiat, formatUsd } = useFiatCurrency();
+  const formatDepositAmount = (amount: number) => {
+    if (eligibleDeposit?.currency === 'EUR') return formatEur(amount);
+    if (eligibleDeposit?.currency === 'USD') return formatUsd(amount);
+    return formatFiat(amount);
+  };
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [result, setResult] = useState<WheelSegment | null>(null);
@@ -28,14 +29,14 @@ const SpinTheWheel: React.FC = () => {
   const wheelRef = useRef<HTMLDivElement>(null);
 
   const segments: WheelSegment[] = [
-    { id: 1, label: '5%', value: '5', color: '#6366f1', probability: 40 },
-    { id: 2, label: '10%', value: '10', color: '#7c3aed', probability: 20 },
-    { id: 3, label: '20%', value: '20', color: '#8b5cf6', probability: 8 },
-    { id: 4, label: '❌', value: '0', color: '#ef4444', probability: 31.34 },
-    { id: 5, label: '50%', value: '50', color: '#9333ea', probability: 0.5 },
-    { id: 6, label: '70%', value: '70', color: '#7c3aed', probability: 0.1 },
-    { id: 7, label: '80%', value: '80', color: '#a855f7', probability: 0.05 },
-    { id: 8, label: '100%', value: '100', color: '#c026d3', probability: 0.01 },
+    { id: 1, label: '5%', value: '5', color: '#6366f1' },
+    { id: 2, label: '10%', value: '10', color: '#7c3aed' },
+    { id: 3, label: '20%', value: '20', color: '#8b5cf6' },
+    { id: 4, label: '❌', value: '0', color: '#ef4444' },
+    { id: 5, label: '50%', value: '50', color: '#9333ea' },
+    { id: 6, label: '70%', value: '70', color: '#7c3aed' },
+    { id: 7, label: '80%', value: '80', color: '#a855f7' },
+    { id: 8, label: '100%', value: '100', color: '#c026d3' },
   ];
 
   const totalSegments = segments.length;
@@ -48,18 +49,20 @@ const SpinTheWheel: React.FC = () => {
     setResult(null);
     setSpinError(null);
 
-    const fullRotations = 5 + Math.floor(Math.random() * 5);
-    const rand = Math.random() * 100;
-    let cumulativeProbability = 0;
-    let winningSegment = segments[0];
-
-    for (const segment of segments) {
-      cumulativeProbability += segment.probability;
-      if (rand <= cumulativeProbability) {
-        winningSegment = segment;
-        break;
-      }
+    let winningSegment: WheelSegment;
+    try {
+      const outcome = await spinWheel();
+      const confirmedSegment = segments.find(segment => Number(segment.value) === outcome.percentage);
+      if (!confirmedSegment) throw new Error('The wheel returned an unsupported prize');
+      winningSegment = confirmedSegment;
+    } catch (error) {
+      console.error('Error processing spin:', error);
+      setSpinError(error instanceof Error ? error.message : 'Failed to process the spin. Please contact support.');
+      setIsSpinning(false);
+      return;
     }
+
+    const fullRotations = 5 + Math.floor(Math.random() * 5);
 
     const segmentIndex = segments.findIndex(s => s.id === winningSegment.id);
     const segmentCenterAngle = (segmentIndex + 0.5) * segmentAngle;
@@ -70,27 +73,9 @@ const SpinTheWheel: React.FC = () => {
 
     setRotation(finalRotation);
 
-    setTimeout(async () => {
+    setTimeout(() => {
       setIsSpinning(false);
       setResult(winningSegment);
-
-      const winningValue = parseInt(winningSegment.value);
-
-      if (winningValue > 0) {
-        try {
-          await spinWheel(winningValue);
-        } catch (error) {
-          console.error('Error processing spin:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Failed to credit winnings. Please contact support.';
-          setSpinError(errorMessage);
-        }
-      } else {
-        try {
-          await spinWheel(0);
-        } catch (error) {
-          console.error('Error processing spin:', error);
-        }
-      }
     }, 4000);
   };
 
@@ -125,7 +110,9 @@ const SpinTheWheel: React.FC = () => {
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
                   <Coins className="w-5 h-5 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-white">{t('spinWheel.lastDeposit')}</h3>
+                <h3 className="text-xl font-bold text-white">
+                  {eligibleDeposit?.source_type === 'crm_grant' ? t('spinWheel.crmBonusSpin') : t('spinWheel.lastDeposit')}
+                </h3>
               </div>
               {depositLoading ? (
                 <div className="text-slate-400">{t('common.loading')}</div>
@@ -140,7 +127,7 @@ const SpinTheWheel: React.FC = () => {
                 </>
               ) : (
                 <div className="text-slate-400">
-                  {t('spinWheel.noEligibleDeposit') || 'No eligible deposits. Make a deposit to spin!'}
+                  {depositError || t('spinWheel.noEligibleDeposit') || 'No eligible spins. Make a deposit or contact support.'}
                 </div>
               )}
             </div>
@@ -278,7 +265,7 @@ const SpinTheWheel: React.FC = () => {
             <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-yellow-400" />
               <p className="text-yellow-300">
-                {t('spinWheel.noEligibleDeposit') || 'Make a deposit to spin the wheel!'}
+                {depositError || t('spinWheel.noEligibleDeposit') || 'Make a deposit or wait for a CRM bonus spin.'}
               </p>
             </div>
           )}

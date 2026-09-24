@@ -188,7 +188,7 @@ export const useDatabase = () => {
   const [referralCount, setReferralCount] = useState(0);
   const [referredUsers, setReferredUsers] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [crmRole, setCrmRole] = useState<'client' | 'agent' | 'retention' | 'admin'>('client');
+  const [crmRole, setCrmRole] = useState<'client' | 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention' | 'admin'>('client');
 
   // Fetch user balances
   const fetchBalances = useCallback(async () => {
@@ -366,7 +366,8 @@ export const useDatabase = () => {
         setReferralCode(data.referral_code);
         setReferralCount(data.referral_count || 0);
         setIsAdmin(data.is_admin || false);
-        setCrmRole(data.is_admin ? 'admin' : !roleError && (roleData === 'agent' || roleData === 'retention') ? roleData : 'client');
+        const staffRoles = ['workflow_manager', 'desk_manager', 'agent', 'retention_manager', 'retention'] as const;
+        setCrmRole(data.is_admin ? 'admin' : !roleError && staffRoles.some(role => role === roleData) ? roleData as typeof staffRoles[number] : 'client');
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);

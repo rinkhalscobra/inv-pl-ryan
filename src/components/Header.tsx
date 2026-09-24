@@ -47,7 +47,7 @@ interface HeaderProps {
   signOut: () => void;
   marketDataList: MarketData[];
   isAdmin: boolean;
-  crmRole: 'client' | 'agent' | 'retention' | 'admin';
+  crmRole: 'client' | 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention' | 'admin';
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -499,7 +499,7 @@ const Header: React.FC<HeaderProps> = ({
                         <ChevronRight size={15} className="shrink-0 text-slate-600 transition-colors group-hover:text-slate-300" />
                       </button>
                     )}
-                    {(crmRole === 'agent' || crmRole === 'retention') && (
+                    {(['workflow_manager', 'desk_manager', 'agent', 'retention_manager', 'retention'] as const).some(role => role === crmRole) && (
                       <button
                         type="button"
                         onClick={() => {

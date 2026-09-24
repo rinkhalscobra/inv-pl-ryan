@@ -48,18 +48,19 @@
     "youWon": "Vous avez gagné",
     "claimPrize": "Réclamer le prix",
     "howToPlay": "Comment Jouer",
-    "howToPlayDesc": "Effectuez un dépôt et tournez la roue pour gagner un bonus en pourcentage de votre dernier dépôt!",
+    "howToPlayDesc": "Utilisez un tour obtenu par dépôt ou accordé par le support pour gagner un bonus calculé sur le montant de référence !",
     "prizes": "Prix Disponibles",
     "prizesDesc": "Gagnez entre 5% et 100% de votre dernier dépôt",
     "lastDeposit": "Dernier Dépôt",
+    "crmBonusSpin": "Tour bonus CRM",
     "potentialWin": "Gain Potentiel",
     "spinsRemaining": "Tours Restants",
     "rulesTitle": "Règles",
-    "rule1": "Chaque dépôt vous accorde un tour",
-    "rule2": "Le pourcentage gagné s'applique à votre dernier dépôt",
+    "rule1": "Chaque dépôt ou offre promotionnelle vous accorde un tour",
+    "rule2": "Le pourcentage gagné s'applique au montant de référence affiché",
     "rule3": "Le bonus est crédité instantanément sur votre compte",
     "rule4": "Des dépôts plus élevés débloquent de meilleurs prix",
-    "noEligibleDeposit": "Aucun dépôt éligible. Effectuez un dépôt pour tourner la roue !"
+    "noEligibleDeposit": "Aucun tour disponible. Effectuez un dépôt ou attendez un tour promotionnel !"
   },
   "navigation": {
     "home": "Accueil",

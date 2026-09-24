@@ -76,14 +76,23 @@ Deno.serve(async (request: Request) => {
       if (password.length < 8 || password.length > 128) {
         return json({ error: "Password must contain 8 to 128 characters" }, 400);
       }
-      if (!["client", "agent", "retention", "admin"].includes(role)) {
+      if (!["client", "workflow_manager", "desk_manager", "agent", "retention_manager", "retention", "admin"].includes(role)) {
         return json({ error: "Select a valid account role" }, 400);
       }
+      const expectedOwnerRole: Record<string, string | null> = {
+        client: ownerRole === "retention" ? "retention" : "agent",
+        workflow_manager: null,
+        desk_manager: "workflow_manager",
+        agent: "desk_manager",
+        retention_manager: null,
+        retention: "retention_manager",
+        admin: null,
+      };
       if ((ownerRole === null) !== (ownerId === null) ||
-        (ownerRole !== null && !["agent", "retention"].includes(ownerRole)) ||
+        (ownerRole !== null && !["workflow_manager", "desk_manager", "agent", "retention_manager", "retention"].includes(ownerRole)) ||
         (ownerId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ownerId)) ||
-        (role === "agent" && ownerRole !== null && ownerRole !== "retention") ||
-        (["admin", "retention"].includes(role) && ownerRole !== null)) {
+        (ownerRole !== null && expectedOwnerRole[role] !== ownerRole) ||
+        (expectedOwnerRole[role] === null && ownerRole !== null)) {
         return json({ error: "Select a valid manager or client owner" }, 400);
       }
 

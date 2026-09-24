@@ -48,18 +48,19 @@
     "youWon": "Du hast gewonnen",
     "claimPrize": "Preis einfordern",
     "howToPlay": "Wie man spielt",
-    "howToPlayDesc": "Tätige eine Einzahlung und drehe das Rad, um einen prozentualen Bonus auf deine letzte Einzahlung zu gewinnen!",
+    "howToPlayDesc": "Nutze eine Drehung aus einer Einzahlung oder eine vom Support gewährte Drehung, um einen prozentualen Bonus auf den Referenzbetrag zu gewinnen!",
     "prizes": "Verfügbare Preise",
     "prizesDesc": "Gewinne zwischen 5% und 100% deiner letzten Einzahlung",
     "lastDeposit": "Letzte Einzahlung",
+    "crmBonusSpin": "CRM-Bonusdrehung",
     "potentialWin": "Potenzieller Gewinn",
     "spinsRemaining": "Verbleibende Drehungen",
     "rulesTitle": "Regeln",
-    "rule1": "Jede Einzahlung gewährt dir eine Drehung",
-    "rule2": "Der Gewinnprozentsatz gilt für deine letzte Einzahlung",
+    "rule1": "Jede Einzahlung oder Bonusgewährung bietet eine Drehung",
+    "rule2": "Der Gewinnprozentsatz gilt für den angezeigten Referenzbetrag",
     "rule3": "Der Bonus wird sofort deinem Konto gutgeschrieben",
     "rule4": "Höhere Einzahlungen schalten bessere Preispools frei",
-    "noEligibleDeposit": "Keine berechtigten Einzahlungen. Tätige eine Einzahlung, um das Rad zu drehen!"
+    "noEligibleDeposit": "Keine Drehungen verfügbar. Tätige eine Einzahlung oder warte auf eine Bonusdrehung!"
   },
   "navigation": {
     "home": "Startseite",

@@ -48,18 +48,19 @@
     "youWon": "Hai Vinto",
     "claimPrize": "Riscuoti Premio",
     "howToPlay": "Come Giocare",
-    "howToPlayDesc": "Effettua un deposito e gira la ruota per vincere un bonus percentuale sul tuo ultimo deposito!",
+    "howToPlayDesc": "Usa un giro ottenuto con un deposito o concesso dall'assistenza per vincere un bonus percentuale sull'importo di riferimento!",
     "prizes": "Premi Disponibili",
     "prizesDesc": "Vinci tra il 5% e il 100% del tuo ultimo deposito",
     "lastDeposit": "Ultimo Deposito",
+    "crmBonusSpin": "Giro bonus CRM",
     "potentialWin": "Vincita Potenziale",
     "spinsRemaining": "Giri Rimanenti",
     "rulesTitle": "Regole",
-    "rule1": "Ogni deposito ti concede un giro",
-    "rule2": "La percentuale vinta si applica al tuo ultimo deposito",
+    "rule1": "Ogni deposito o promozione ti concede un giro",
+    "rule2": "La percentuale vinta si applica all'importo di riferimento mostrato",
     "rule3": "Il bonus viene accreditato istantaneamente sul tuo conto",
     "rule4": "Depositi più alti sbloccano premi migliori",
-    "noEligibleDeposit": "Nessun deposito idoneo. Effettua un deposito per girare la ruota!"
+    "noEligibleDeposit": "Nessun giro disponibile. Effettua un deposito o attendi un giro promozionale!"
   },
   "navigation": {
     "home": "Home",

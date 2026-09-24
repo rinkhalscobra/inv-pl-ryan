@@ -856,7 +856,9 @@ const handleUpdatePassword = async (newPassword: string) => {
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>
               ) : user ? (
                 isAdmin ? <Navigate to="/admin/clients" replace /> :
-                  crmRole === 'agent' || crmRole === 'retention' ? <CRMStaffPage role={crmRole} /> : <Navigate to="/dashboard" replace />
+                  (['workflow_manager', 'desk_manager', 'agent', 'retention_manager', 'retention'] as const).some(role => role === crmRole)
+                    ? <CRMStaffPage role={crmRole as 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention'} />
+                    : <Navigate to="/dashboard" replace />
               ) : <Navigate to="/auth" replace />
             } />
             

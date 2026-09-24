@@ -53,6 +53,7 @@ Deno.serve(async (request: Request) => {
       role?: string;
       owner_role?: string | null;
       owner_id?: string | null;
+      office_id?: string | null;
       password?: string;
       confirmation_email?: string;
       reason?: string;
@@ -66,11 +67,15 @@ Deno.serve(async (request: Request) => {
       const role = body.role || "client";
       const ownerRole = body.owner_role || null;
       const ownerId = body.owner_id || null;
+      const officeId = body.office_id || null;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
         return json({ error: "Enter a valid email address" }, 400);
       }
       if (!firstName || !lastName || firstName.length > 100 || lastName.length > 100) {
         return json({ error: "Enter a first and last name (up to 100 characters each)" }, 400);
+      }
+      if (officeId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(officeId)) {
+        return json({ error: "Select a valid Office" }, 400);
       }
       if (country.length > 100) return json({ error: "Country is too long" }, 400);
       if (password.length < 8 || password.length > 128) {
@@ -116,6 +121,15 @@ Deno.serve(async (request: Request) => {
         if (rollbackError) return json({ error: `Client onboarding failed and cleanup needs administrator attention. User ID: ${newUserId}` }, 500);
         await admin.from("users").delete().eq("id", newUserId);
         return json({ error: `Account was not created: ${onboardingError?.message || onboarding?.error || "Client onboarding did not complete"}` }, 400);
+      }
+      const { error: officeError } = await admin.rpc("crm_service_set_user_office", {
+        p_user_id: newUserId,
+        p_office_id: officeId,
+      });
+      if (officeError) {
+        await admin.auth.admin.deleteUser(newUserId, false);
+        await admin.from("users").delete().eq("id", newUserId);
+        return json({ error: `Account was not created: ${officeError.message}` }, 400);
       }
       const { error: finalizeError } = await admin.rpc("crm_finalize_created_user", {
         p_user_id: newUserId,

@@ -24,6 +24,8 @@ SELECT set_config('request.jwt.claim.role','authenticated',true);
 SELECT set_config('request.jwt.claim.sub',current_setting('crm.test.admin'),true);
 SET LOCAL ROLE authenticated;
 
+SELECT public.crm_admin_set_user_office(id,NULL) FROM crm_test_accounts;
+
 SELECT public.crm_admin_set_role(current_setting('crm.test.workflow')::uuid,'workflow_manager');
 SELECT public.crm_admin_set_role(current_setting('crm.test.desk')::uuid,'desk_manager');
 SELECT public.crm_admin_set_role(current_setting('crm.test.agent')::uuid,'agent');

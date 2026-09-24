@@ -4,6 +4,7 @@ export interface LeadInput {
   last_name: string;
   phone: string;
   country: string;
+  office: string;
   campaign: string;
   notes: string;
   external_id: string;
@@ -24,6 +25,7 @@ export function normalizeLead(value: Record<string, unknown>): LeadInput | null 
     last_name: lastName,
     phone: text(value.phone ?? value.phone_number ?? value.phoneNumber, 60),
     country: text(value.country, 100),
+    office: text(value.office ?? value.office_code ?? value.officeCode ?? value.team, 100),
     campaign: text(value.campaign, 120),
     notes: text(value.notes ?? value.note, 2000),
     external_id: text(value.external_id ?? value.externalId ?? value.lead_id ?? value.leadId, 120),
@@ -66,6 +68,7 @@ const fieldForHeader = (value: unknown): keyof LeadInput | 'full_name' | null =>
   if (['fullname', 'name', 'leadname'].includes(name)) return 'full_name';
   if (['phone', 'phonenumber', 'mobile', 'mobilenumber', 'telephone', 'tel'].includes(name)) return 'phone';
   if (['country', 'countrycode'].includes(name)) return 'country';
+  if (['office', 'officecode', 'team', 'teamcode'].includes(name)) return 'office';
   if (['campaign', 'campaignname'].includes(name)) return 'campaign';
   if (['notes', 'note', 'comments', 'comment'].includes(name)) return 'notes';
   if (['externalid', 'leadid', 'id'].includes(name)) return 'external_id';

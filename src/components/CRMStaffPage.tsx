@@ -12,11 +12,12 @@ type StaffRole = 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_mana
 interface StaffClient {
   id: string; email: string; first_name: string | null; last_name: string | null;
   country: string | null; kyc_status: string; created_at: string; is_promoted: boolean;
+  office_id: string | null; office_name: string | null; office_code: string | null;
   owner_id: string | null; owner_role: 'agent' | 'retention'; owner_name: string | null;
   usdt_balance: number; usd_balance: number; btc_balance: number;
 }
 interface TeamMember { id: string; email: string; first_name: string | null; last_name: string | null; role: StaffRole; manager_id: string | null }
-interface StaffScope { role: StaffRole; team_members: TeamMember[]; clients: StaffClient[] }
+interface StaffScope { role: StaffRole; office: { id: string; name: string; code: string } | null; team_members: TeamMember[]; clients: StaffClient[] }
 interface ClientWorkspace { profile: StaffClient & { phone_number: string | null }; balance: Row; robot: Row; assets: Row[]; transactions: Row[]; positions: Row[]; orders: Row[]; stakes: Row[]; deposits: Row[] }
 
 const panel = 'rounded-xl border border-white/[0.1] bg-[#151b26]';
@@ -32,7 +33,7 @@ function DataTable({ title, rows, columns }: { title: string; rows: Row[]; colum
 export default function CRMStaffPage({ role }: { role: StaffRole }) {
   const navigate = useNavigate();
   const { convertUsdToEur, formatEur } = useFiatCurrency();
-  const [scope, setScope] = useState<StaffScope>({ role, team_members: [], clients: [] });
+  const [scope, setScope] = useState<StaffScope>({ role, office: null, team_members: [], clients: [] });
   const [workspace, setWorkspace] = useState<ClientWorkspace | null>(null);
   const [search, setSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
@@ -53,8 +54,8 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
     setLoadingScope(true);
     const { data, error: requestError } = await supabase.rpc('crm_staff_get_scope', { p_search: query.trim() || null });
     if (requestId !== scopeRequest.current) return;
-    if (requestError) { setError(requestError.message); setScope({ role, team_members: [], clients: [] }); setWorkspace(null); }
-    else { setScope((data as StaffScope) || { role, team_members: [], clients: [] }); setError(null); }
+    if (requestError) { setError(requestError.message); setScope({ role, office: null, team_members: [], clients: [] }); setWorkspace(null); }
+    else { setScope((data as StaffScope) || { role, office: null, team_members: [], clients: [] }); setError(null); }
     setLoadingScope(false);
   }, [role, search]);
 
@@ -95,7 +96,7 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
   };
 
   return <div className="min-h-screen bg-[#0d1118] px-4 py-5 text-slate-100 sm:px-6 lg:px-8"><div className="mx-auto max-w-[1700px]">
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.09] pb-5"><div className="flex items-center gap-3"><button onClick={() => navigate('/dashboard')} className="rounded-lg border border-white/[0.12] p-2.5 text-slate-300 hover:text-white" aria-label="Back to platform"><ArrowLeft size={19} /></button><div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300"><ShieldCheck size={21} /></div><div><h1 className="text-2xl font-bold">{roleLabels[role]} workspace</h1><p className="text-sm text-slate-400">{role.startsWith('retention') || role === 'retention' ? 'Promoted clients in your Retention hierarchy' : 'Unpromoted leads in your Sales hierarchy'}</p></div></div><button onClick={() => void loadScope()} disabled={loadingScope} className="flex items-center gap-2 rounded-lg border border-white/[0.12] px-3 py-2 text-sm text-slate-300 hover:text-white disabled:opacity-50"><RefreshCw size={16} className={loadingScope ? 'animate-spin' : ''} />Refresh</button></div>
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.09] pb-5"><div className="flex items-center gap-3"><button onClick={() => navigate('/dashboard')} className="rounded-lg border border-white/[0.12] p-2.5 text-slate-300 hover:text-white" aria-label="Back to platform"><ArrowLeft size={19} /></button><div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300"><ShieldCheck size={21} /></div><div><h1 className="text-2xl font-bold">{roleLabels[role]} workspace</h1><p className="text-sm text-slate-400">{role.startsWith('retention') || role === 'retention' ? 'Retention' : 'Sales'} · {scope.office ? `${scope.office.code} · ${scope.office.name}` : 'No office'} · hierarchy-scoped access</p></div></div><div className="flex gap-2">{role === 'workflow_manager' && <button onClick={() => navigate('/crm/leads')} className="rounded-lg border border-violet-400/30 px-3 py-2 text-sm font-semibold text-violet-200 hover:bg-violet-500/10">Lead inbox</button>}<button onClick={() => void loadScope()} disabled={loadingScope} className="flex items-center gap-2 rounded-lg border border-white/[0.12] px-3 py-2 text-sm text-slate-300 hover:text-white disabled:opacity-50"><RefreshCw size={16} className={loadingScope ? 'animate-spin' : ''} />Refresh</button></div></div>
     {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}{notice && <div role="status" className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{notice}</div>}
     {scope.team_members.length > 0 && <section className={`${panel} mb-5 p-4`}><h2 className="flex items-center gap-2 font-semibold"><Users size={17} />Your team</h2><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{scope.team_members.map(member => <div key={member.id} className="rounded-lg border border-white/[0.08] bg-black/10 p-3"><div className="truncate font-semibold">{nameOf(member)}</div><div className="truncate text-xs text-slate-400">{member.email}</div><div className="mt-2 text-xs text-violet-300">{roleLabels[member.role]}</div></div>)}</div></section>}
     <div className="grid gap-5 xl:grid-cols-[310px_minmax(0,1fr)]"><aside className={`${panel} h-fit overflow-hidden xl:sticky xl:top-4`}><div className="border-b border-white/[0.08] p-4"><div className="flex items-center justify-between"><h2 className="flex items-center gap-2 font-semibold"><UserCheck size={17} />Accessible clients</h2><span className="text-xs text-slate-400">{scope.clients.length}</span></div><div className="relative mt-3"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search clients" className="w-full rounded-lg border border-white/[0.12] bg-[#0f1520] py-2 pl-9 pr-3 text-sm text-white outline-none focus:border-violet-400" /></div></div><div className="max-h-[70vh] overflow-y-auto p-2">{loadingScope ? <div className="p-6 text-center text-sm text-slate-400">Loading clients...</div> : scope.clients.length === 0 ? <div className="p-6 text-center text-sm text-slate-400">No clients in your hierarchy.</div> : scope.clients.map(client => <button key={client.id} type="button" onClick={() => setSelectedClientId(client.id)} className={`mb-1 w-full rounded-lg border px-3 py-3 text-left ${selectedClientId === client.id ? 'border-violet-400/40 bg-violet-500/10' : 'border-transparent hover:bg-white/[0.04]'}`}><div className="truncate text-sm font-semibold">{nameOf(client)}</div><div className="truncate text-xs text-slate-400">{client.email}</div><div className="mt-1 truncate text-xs text-violet-300">{client.is_promoted ? 'Promoted' : 'Sales lead'} · {client.owner_name || 'Unassigned'}</div></button>)}</div></aside>

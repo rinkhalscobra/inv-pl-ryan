@@ -861,6 +861,14 @@ const handleUpdatePassword = async (newPassword: string) => {
                     : <Navigate to="/dashboard" replace />
               ) : <Navigate to="/auth" replace />
             } />
+
+            <Route path="/crm/leads" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>
+              ) : user && crmRole === 'workflow_manager' ? (
+                <AdminLeadsPage staffMode />
+              ) : <Navigate to="/dashboard" replace />
+            } />
             
             {/* Auth routes */}
             <Route path="/auth" element={

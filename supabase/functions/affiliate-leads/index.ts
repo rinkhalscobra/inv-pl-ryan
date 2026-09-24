@@ -17,6 +17,13 @@ Deno.serve(async request => {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
     const keyHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
     const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active");
+    if (officeError) throw officeError;
+    const officeMap = new Map<string, string>();
+    for (const office of offices || []) {
+      officeMap.set(String(office.code).trim().toLowerCase(), String(office.id));
+      officeMap.set(String(office.name).trim().toLowerCase(), String(office.id));
+    }
     const { data: source, error: sourceError } = await admin.from("crm_lead_sources")
       .select("id,name").eq("kind", "affiliate_api").eq("api_key_hash", keyHash).eq("active", true).maybeSingle();
     if (sourceError) throw sourceError;
@@ -34,9 +41,12 @@ Deno.serve(async request => {
     for (const input of inputs) {
       const lead = input && typeof input === "object" && !Array.isArray(input)
         ? normalizeLead(input as Record<string, unknown>) : null;
-      if (lead) leads.set(lead.email, {
-        ...lead, source_id: source.id, source_kind: "affiliate_api", source_name: source.name,
-      });
+      if (lead) {
+        const { office, ...record } = lead;
+        const incomingOffice = office || lead.country;
+        leads.set(lead.email, { ...record, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
+          source_metadata: { incoming_office: incomingOffice || null }, source_id: source.id, source_kind: "affiliate_api", source_name: source.name });
+      }
       else invalid++;
     }
     let added = 0;

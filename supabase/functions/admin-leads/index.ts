@@ -49,6 +49,13 @@ async function insertLeads(
   inputs: unknown[],
   source: { id: string | null; kind: "affiliate_api" | "google_sheet" | "file"; name: string },
 ) {
+  const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active");
+  if (officeError) throw new Error(`Could not load Offices: ${officeError.message}`);
+  const officeMap = new Map<string, string>();
+  for (const office of offices || []) {
+    officeMap.set(String(office.code).trim().toLowerCase(), String(office.id));
+    officeMap.set(String(office.name).trim().toLowerCase(), String(office.id));
+  }
   const leads = new Map<string, LeadInput>();
   let invalid = 0;
   for (const input of inputs) {
@@ -63,9 +70,12 @@ async function insertLeads(
     all[all.length - 1].push(lead);
     return all;
   }, [])) {
-    const { data, error } = await admin.from("crm_leads").upsert(batch.map(lead => ({
-      ...lead, source_id: source.id, source_kind: source.kind, source_name: source.name,
-    })), { onConflict: "email", ignoreDuplicates: true }).select("id");
+    const { data, error } = await admin.from("crm_leads").upsert(batch.map(lead => {
+      const { office, ...record } = lead;
+      const incomingOffice = office || lead.country;
+      return { ...record, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
+        source_metadata: { incoming_office: incomingOffice || null }, source_id: source.id, source_kind: source.kind, source_name: source.name };
+    }), { onConflict: "email", ignoreDuplicates: true }).select("id");
     if (error) throw new Error(`Could not save leads: ${error.message}`);
     added += data?.length || 0;
   }
@@ -116,6 +126,10 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
     if (claimError) throw claimError;
   }
   if (!lead) throw new Error("This lead is already registered or is being processed. Refresh the inbox.");
+  if (ownerId) {
+    const { data: owner, error: ownerError } = await admin.from("users").select("office_id").eq("id", ownerId).maybeSingle();
+    if (ownerError || !owner || owner.office_id !== lead.office_id) throw new Error("The Sales Agent must belong to the same Office as the lead");
+  }
 
   let createdUserId: string | null = null;
   try {
@@ -126,6 +140,8 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
       step = "existing client onboarding";
       const { data: onboarding, error: onboardingError } = await admin.rpc("crm_ensure_client_onboarding", { p_user_id: existing.id });
       if (onboardingError || onboarding?.success !== true) throw new Error(onboardingError?.message || onboarding?.error || "Existing client setup is incomplete");
+      const { error: officeSetError } = await admin.rpc("crm_service_set_user_office", { p_user_id: existing.id, p_office_id: lead.office_id });
+      if (officeSetError) throw new Error(officeSetError.message);
       const { data: authUser } = await admin.auth.admin.getUserById(existing.id);
       const wasInvitedFromThisLead = authUser.user?.user_metadata?.crm_lead_id === leadId;
       const outcome = wasInvitedFromThisLead ? "registered" : "existing";
@@ -160,6 +176,8 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
     if (onboardingError || onboarding?.success !== true) {
       throw new Error(onboardingError?.message || onboarding?.error || "Client onboarding did not complete");
     }
+    const { error: officeSetError } = await admin.rpc("crm_service_set_user_office", { p_user_id: createdUserId, p_office_id: lead.office_id });
+    if (officeSetError) throw new Error(officeSetError.message);
 
     step = "CRM client role and ownership";
     const { error: finalizeError } = await admin.rpc("crm_finalize_created_user", {
@@ -236,33 +254,63 @@ Deno.serve(async request => {
       return json({ sources: results });
     }
 
-    const clientIp = request.headers.get("cf-connecting-ip") || "";
-    if (!clientIp) return json({ error: "Administrator network access required" }, 403);
-    const { data: ipAllowed, error: ipError } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
-    if (ipError || ipAllowed !== true) return json({ error: "Administrator network access required" }, 403);
     const token = request.headers.get("Authorization")?.replace(/^Bearer /i, "");
     if (!token) return json({ error: "Authentication required" }, 401);
     const { data: actor, error: authError } = await admin.auth.getUser(token);
-    if (authError || !actor.user) return json({ error: "Invalid administrator session" }, 401);
-    const { data: profile, error: profileError } = await admin.from("users").select("is_admin").eq("id", actor.user.id).single();
-    if (profileError || profile?.is_admin !== true) return json({ error: "Administrator access required" }, 403);
+    if (authError || !actor.user) return json({ error: "Invalid CRM session" }, 401);
     const actorId = actor.user.id;
+    const [{ data: profile, error: profileError }, { data: staffRole, error: roleError }] = await Promise.all([
+      admin.from("users").select("is_admin,office_id").eq("id", actorId).single(),
+      admin.from("crm_staff_roles").select("role").eq("user_id", actorId).maybeSingle(),
+    ]);
+    if (profileError || roleError || !profile) return json({ error: "CRM access could not be verified" }, 403);
+    const isAdmin = profile.is_admin === true;
+    const actorRole = isAdmin ? "admin" : String(staffRole?.role || "client");
+    if (!isAdmin && actorRole !== "workflow_manager") return json({ error: "Lead management access required" }, 403);
+    if (isAdmin) {
+      const clientIp = request.headers.get("cf-connecting-ip") || "";
+      if (!clientIp) return json({ error: "Administrator network access required" }, 403);
+      const { data: ipAllowed, error: ipError } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
+      if (ipError || ipAllowed !== true) return json({ error: "Administrator network access required" }, 403);
+    }
+    if (!isAdmin && !["dashboard", "set_lead_office", "register_lead"].includes(action)) {
+      return json({ error: "Only Admin can manage lead sources and imports" }, 403);
+    }
 
     if (action === "dashboard") {
       const page = Math.max(0, Math.min(1000, Number(body.page) || 0));
       const status = ["new", "inviting", "registered", "existing"].includes(String(body.status)) ? String(body.status) : null;
       const search = String(body.search || "").trim().slice(0, 100);
-      let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at", { count: "exact" })
+      let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata", { count: "exact" })
         .order("created_at", { ascending: false }).range(page * 50, page * 50 + 49);
+      if (!isAdmin) query = profile.office_id ? query.eq("office_id", profile.office_id) : query.is("office_id", null);
       if (status) query = query.eq("status", status);
       if (search) query = query.ilike("email", `%${search}%`);
-      const [leadResult, sourceResult, ownerResult] = await Promise.all([
+      const [leadResult, sourceResult, ownerResult, officeResult, workflowDeskResult, agentDeskResult] = await Promise.all([
         query,
         admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").order("created_at", { ascending: false }).limit(100),
-        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name)").eq("role", "agent"),
+        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id)").eq("role", "agent"),
+        admin.from("crm_offices").select("id,name,code,status").order("name"),
+        admin.from("crm_workflow_desk_assignments").select("desk_manager_id").eq("workflow_manager_id", actorId),
+        admin.from("crm_agent_desk_assignments").select("agent_id,desk_manager_id"),
       ]);
-      if (leadResult.error || sourceResult.error || ownerResult.error) throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message);
-      return json({ leads: leadResult.data || [], total: leadResult.count || 0, sources: sourceResult.data || [], owners: ownerResult.data || [] });
+      if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error || workflowDeskResult.error || agentDeskResult.error) {
+        throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message || workflowDeskResult.error?.message || agentDeskResult.error?.message);
+      }
+      const deskIds = new Set((workflowDeskResult.data || []).map(item => item.desk_manager_id));
+      const agentIds = new Set((agentDeskResult.data || []).filter(item => deskIds.has(item.desk_manager_id)).map(item => item.agent_id));
+      const scopedOwners = isAdmin ? ownerResult.data || [] : (ownerResult.data || []).filter(item => agentIds.has(item.user_id));
+      const scopedOffices = isAdmin ? officeResult.data || [] : (officeResult.data || []).filter(item => item.id === profile.office_id);
+      return json({ leads: leadResult.data || [], total: leadResult.count || 0, sources: isAdmin ? sourceResult.data || [] : [], owners: scopedOwners, offices: scopedOffices, can_manage_sources: isAdmin });
+    }
+
+    if (action === "set_lead_office") {
+      if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
+      const officeId = body.office_id ? String(body.office_id) : null;
+      if (officeId && !uuid(officeId)) return json({ error: "Select a valid Office" }, 400);
+      const { error } = await admin.rpc("crm_set_lead_office_for_actor", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_office_id: officeId });
+      if (error) throw error;
+      return json({ success: true });
     }
 
     if (action === "create_affiliate") {
@@ -317,6 +365,8 @@ Deno.serve(async request => {
       if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
       const ownerRole = body.owner_role ? String(body.owner_role) : null;
       const ownerId = body.owner_id ? String(body.owner_id) : null;
+      const { data: allowed, error: accessError } = await admin.rpc("crm_actor_can_manage_lead", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_agent_id: ownerId });
+      if (accessError || allowed !== true) return json({ error: "This lead or Agent is outside your Office and hierarchy scope" }, 403);
       return json(await registerLead(admin, String(body.lead_id), actorId, ownerRole, ownerId));
     }
 

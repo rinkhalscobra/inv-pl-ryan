@@ -77,7 +77,12 @@ export default function CRMHierarchyPage() {
   const normalizedSearch = search.trim().toLowerCase();
   const visibleClients = useMemo(() => clients.filter(client => !normalizedSearch || `${nameOf(client)} ${client.email} ${client.id}`.toLowerCase().includes(normalizedSearch)), [clients, normalizedSearch]);
 
-  const assignmentOptions = (role: CRMRole, officeId?: string | null) => (role === 'desk_manager' ? workflowManagers : role === 'agent' ? deskManagers : role === 'retention' ? retentionManagers : role === 'client' ? agents : []).filter(person => (person.office_id || '') === (officeId || ''));
+  const assignmentOptions = (role: CRMRole, officeId?: string | null) => {
+    const candidates = role === 'desk_manager' ? workflowManagers : role === 'agent' ? deskManagers : role === 'retention' ? retentionManagers : role === 'client' ? agents : [];
+    return role === 'desk_manager' || role === 'retention'
+      ? candidates
+      : candidates.filter(person => (person.office_id || '') === (officeId || ''));
+  };
   const ownerRoleFor = (role: CRMRole) => role === 'desk_manager' ? 'workflow_manager' : role === 'agent' ? 'desk_manager' : role === 'retention' ? 'retention_manager' : role === 'client' ? 'agent' : null;
   const reportsLabel = (role: CRMRole) => role === 'desk_manager' ? 'Workflow Manager' : role === 'agent' ? 'Desk Manager' : role === 'retention' ? 'Retention Manager' : role === 'client' ? 'Sales Agent' : '';
 

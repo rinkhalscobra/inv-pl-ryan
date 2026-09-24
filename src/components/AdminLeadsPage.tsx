@@ -57,6 +57,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [status, setStatus] = useState('all');
+  const [officeFilter, setOfficeFilter] = useState('all');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [affiliateName, setAffiliateName] = useState('');
@@ -70,12 +71,12 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await invokeLeadAction({ action: 'dashboard', page, status, search });
+      const data = await invokeLeadAction({ action: 'dashboard', page, status, search, office_id: officeFilter });
       setDashboard(data as unknown as Dashboard);
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load leads'); }
     finally { setLoading(false); }
-  }, [page, status, search]);
+  }, [page, status, search, officeFilter]);
   useEffect(() => { void refresh(); }, [refresh]);
 
   const run = async (key: string, action: () => Promise<string>) => {
@@ -171,7 +172,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => navigate(staffMode ? '/crm' : '/admin')} aria-label="Back to CRM" className={`${button} border border-white/10 text-slate-300 hover:text-white`}><ArrowLeft size={18} /></button>
           <div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300"><Users size={21} /></div>
-          <div><h1 className="text-2xl font-bold">Lead inbox</h1><p className="text-sm text-slate-400">{staffMode ? 'Office-scoped Sales leads and Agent assignment.' : 'Collect affiliate leads and invite them to become clients.'}</p></div>
+          <div><h1 className="text-2xl font-bold">Lead inbox</h1><p className="text-sm text-slate-400">{staffMode ? 'All Sales Offices. Use the Office selector as a filter.' : 'Collect affiliate leads and invite them to become clients.'}</p></div>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={loading || !!busy} className={`${button} border border-white/10 text-slate-300 hover:text-white`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button>
       </header>
@@ -190,6 +191,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
           <div className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
             <div className="mr-auto"><h2 className="font-semibold">Leads</h2><p className="text-xs text-slate-400">Register a lead to create and initialize the complete client account.</p></div>
             <form onSubmit={event => { event.preventDefault(); setPage(0); setSearch(searchInput.trim()); }} className="flex gap-2"><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search email" className={`${input} w-40 sm:w-48`} /><button type="submit" className={`${button} border border-white/10 text-slate-200 hover:text-white`}>Search</button></form>
+            <AppSelect value={officeFilter} onChange={event => { setPage(0); setOfficeFilter(event.target.value); }} className={`${input} w-44`} aria-label="Filter by Office"><option value="all">All Offices</option><option value="unassigned">No Office</option>{dashboard.offices.map(office => <option key={office.id} value={office.id}>{office.code} · {office.name}</option>)}</AppSelect>
             <AppSelect value={status} onChange={event => { setPage(0); setStatus(event.target.value); }} className={`${input} w-36`} aria-label="Filter lead status"><option value="all">All statuses</option><option value="new">New</option><option value="inviting">Processing</option><option value="registered">Registered</option><option value="existing">Existing</option></AppSelect>
           </div>
           <div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="border-b border-white/10 bg-[#111723] text-xs text-slate-400"><tr><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Received</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-white/[0.07]">

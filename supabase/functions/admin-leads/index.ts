@@ -260,7 +260,7 @@ Deno.serve(async request => {
     if (authError || !actor.user) return json({ error: "Invalid CRM session" }, 401);
     const actorId = actor.user.id;
     const [{ data: profile, error: profileError }, { data: staffRole, error: roleError }] = await Promise.all([
-      admin.from("users").select("is_admin,office_id").eq("id", actorId).single(),
+      admin.from("users").select("is_admin").eq("id", actorId).single(),
       admin.from("crm_staff_roles").select("role").eq("user_id", actorId).maybeSingle(),
     ]);
     if (profileError || roleError || !profile) return json({ error: "CRM access could not be verified" }, 403);
@@ -281,27 +281,24 @@ Deno.serve(async request => {
       const page = Math.max(0, Math.min(1000, Number(body.page) || 0));
       const status = ["new", "inviting", "registered", "existing"].includes(String(body.status)) ? String(body.status) : null;
       const search = String(body.search || "").trim().slice(0, 100);
+      const officeId = String(body.office_id || "all");
+      if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
       let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata", { count: "exact" })
         .order("created_at", { ascending: false }).range(page * 50, page * 50 + 49);
-      if (!isAdmin) query = profile.office_id ? query.eq("office_id", profile.office_id) : query.is("office_id", null);
+      if (officeId === "unassigned") query = query.is("office_id", null);
+      else if (officeId !== "all") query = query.eq("office_id", officeId);
       if (status) query = query.eq("status", status);
       if (search) query = query.ilike("email", `%${search}%`);
-      const [leadResult, sourceResult, ownerResult, officeResult, workflowDeskResult, agentDeskResult] = await Promise.all([
+      const [leadResult, sourceResult, ownerResult, officeResult] = await Promise.all([
         query,
         admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").order("created_at", { ascending: false }).limit(100),
         admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id)").eq("role", "agent"),
         admin.from("crm_offices").select("id,name,code,status").order("name"),
-        admin.from("crm_workflow_desk_assignments").select("desk_manager_id").eq("workflow_manager_id", actorId),
-        admin.from("crm_agent_desk_assignments").select("agent_id,desk_manager_id"),
       ]);
-      if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error || workflowDeskResult.error || agentDeskResult.error) {
-        throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message || workflowDeskResult.error?.message || agentDeskResult.error?.message);
+      if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error) {
+        throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message);
       }
-      const deskIds = new Set((workflowDeskResult.data || []).map(item => item.desk_manager_id));
-      const agentIds = new Set((agentDeskResult.data || []).filter(item => deskIds.has(item.desk_manager_id)).map(item => item.agent_id));
-      const scopedOwners = isAdmin ? ownerResult.data || [] : (ownerResult.data || []).filter(item => agentIds.has(item.user_id));
-      const scopedOffices = isAdmin ? officeResult.data || [] : (officeResult.data || []).filter(item => item.id === profile.office_id);
-      return json({ leads: leadResult.data || [], total: leadResult.count || 0, sources: isAdmin ? sourceResult.data || [] : [], owners: scopedOwners, offices: scopedOffices, can_manage_sources: isAdmin });
+      return json({ leads: leadResult.data || [], total: leadResult.count || 0, sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [], can_manage_sources: isAdmin });
     }
 
     if (action === "set_lead_office") {
@@ -366,7 +363,7 @@ Deno.serve(async request => {
       const ownerRole = body.owner_role ? String(body.owner_role) : null;
       const ownerId = body.owner_id ? String(body.owner_id) : null;
       const { data: allowed, error: accessError } = await admin.rpc("crm_actor_can_manage_lead", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_agent_id: ownerId });
-      if (accessError || allowed !== true) return json({ error: "This lead or Agent is outside your Office and hierarchy scope" }, 403);
+      if (accessError || allowed !== true) return json({ error: "This lead is unavailable or the Agent belongs to a different Office" }, 403);
       return json(await registerLead(admin, String(body.lead_id), actorId, ownerRole, ownerId));
     }
 

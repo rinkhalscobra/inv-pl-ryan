@@ -31,6 +31,8 @@ export default function AdminIpAccessPage() {
   const [newCompany, setNewCompany] = useState({ name: '', code: '', primaryIp: '' });
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [editingCompanyName, setEditingCompanyName] = useState('');
+  const [deleteCompany, setDeleteCompany] = useState<CrmCompany | null>(null);
+  const [deleteCompanyConfirmation, setDeleteCompanyConfirmation] = useState('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -118,6 +120,28 @@ export default function AdminIpAccessPage() {
     setBusy(false);
   };
 
+  const deleteCompanyPermanently = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !deleteCompany || deleteCompanyConfirmation !== deleteCompany.name) return;
+    setBusy(true); setError(null); setNotice(null);
+    const { data, error: requestError } = await supabase.functions.invoke('admin-user-management', {
+      body: {
+        action: 'delete_company',
+        company_id: deleteCompany.id,
+        confirmation_company_name: deleteCompanyConfirmation,
+      },
+    });
+    if (requestError || data?.error) setError(data?.error || requestError?.message || 'Company deletion failed.');
+    else {
+      const deletedName = deleteCompany.name;
+      setDeleteCompany(null);
+      setDeleteCompanyConfirmation('');
+      await refresh();
+      setNotice(`${deletedName} and all of its users, clients, leads, offices and approved IPs were permanently deleted.`);
+    }
+    setBusy(false);
+  };
+
   const removeIp = async (value: string) => {
     if (busy) return;
     setBusy(true);
@@ -159,7 +183,7 @@ export default function AdminIpAccessPage() {
           <label className="min-w-[280px] text-xs text-slate-400">Active company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name} · {company.code}</option>)}</select></label>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{companies.map(company => <article key={company.id} className={`rounded-lg border p-4 ${company.id === selectedCompanyId ? 'border-violet-400/40 bg-violet-500/[0.07]' : 'border-white/10 bg-black/10'}`}>
-          {editingCompanyId === company.id ? <form onSubmit={saveCompanyName} className="mb-3 flex items-center gap-2"><input autoFocus value={editingCompanyName} onChange={event => setEditingCompanyName(event.target.value)} maxLength={100} required className="min-w-0 flex-1 rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-white outline-none focus:border-violet-400" aria-label="Company name" /><button type="submit" disabled={busy || !editingCompanyName.trim()} className="rounded-lg border border-emerald-400/30 p-2 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50" aria-label="Save company name"><Save size={15} /></button><button type="button" onClick={() => { setEditingCompanyId(null); setEditingCompanyName(''); }} disabled={busy} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Cancel editing"><X size={15} /></button></form> : <div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-white">{company.name}</div><div className="mt-1 font-mono text-xs text-slate-500">{company.code}</div></div><div className="flex items-center gap-1"><button type="button" onClick={() => { setEditingCompanyId(company.id); setEditingCompanyName(company.name); setError(null); setNotice(null); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label={`Edit ${company.name}`}><Pencil size={15} /></button><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${company.registration_path}`); setNotice('Registration link copied.'); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Copy registration link"><Copy size={15} /></button></div></div>}
+          {editingCompanyId === company.id ? <form onSubmit={saveCompanyName} className="mb-3 flex items-center gap-2"><input autoFocus value={editingCompanyName} onChange={event => setEditingCompanyName(event.target.value)} maxLength={100} required className="min-w-0 flex-1 rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-white outline-none focus:border-violet-400" aria-label="Company name" /><button type="submit" disabled={busy || !editingCompanyName.trim()} className="rounded-lg border border-emerald-400/30 p-2 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50" aria-label="Save company name"><Save size={15} /></button><button type="button" onClick={() => { setEditingCompanyId(null); setEditingCompanyName(''); }} disabled={busy} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Cancel editing"><X size={15} /></button></form> : <div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-white">{company.name}</div><div className="mt-1 font-mono text-xs text-slate-500">{company.code}</div></div><div className="flex items-center gap-1"><button type="button" onClick={() => { setEditingCompanyId(company.id); setEditingCompanyName(company.name); setError(null); setNotice(null); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label={`Edit ${company.name}`}><Pencil size={15} /></button><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${company.registration_path}`); setNotice('Registration link copied.'); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Copy registration link"><Copy size={15} /></button>{company.code !== 'PRIMARY' && <button type="button" onClick={() => { setDeleteCompany(company); setDeleteCompanyConfirmation(''); setError(null); setNotice(null); }} className="rounded-lg border border-red-400/20 p-2 text-red-300 hover:bg-red-500/10" aria-label={`Delete ${company.name}`}><Trash2 size={15} /></button>}</div></div>}
           <div className="mt-3 text-xs text-slate-400">{company.user_count} users · {company.lead_count} leads · {company.office_count} offices</div>
           <div className="mt-2 break-all text-[11px] text-slate-500">{company.registration_path}</div>
         </article>)}</div>
@@ -207,6 +231,8 @@ export default function AdminIpAccessPage() {
           <button type="submit" disabled={busy} className="mt-5 inline-flex h-[42px] items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold hover:bg-violet-500 disabled:opacity-50"><Plus size={16} />Create company</button>
         </form>
       </section>}
+
+      {deleteCompany && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-company-title"><form onSubmit={deleteCompanyPermanently} className="w-full max-w-lg rounded-2xl border border-red-400/30 bg-[#151b26] p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><h2 id="delete-company-title" className="text-xl font-bold text-red-200">Permanently delete {deleteCompany.name}?</h2><p className="mt-2 text-sm leading-6 text-slate-300">This permanently deletes the company, its approved IPs, authentication accounts, users, clients, leads, offices, lead sources, wallets, transactions, positions and related account data.</p></div><button type="button" onClick={() => { setDeleteCompany(null); setDeleteCompanyConfirmation(''); }} disabled={busy} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Cancel company deletion"><X size={19} /></button></div><div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-lg bg-black/20 p-3"><div className="text-lg font-bold text-white">{deleteCompany.user_count}</div><div className="text-slate-500">users</div></div><div className="rounded-lg bg-black/20 p-3"><div className="text-lg font-bold text-white">{deleteCompany.lead_count}</div><div className="text-slate-500">leads</div></div><div className="rounded-lg bg-black/20 p-3"><div className="text-lg font-bold text-white">{deleteCompany.office_count}</div><div className="text-slate-500">offices</div></div></div><label className="mt-5 block text-xs text-slate-300">Type <span className="font-semibold text-red-200">{deleteCompany.name}</span> to confirm<input autoFocus value={deleteCompanyConfirmation} onChange={event => setDeleteCompanyConfirmation(event.target.value)} autoComplete="off" className="mt-2 w-full rounded-lg border border-red-400/30 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-red-400" /></label><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => { setDeleteCompany(null); setDeleteCompanyConfirmation(''); }} disabled={busy} className="rounded-lg border border-white/10 px-4 py-2.5 text-sm text-slate-300 hover:text-white disabled:opacity-50">Cancel</button><button type="submit" disabled={busy || deleteCompanyConfirmation !== deleteCompany.name} className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Deleting company...' : 'Delete company permanently'}</button></div></form></div>}
     </div>
   </main>;
 }

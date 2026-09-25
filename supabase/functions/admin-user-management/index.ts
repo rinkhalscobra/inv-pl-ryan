@@ -57,6 +57,7 @@ Deno.serve(async (request: Request) => {
       confirmation_code?: string;
       password?: string;
       confirmation_email?: string;
+      confirmation_company_name?: string;
       reason?: string;
       company_id?: string | null;
     };
@@ -68,6 +69,53 @@ Deno.serve(async (request: Request) => {
     });
     const companyId = String(actorContext?.company_id || "");
     if (contextError || !companyId) return json({ error: contextError?.message || "CRM company access could not be resolved" }, 403);
+
+    if (body.action === "delete_company") {
+      if (actorContext?.access_scope !== "platform") return json({ error: "Platform network required to delete a company" }, 403);
+      const { data: company, error: companyError } = await admin.from("crm_companies")
+        .select("id,name,code,is_default_registration").eq("id", companyId).maybeSingle();
+      if (companyError || !company) return json({ error: "Company not found" }, 404);
+      if (company.is_default_registration === true) return json({ error: "Primary Company cannot be deleted" }, 400);
+      if ((body.confirmation_company_name || "").trim() !== String(company.name)) {
+        return json({ error: `Enter ${company.name} exactly to confirm company deletion` }, 400);
+      }
+
+      const companyUsers: Array<{ id: string; email: string; is_admin: boolean }> = [];
+      for (let from = 0; ; from += 500) {
+        const { data: page, error: usersError } = await admin.from("users")
+          .select("id,email,is_admin").eq("company_id", companyId).order("id").range(from, from + 499);
+        if (usersError) return json({ error: `Company accounts could not be verified: ${usersError.message}` }, 500);
+        companyUsers.push(...(page || []));
+        if (!page || page.length < 500) break;
+      }
+      if (companyUsers.some(user => user.id === actorId || user.is_admin === true)) {
+        return json({ error: "Move platform administrators out of this company before deletion" }, 400);
+      }
+
+      for (let index = 0; index < companyUsers.length; index += 100) {
+        const ids = companyUsers.slice(index, index + 100).map(user => user.id);
+        const { error: eventError } = await admin.from("events").update({ user_id: null }).in("user_id", ids);
+        if (eventError) return json({ error: `Shared records could not be prepared for deletion: ${eventError.message}` }, 500);
+      }
+
+      for (const user of companyUsers) {
+        const { data: authAccount, error: lookupError } = await admin.auth.admin.getUserById(user.id);
+        if (lookupError && !/not found/i.test(lookupError.message)) {
+          return json({ error: `Deletion stopped while checking ${user.email}. Retry after reviewing this account.` }, 500);
+        }
+        if (authAccount?.user) {
+          const { error: deleteError } = await admin.auth.admin.deleteUser(user.id, false);
+          if (deleteError) return json({ error: `Deletion stopped at ${user.email}: ${deleteError.message}` }, 500);
+        }
+      }
+
+      const { data: deletion, error: cleanupError } = await admin.rpc("crm_service_delete_company_data", {
+        p_actor_id: actorId,
+        p_company_id: companyId,
+      });
+      if (cleanupError) return json({ error: `Authentication accounts were processed, but company cleanup failed: ${cleanupError.message}` }, 500);
+      return json({ success: true, deletion, auth_users_deleted: companyUsers.length, message: `${company.name} was permanently deleted` });
+    }
 
     if (body.action === "create_user") {
       const email = body.email?.trim().toLowerCase() || "";

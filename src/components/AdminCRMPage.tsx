@@ -7,6 +7,7 @@ import {
   Bell,
   Bot,
   CheckCircle2,
+  Copy,
   CreditCard,
   Database,
   FileText,
@@ -291,6 +292,10 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
   const [companyId, setCompanyId] = useState(getSelectedCrmCompanyId() || '');
   const [isPlatformNetwork, setIsPlatformNetwork] = useState(false);
+  const activeCompany = useMemo(
+    () => companies.find(company => company.id === companyId) || companies[0] || null,
+    [companies, companyId]
+  );
 
   useEffect(() => {
     void Promise.all([supabase.rpc('crm_admin_list_companies'), supabase.rpc('crm_admin_network_context')]).then(([companyResult, contextResult]) => {
@@ -303,6 +308,16 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   }, [companyId]);
 
   const showError = useCallback((error: unknown) => setMessage({ type: 'error', text: errorText(error) }), []);
+
+  const copyRegistrationSecurityCode = useCallback(async () => {
+    if (!activeCompany?.client_registration_code) return;
+    try {
+      await navigator.clipboard.writeText(activeCompany.client_registration_code);
+      setMessage({ type: 'success', text: `${activeCompany.name} registration security code copied.` });
+    } catch {
+      setMessage({ type: 'error', text: 'Could not copy the registration security code. Select and copy it manually.' });
+    }
+  }, [activeCompany]);
 
   const loadUsers = useCallback(async (query = '') => {
     if (!isAdmin) return;
@@ -880,6 +895,25 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             </button>
           </div>
         </div>
+
+        {!focusedAccountId && activeCompany && (
+          <section className={`${panelClass} mb-6 border-emerald-400/25 p-4 sm:p-5`} aria-labelledby="registration-security-code-title">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div id="registration-security-code-title" className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300">Registration security code</div>
+                <div className="mt-1 text-sm text-slate-400">Use this private code for clients registering with <span className="font-semibold text-slate-200">{activeCompany.name}</span>.</div>
+              </div>
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="select-all break-all rounded-xl border border-emerald-400/25 bg-slate-950/60 px-4 py-3 font-mono text-lg font-bold tracking-[0.18em] text-emerald-200 sm:text-xl">
+                  {activeCompany.client_registration_code}
+                </code>
+                <button type="button" onClick={() => void copyRegistrationSecurityCode()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500" aria-label={`Copy ${activeCompany.name} registration security code`}>
+                  <Copy size={16} />Copy code
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {!focusedAccountId && <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <button type="button" onClick={() => setKycFilter(null)} aria-pressed={kycFilter === null} className={`${panelClass} p-4 text-left transition hover:border-violet-400/60 hover:bg-slate-900 ${kycFilter === null ? 'border-violet-400/50 ring-1 ring-violet-400/20' : ''}`}>

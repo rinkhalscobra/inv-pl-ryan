@@ -358,6 +358,20 @@ Deno.serve(async request => {
       return json({ result: data });
     }
 
+    if (action === "rename_affiliate_source") {
+      if (!uuid(body.source_id)) return json({ error: "Select a valid affiliate connection" }, 400);
+      const name = String(body.name || "").trim();
+      if (!name || name.length > 100) return json({ error: "Enter an affiliate name up to 100 characters" }, 400);
+      const { data, error } = await admin.rpc("crm_rename_affiliate_source", {
+        p_actor_id: actorId,
+        p_company_id: companyId,
+        p_source_id: String(body.source_id),
+        p_name: name,
+      });
+      if (error) return json({ error: error.message || "Affiliate connection could not be renamed" }, 400);
+      return json({ result: data });
+    }
+
     if (["sync_sheet", "set_source_active", "rotate_key"].includes(action)) {
       if (!uuid(body.source_id)) return json({ error: "Select a valid source" }, 400);
       const { data: source, error } = await admin.from("crm_lead_sources").select("*").eq("id", body.source_id).eq("company_id", companyId).single();

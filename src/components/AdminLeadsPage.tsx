@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, BookOpen, Check, Clipboard, Copy, Download, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Plus, RefreshCw, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, Check, Clipboard, Copy, Download, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Pencil, Plus, RefreshCw, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import AppSelect from './AppSelect';
 import { supabase } from '../lib/supabaseClient';
 import { parseCsv, rowsToLeads, type LeadInput } from '../lib/leadImport';
@@ -169,6 +169,8 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const [sheetUrl, setSheetUrl] = useState('');
   const [secret, setSecret] = useState<{ name: string; key: string } | null>(null);
   const [confirmRotate, setConfirmRotate] = useState<string | null>(null);
+  const [editingAffiliateId, setEditingAffiliateId] = useState<string | null>(null);
+  const [editingAffiliateName, setEditingAffiliateName] = useState('');
   const [deleteAffiliate, setDeleteAffiliate] = useState<Source | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [owner, setOwner] = useState('');
@@ -188,6 +190,12 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
       if (selected) { setCompanyId(selected); setSelectedCrmCompanyId(selected); }
     });
   }, [companyId, staffMode]);
+
+  useEffect(() => {
+    setEditingAffiliateId(null);
+    setEditingAffiliateName('');
+    setConfirmRotate(null);
+  }, [companyId]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -246,6 +254,19 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
     setSecret({ name: source.name, key: String(data.api_key) });
     return 'Key rotated. The previous affiliate key stopped working immediately.';
   });
+
+  const renameAffiliate = (event: FormEvent, source: Source) => {
+    event.preventDefault();
+    const name = editingAffiliateName.trim();
+    if (!name) { setError('Enter an affiliate name.'); return; }
+    void run(`rename-${source.id}`, async () => {
+      const data = await invokeLeadAction({ action: 'rename_affiliate_source', source_id: source.id, name });
+      const result = data.result as { updated_leads?: number } | undefined;
+      setEditingAffiliateId(null);
+      setEditingAffiliateName('');
+      return `${source.name} was renamed to ${name}. ${result?.updated_leads || 0} linked lead record${result?.updated_leads === 1 ? '' : 's'} updated.`;
+    });
+  };
 
   const deleteAffiliateSource = (deleteLeads: boolean) => {
     if (!deleteAffiliate) return;
@@ -368,9 +389,9 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
           <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><Link2 size={18} className="text-violet-300" /><h2 className="font-semibold">Google Sheet</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Connect a Google Sheet that can be exported as CSV. The server checks active sheets every 10 minutes.</p><form onSubmit={createSheet} className="space-y-2.5"><input required maxLength={100} value={sheetName} onChange={event => setSheetName(event.target.value)} placeholder="Sheet name" className={input} /><input required type="url" value={sheetUrl} onChange={event => setSheetUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/..." className={input} /><button type="submit" disabled={!!busy} className={`${button} w-full bg-violet-600 text-white hover:bg-violet-500`}><Plus size={16} />Connect and sync</button></form></section>
           <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><FileSpreadsheet size={18} className="text-violet-300" /><h2 className="font-semibold">Import a file</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Upload CSV or Excel .xlsx with an Email column. Office or Team is optional; unknown values remain safely unclassified.</p><label className={`${button} w-full cursor-pointer border border-white/15 text-slate-200 hover:border-violet-400/40`}><Upload size={16} />{busy === 'import' ? 'Importing...' : 'Choose CSV or Excel file'}<input type="file" accept=".csv,.xlsx" className="sr-only" disabled={!!busy} onChange={event => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }} /></label></section>
           <section className={`${panel} overflow-hidden`}>
-            <div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold">Connections</h2><p className="mt-1 text-xs text-slate-400">Pause, rotate, or delete an Affiliate API connection.</p></div>
+            <div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold">Connections</h2><p className="mt-1 text-xs text-slate-400">Rename, pause, rotate, or delete an Affiliate API connection.</p></div>
             {dashboard.sources.length === 0 ? <div className="px-5 py-6 text-xs text-slate-400">No connections yet.</div> : <div className="divide-y divide-white/[0.07]">{dashboard.sources.map(source => <div key={source.id} className="p-4">
-              <div className="flex items-start justify-between gap-2"><div><div className="text-sm font-semibold">{source.name}</div><div className="mt-0.5 text-xs text-slate-500">{source.kind === 'google_sheet' ? 'Google Sheet' : 'Affiliate API'} · {source.active ? 'Active' : 'Paused'}</div></div><span className={`mt-1 h-2 w-2 rounded-full ${source.active ? 'bg-emerald-400' : 'bg-slate-600'}`} /></div>
+              {editingAffiliateId === source.id ? <form onSubmit={event => renameAffiliate(event, source)} className="flex items-center gap-2"><input autoFocus required maxLength={100} value={editingAffiliateName} onChange={event => setEditingAffiliateName(event.target.value)} aria-label={`New name for ${source.name}`} className={`${input} min-w-0 flex-1 py-2`} /><button type="submit" disabled={!!busy || !editingAffiliateName.trim()} className={`${button} border border-emerald-400/25 p-2 text-emerald-300 hover:bg-emerald-500/10`} aria-label="Save affiliate name"><Check size={15} /></button><button type="button" onClick={() => { setEditingAffiliateId(null); setEditingAffiliateName(''); }} disabled={!!busy} className={`${button} border border-white/10 p-2 text-slate-400 hover:text-white`} aria-label="Cancel affiliate rename"><X size={15} /></button></form> : <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="flex items-center gap-2"><div className="truncate text-sm font-semibold">{source.name}</div>{source.kind === 'affiliate_api' && <button type="button" onClick={() => { setEditingAffiliateId(source.id); setEditingAffiliateName(source.name); setConfirmRotate(null); setError(null); setNotice(null); }} disabled={!!busy} className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-white/5 hover:text-violet-300 disabled:opacity-50" aria-label={`Edit ${source.name} name`} title="Edit affiliate name"><Pencil size={13} /></button>}</div><div className="mt-0.5 text-xs text-slate-500">{source.kind === 'google_sheet' ? 'Google Sheet' : 'Affiliate API'} · {source.active ? 'Active' : 'Paused'}</div></div><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${source.active ? 'bg-emerald-400' : 'bg-slate-600'}`} /></div>}
               {source.last_synced_at && <div className="mt-2 text-[11px] text-slate-500">Last sync {new Date(source.last_synced_at).toLocaleString()}</div>}
               {source.last_sync_error && <div className="mt-2 text-xs text-amber-300">{source.last_sync_error}</div>}
               <div className="mt-3 flex flex-wrap gap-2">

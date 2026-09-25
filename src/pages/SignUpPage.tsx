@@ -47,7 +47,9 @@ const SignUpPage: React.FC = () => {
       }
 
       const registrationKey = companyKey || searchParams.get('company') || undefined;
-      if (registrationKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(registrationKey)) {
+      const validLegacyKey = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(registrationKey || '');
+      const validShortKey = /^[a-z0-9]{12}$/i.test(registrationKey || '');
+      if (registrationKey && !validLegacyKey && !validShortKey) {
         throw new Error('This registration link is invalid. Request a new link.');
       }
 

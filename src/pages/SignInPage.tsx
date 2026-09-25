@@ -115,7 +115,7 @@ const SignInPage: React.FC = () => {
           <div className="mt-6 text-center">
             <p className="text-slate-300">
               {t('auth.dontHaveAccount')}{' '}
-              <Link to="/auth/register" className="font-medium text-blue-400 underline transition-colors hover:text-blue-300">
+              <Link to="/register" className="font-medium text-blue-400 underline transition-colors hover:text-blue-300">
                 {t('auth.createAccount')}
               </Link>
             </p>

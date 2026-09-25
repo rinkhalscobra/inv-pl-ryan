@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, CheckCircle2, Copy, Globe2, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle2, Copy, Globe2, Pencil, Plus, RefreshCw, Save, ShieldCheck, Trash2, X } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { getSelectedCrmCompanyId, setSelectedCrmCompanyId, type CrmCompany } from '../lib/crmCompany';
 
@@ -29,6 +29,8 @@ export default function AdminIpAccessPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [newCompany, setNewCompany] = useState({ name: '', code: '', primaryIp: '' });
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [editingCompanyName, setEditingCompanyName] = useState('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -98,6 +100,24 @@ export default function AdminIpAccessPage() {
     setBusy(false);
   };
 
+  const saveCompanyName = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !editingCompanyId || !editingCompanyName.trim()) return;
+    setBusy(true); setError(null); setNotice(null);
+    const { error: requestError } = await supabase.rpc('crm_admin_update_company_name', {
+      p_company_id: editingCompanyId,
+      p_name: editingCompanyName.trim(),
+    });
+    if (requestError) setError(requestError.code === '23505' ? 'A company with this name already exists.' : requestError.message);
+    else {
+      setEditingCompanyId(null);
+      setEditingCompanyName('');
+      setNotice('Company name updated.');
+      await refresh();
+    }
+    setBusy(false);
+  };
+
   const removeIp = async (value: string) => {
     if (busy) return;
     setBusy(true);
@@ -129,19 +149,23 @@ export default function AdminIpAccessPage() {
       {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
       {notice && <div role="status" className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"><CheckCircle2 size={16} />{notice}</div>}
 
+      {!isPlatform && companies[0] && <section className="mb-5 rounded-xl border border-violet-400/20 bg-violet-500/[0.06] p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">Client registration link</h2><p className="mt-1 text-xs text-slate-400">Clients who register through this link are assigned to your CRM automatically.</p><div className="mt-3 break-all font-mono text-xs text-violet-200">{window.location.origin}{companies[0].registration_path}</div></div><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${companies[0].registration_path}`); setNotice('Registration link copied.'); }} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-100 hover:bg-violet-500/20"><Copy size={16} />Copy link</button></div>
+      </section>}
+
       {isPlatform && <section className="mb-5 rounded-xl border border-white/10 bg-[#151b26] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div><h2 className="flex items-center gap-2 font-semibold"><Building2 size={18} className="text-violet-300" />Company workspace</h2><p className="mt-1 text-xs text-slate-400">The selected company controls the Clients, hierarchy and Lead inbox shown to platform administrators.</p></div>
           <label className="min-w-[280px] text-xs text-slate-400">Active company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name} · {company.code}</option>)}</select></label>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{companies.map(company => <article key={company.id} className={`rounded-lg border p-4 ${company.id === selectedCompanyId ? 'border-violet-400/40 bg-violet-500/[0.07]' : 'border-white/10 bg-black/10'}`}>
-          <div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-white">{company.name}</div><div className="mt-1 font-mono text-xs text-slate-500">{company.code}</div></div><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${company.registration_path}`); setNotice('Registration link copied.'); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Copy registration link"><Copy size={15} /></button></div>
+          {editingCompanyId === company.id ? <form onSubmit={saveCompanyName} className="mb-3 flex items-center gap-2"><input autoFocus value={editingCompanyName} onChange={event => setEditingCompanyName(event.target.value)} maxLength={100} required className="min-w-0 flex-1 rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-white outline-none focus:border-violet-400" aria-label="Company name" /><button type="submit" disabled={busy || !editingCompanyName.trim()} className="rounded-lg border border-emerald-400/30 p-2 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50" aria-label="Save company name"><Save size={15} /></button><button type="button" onClick={() => { setEditingCompanyId(null); setEditingCompanyName(''); }} disabled={busy} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Cancel editing"><X size={15} /></button></form> : <div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-white">{company.name}</div><div className="mt-1 font-mono text-xs text-slate-500">{company.code}</div></div><div className="flex items-center gap-1"><button type="button" onClick={() => { setEditingCompanyId(company.id); setEditingCompanyName(company.name); setError(null); setNotice(null); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label={`Edit ${company.name}`}><Pencil size={15} /></button><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${company.registration_path}`); setNotice('Registration link copied.'); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Copy registration link"><Copy size={15} /></button></div></div>}
           <div className="mt-3 text-xs text-slate-400">{company.user_count} users · {company.lead_count} leads · {company.office_count} offices</div>
           <div className="mt-2 break-all text-[11px] text-slate-500">{company.registration_path}</div>
         </article>)}</div>
       </section>}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className={`grid items-start gap-5 ${isPlatform ? '' : 'lg:grid-cols-[minmax(0,1fr)_360px]'}`}>
         <section className="overflow-hidden rounded-xl border border-white/10 bg-[#151b26]">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div><h2 className="font-semibold">Approved IP addresses</h2><p className="mt-1 text-xs text-slate-400">Changes apply to page requests and administrator operations.</p></div>
@@ -161,7 +185,7 @@ export default function AdminIpAccessPage() {
             </div>}
         </section>
 
-        <section className="rounded-xl border border-white/10 bg-[#151b26] p-5">
+        {!isPlatform && <section className="rounded-xl border border-white/10 bg-[#151b26] p-5">
           <div className="mb-5 flex items-center gap-2"><Globe2 size={19} className="text-violet-300" /><h2 className="font-semibold">Add an approved network</h2></div>
           <form onSubmit={addIp} className="space-y-4">
             {isPlatform && <label className="block text-xs font-medium text-slate-300">Company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} required className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>}
@@ -171,7 +195,7 @@ export default function AdminIpAccessPage() {
           </form>
           <p className="mt-4 border-t border-white/10 pt-4 text-xs leading-5 text-slate-400">Enter one IPv4 or IPv6 address. Network ranges are not accepted. The person connecting from that address must still sign in with an administrator account.</p>
           {currentIp && <p className="mt-3 text-xs text-slate-500">Your current network: <span className="font-mono text-slate-300">{currentIp}</span></p>}
-        </section>
+        </section>}
       </div>
 
       {isPlatform && <section className="mt-5 rounded-xl border border-white/10 bg-[#151b26] p-5">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Gift, User, Globe, ChevronRight, ChevronDown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +10,7 @@ import PhoneInput from '../components/PhoneInput';
 const SignUpPage: React.FC = () => {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const { companyKey } = useParams<{ companyKey?: string }>();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -45,6 +46,11 @@ const SignUpPage: React.FC = () => {
         throw new Error('Passwords do not match');
       }
 
+      const registrationKey = companyKey || searchParams.get('company') || undefined;
+      if (registrationKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(registrationKey)) {
+        throw new Error('This registration link is invalid. Request a new link.');
+      }
+
       const { data, error: signUpError } = await signUp(
         email,
         password,
@@ -53,7 +59,7 @@ const SignUpPage: React.FC = () => {
         lastName,
         country,
         phoneNumber.trim() ? `${countryCode} ${phoneNumber.trim()}` : '',
-        searchParams.get('company') || undefined
+        registrationKey
       );
 
       if (signUpError) {
@@ -345,7 +351,7 @@ const SignUpPage: React.FC = () => {
           <div className="mt-6 text-center">
             <p className="text-slate-300">
               {t('auth.alreadyHaveAccount')}{' '}
-              <Link to="/auth" className="text-blue-400 hover:text-blue-300 transition-colors font-medium underline">
+              <Link to="/signin" className="text-blue-400 hover:text-blue-300 transition-colors font-medium underline">
                 {t('auth.signIn')}
               </Link>
             </p>

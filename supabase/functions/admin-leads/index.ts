@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.39.0";
 import { normalizeLead, parseCsv, rowsToLeads, type LeadInput } from "../../../src/lib/leadImport.ts";
+import { classifyInternationalPhone, routePhoneToOffice } from "../_shared/leadPhoneRouting.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -44,18 +45,58 @@ function sheetCsvUrl(input: string) {
   return url.toString();
 }
 
+async function loadPhoneRouting(admin: SupabaseClient, companyId: string) {
+  const [{ data: offices, error: officeError }, { data: managers, error: managerError }] = await Promise.all([
+    admin.from("crm_offices").select("id,name,code").eq("status", "active").eq("company_id", companyId),
+    admin.from("crm_staff_roles").select("user_id,users!inner(office_id,company_id)")
+      .eq("role", "desk_manager").eq("users.company_id", companyId),
+  ]);
+  if (officeError) throw new Error(`Could not load Offices: ${officeError.message}`);
+  if (managerError) throw new Error(`Could not load Desk Managers: ${managerError.message}`);
+  const officesByCountry = new Map<string, string>();
+  for (const office of offices || []) {
+    const code = String(office.code || "").trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(code)) officesByCountry.set(code, String(office.id));
+  }
+  const deskManagerOfficeIds = new Set<string>();
+  for (const row of managers || []) {
+    const users = Array.isArray(row.users) ? row.users[0] : row.users;
+    const officeId = (users as { office_id?: string | null } | null)?.office_id;
+    if (officeId) deskManagerOfficeIds.add(String(officeId));
+  }
+  return { offices: offices || [], officesByCountry, deskManagerOfficeIds };
+}
+
+function phoneRoutingRecord(phone: string, officesByCountry: Map<string, string>, deskManagerOfficeIds: Set<string>) {
+  const classification = classifyInternationalPhone(phone);
+  const route = routePhoneToOffice(classification, officesByCountry, deskManagerOfficeIds);
+  return { ...classification, ...route, phone_routed_at: new Date().toISOString() };
+}
+
+async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
+  const routing = await loadPhoneRouting(admin, companyId);
+  const { data: leads, error } = await admin.from("crm_leads").select("id,phone")
+    .eq("company_id", companyId).order("created_at", { ascending: true }).limit(5000);
+  if (error) throw new Error(`Could not load leads: ${error.message}`);
+  let updated = 0;
+  for (let index = 0; index < (leads || []).length; index += 25) {
+    const batch = (leads || []).slice(index, index + 25);
+    await Promise.all(batch.map(async lead => {
+      const record = phoneRoutingRecord(String(lead.phone || ""), routing.officesByCountry, routing.deskManagerOfficeIds);
+      const result = await admin.from("crm_leads").update(record).eq("id", lead.id).eq("company_id", companyId);
+      if (result.error) throw result.error;
+      updated++;
+    }));
+  }
+  return { updated };
+}
+
 async function insertLeads(
   admin: SupabaseClient,
   inputs: unknown[],
   source: { id: string | null; kind: "affiliate_api" | "google_sheet" | "file"; name: string; companyId: string },
 ) {
-  const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active").eq("company_id", source.companyId);
-  if (officeError) throw new Error(`Could not load Offices: ${officeError.message}`);
-  const officeMap = new Map<string, string>();
-  for (const office of offices || []) {
-    officeMap.set(String(office.code).trim().toLowerCase(), String(office.id));
-    officeMap.set(String(office.name).trim().toLowerCase(), String(office.id));
-  }
+  const routing = await loadPhoneRouting(admin, source.companyId);
   const leads = new Map<string, LeadInput>();
   let invalid = 0;
   for (const input of inputs) {
@@ -73,7 +114,7 @@ async function insertLeads(
     const { data, error } = await admin.from("crm_leads").upsert(batch.map(lead => {
       const { office, ...record } = lead;
       const incomingOffice = office || lead.country;
-      return { ...record, company_id: source.companyId, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
+      return { ...record, ...phoneRoutingRecord(lead.phone, routing.officesByCountry, routing.deskManagerOfficeIds), company_id: source.companyId,
         source_metadata: { incoming_office: incomingOffice || null }, source_id: source.id, source_kind: source.kind, source_name: source.name };
     }), { onConflict: "company_id,email", ignoreDuplicates: true }).select("id");
     if (error) throw new Error(`Could not save leads: ${error.message}`);
@@ -265,20 +306,23 @@ Deno.serve(async request => {
     if (authError || !actor.user) return json({ error: "Invalid CRM session" }, 401);
     const actorId = actor.user.id;
     const [{ data: profile, error: profileError }, { data: staffRole, error: roleError }] = await Promise.all([
-      admin.from("users").select("is_admin").eq("id", actorId).single(),
+      admin.from("users").select("is_admin,office_id,company_id").eq("id", actorId).single(),
       admin.from("crm_staff_roles").select("role").eq("user_id", actorId).maybeSingle(),
     ]);
     if (profileError || roleError || !profile) return json({ error: "CRM access could not be verified" }, 403);
     const isAdmin = profile.is_admin === true;
     const actorRole = isAdmin ? "admin" : String(staffRole?.role || "client");
-    if (!isAdmin && actorRole !== "workflow_manager") return json({ error: "Lead management access required" }, 403);
+    if (!isAdmin && !["workflow_manager", "desk_manager"].includes(actorRole)) return json({ error: "Lead management access required" }, 403);
     const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
     if (isAdmin) {
       if (!clientIp) return json({ error: "Administrator network access required" }, 403);
       const { data: ipAllowed, error: ipError } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
       if (ipError || ipAllowed !== true) return json({ error: "Administrator network access required" }, 403);
     }
-    if (!isAdmin && !["dashboard", "set_lead_office", "register_lead"].includes(action)) {
+    const staffActions = actorRole === "workflow_manager"
+      ? ["dashboard", "set_lead_office", "register_lead"]
+      : ["dashboard", "register_lead"];
+    if (!isAdmin && !staffActions.includes(action)) {
       return json({ error: "Only Admin can manage lead sources and imports" }, 403);
     }
     if (!clientIp) return json({ error: "CRM network access required" }, 403);
@@ -294,23 +338,53 @@ Deno.serve(async request => {
       const status = ["new", "inviting", "registered", "existing"].includes(String(body.status)) ? String(body.status) : null;
       const search = String(body.search || "").trim().slice(0, 100);
       const officeId = String(body.office_id || "all");
+      const phoneFilter = ["all", "valid", "incorrect", "routing_review"].includes(String(body.phone_filter))
+        ? String(body.phone_filter) : "all";
       if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
-      let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata", { count: "exact" })
+      let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata,phone_e164,phone_country_code,phone_calling_code,phone_validation_status,phone_validation_reason,phone_routing_status,phone_routed_at", { count: "exact" })
         .eq("company_id", companyId).order("created_at", { ascending: false }).range(page * 50, page * 50 + 49);
-      if (officeId === "unassigned") query = query.is("office_id", null);
+      const deskOfficeId = actorRole === "desk_manager" ? String(profile.office_id || "00000000-0000-0000-0000-000000000000") : null;
+      if (deskOfficeId) query = query.eq("office_id", deskOfficeId);
+      else if (officeId === "unassigned") query = query.is("office_id", null);
       else if (officeId !== "all") query = query.eq("office_id", officeId);
       if (status) query = query.eq("status", status);
       if (search) query = query.ilike("email", `%${search}%`);
-      const [leadResult, sourceResult, ownerResult, officeResult] = await Promise.all([
+      if (phoneFilter === "valid") query = query.eq("phone_validation_status", "valid");
+      else if (phoneFilter === "incorrect") query = query.in("phone_validation_status", ["invalid", "unsupported", "missing"]);
+      else if (phoneFilter === "routing_review") query = query.in("phone_routing_status", ["no_office", "no_desk_manager"]);
+
+      let incorrectCountQuery = admin.from("crm_leads").select("id", { count: "exact", head: true })
+        .eq("company_id", companyId).in("phone_validation_status", ["invalid", "unsupported", "missing"]);
+      let routingCountQuery = admin.from("crm_leads").select("id", { count: "exact", head: true })
+        .eq("company_id", companyId).in("phone_routing_status", ["no_office", "no_desk_manager"]);
+      if (deskOfficeId) {
+        incorrectCountQuery = incorrectCountQuery.eq("office_id", deskOfficeId);
+        routingCountQuery = routingCountQuery.eq("office_id", deskOfficeId);
+      }
+      let officeQuery = admin.from("crm_offices").select("id,name,code,status").eq("company_id", companyId).order("name");
+      if (deskOfficeId) officeQuery = officeQuery.eq("id", deskOfficeId);
+      let ownerQuery = admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)")
+        .eq("role", "agent").eq("users.company_id", companyId);
+      if (deskOfficeId) ownerQuery = ownerQuery.eq("users.office_id", deskOfficeId);
+      const [leadResult, sourceResult, ownerResult, officeResult, deskManagerResult, incorrectCountResult, routingCountResult] = await Promise.all([
         query,
         admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
-        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)").eq("role", "agent").eq("users.company_id", companyId),
-        admin.from("crm_offices").select("id,name,code,status").eq("company_id", companyId).order("name"),
+        ownerQuery,
+        officeQuery,
+        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)")
+          .eq("role", "desk_manager").eq("users.company_id", companyId),
+        incorrectCountQuery,
+        routingCountQuery,
       ]);
-      if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error) {
-        throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message);
+      if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error || deskManagerResult.error || incorrectCountResult.error || routingCountResult.error) {
+        throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message || deskManagerResult.error?.message || incorrectCountResult.error?.message || routingCountResult.error?.message);
       }
-      return json({ leads: leadResult.data || [], total: leadResult.count || 0, sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [], can_manage_sources: isAdmin });
+      return json({
+        leads: leadResult.data || [], total: leadResult.count || 0,
+        sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [],
+        desk_managers: deskManagerResult.data || [], incorrect_phone_count: incorrectCountResult.count || 0,
+        routing_review_count: routingCountResult.count || 0, actor_role: actorRole, can_manage_sources: isAdmin,
+      });
     }
 
     if (action === "set_lead_office") {
@@ -399,6 +473,16 @@ Deno.serve(async request => {
       if (!Array.isArray(body.rows) || body.rows.length > 200) return json({ error: "Upload up to 200 rows per batch" }, 400);
       const name = String(body.filename || "Imported file").trim().slice(0, 100);
       return json({ result: await insertLeads(admin, body.rows, { id: null, kind: "file", name, companyId }) });
+    }
+
+    if (action === "reprocess_phone_routing") {
+      if (!isAdmin) return json({ error: "Only Admin can reprocess phone routing" }, 403);
+      const result = await reprocessPhoneRouting(admin, companyId);
+      await admin.from("admin_action_logs").insert({
+        admin_user_id: actorId, action: "crm_lead_phone_routing_reprocessed",
+        after_data: { company_id: companyId, updated: result.updated }, reason: "Revalidated and routed CRM lead phone numbers",
+      });
+      return json({ result });
     }
 
     if (action === "register_lead") {

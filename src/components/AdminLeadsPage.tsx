@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, BookOpen, Check, Clipboard, Copy, Download, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Pencil, Plus, RefreshCw, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, Check, Clipboard, Copy, Download, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Pencil, PhoneCall, Plus, RefreshCw, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import AppSelect from './AppSelect';
 import { supabase } from '../lib/supabaseClient';
 import { parseCsv, rowsToLeads, type LeadInput } from '../lib/leadImport';
@@ -15,6 +15,10 @@ interface Lead {
   registration_error: string | null; last_registration_attempt_at: string | null;
   created_at: string; invited_at: string | null;
   office_id: string | null; source_metadata: { incoming_office?: string | null };
+  phone_e164: string | null; phone_country_code: string | null; phone_calling_code: string | null;
+  phone_validation_status: 'pending' | 'valid' | 'invalid' | 'unsupported' | 'missing';
+  phone_validation_reason: string; phone_routing_status: 'pending' | 'routed' | 'no_office' | 'no_desk_manager' | 'invalid' | 'manual';
+  phone_routed_at: string | null;
 }
 interface Source {
   id: string; name: string; kind: SourceKind; sheet_url: string | null;
@@ -22,14 +26,15 @@ interface Source {
   created_at: string;
 }
 interface Owner { user_id: string; role: 'agent'; users: { email: string; first_name: string | null; last_name: string | null; office_id: string | null } }
+interface DeskManager { user_id: string; role: 'desk_manager'; users: { email: string; first_name: string | null; last_name: string | null; office_id: string | null } }
 interface Office { id: string; name: string; code: string; status: 'active' | 'inactive' }
-interface Dashboard { leads: Lead[]; total: number; sources: Source[]; owners: Owner[]; offices: Office[] }
+interface Dashboard { leads: Lead[]; total: number; sources: Source[]; owners: Owner[]; offices: Office[]; desk_managers: DeskManager[]; incorrect_phone_count: number; routing_review_count: number; actor_role: 'admin' | 'workflow_manager' | 'desk_manager' }
 interface ImportResult { added: number; duplicates: number; invalid: number }
 
 const panel = 'rounded-xl border border-white/10 bg-[#151b26]';
 const input = 'w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400';
 const button = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50';
-const emptyDashboard: Dashboard = { leads: [], total: 0, sources: [], owners: [], offices: [] };
+const emptyDashboard: Dashboard = { leads: [], total: 0, sources: [], owners: [], offices: [], desk_managers: [], incorrect_phone_count: 0, routing_review_count: 0, actor_role: 'admin' };
 
 const affiliateDocumentation = (apiUrl: string, apiKey = 'YOUR_AFFILIATE_KEY') => `AFFILIATE LEAD API - INTEGRATION GUIDE
 
@@ -48,9 +53,8 @@ Single-lead request
   "email": "jane@example.com",
   "first_name": "Jane",
   "last_name": "Doe",
-  "phone": "+1 555 0100",
+  "phone": "+49 30 901820",
   "country": "US",
-  "office": "DE",
   "campaign": "Spring campaign",
   "notes": "Requested a callback",
   "external_id": "partner-123"
@@ -71,7 +75,7 @@ cURL example
 curl --request POST '${apiUrl}' \\
   --header 'Content-Type: application/json' \\
   --header 'x-affiliate-key: ${apiKey}' \\
-  --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+1 555 0100","country":"US","campaign":"Spring campaign","external_id":"partner-123"}'
+  --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+49 30 901820","country":"DE","campaign":"Spring campaign","external_id":"partner-123"}'
 
 JavaScript / Node.js example
 const response = await fetch('${apiUrl}', {
@@ -84,8 +88,8 @@ const response = await fetch('${apiUrl}', {
     email: 'jane@example.com',
     first_name: 'Jane',
     last_name: 'Doe',
-    phone: '+1 555 0100',
-    country: 'US',
+    phone: '+49 30 901820',
+    country: 'DE',
     campaign: 'Spring campaign',
     external_id: 'partner-123'
   })
@@ -107,15 +111,15 @@ Field rules
 - first_name: optional, maximum 100 characters
 - last_name: optional, maximum 100 characters
 - full_name: optional alternative to first_name and last_name, maximum 200 characters
-- phone: optional, maximum 60 characters
+- phone: optional, maximum 60 characters; use international + or 00 format
 - country: optional, maximum 100 characters
-- office: optional company Office code or name, maximum 100 characters
+- office: optional source metadata, maximum 100 characters; it does not override phone routing
 - campaign: optional, maximum 120 characters
 - notes: optional, maximum 2,000 characters
 - external_id: optional affiliate reference, maximum 120 characters
 
-Office assignment
-If office matches an active Office code or name in the destination company, the lead is assigned to it. Otherwise the lead remains unassigned. If office is omitted, country is also checked as a possible Office code/name.
+Phone validation and Office assignment
+The server validates the complete international number against real country numbering plans. A valid number is normalized to E.164 and its detected country code routes the lead to the active Office with the same two-letter code (for example +49 -> DE, +33 -> FR, +34 -> ES, +39 -> IT). Invalid, missing, or unknown numbers appear in the Incorrect numbers review queue. A valid country without a matching Office, or an Office without a Desk Manager, appears in Routing review. The submitted country and office fields cannot override the detected phone country.
 
 Errors
 - 400: malformed JSON, empty batch, or more than 100 leads
@@ -150,6 +154,10 @@ const ownerName = (owner: Owner) => {
   const user = Array.isArray(owner.users) ? owner.users[0] : owner.users;
   return `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || owner.user_id;
 };
+const deskManagerName = (manager: DeskManager) => {
+  const user = Array.isArray(manager.users) ? manager.users[0] : manager.users;
+  return `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || manager.user_id;
+};
 
 export default function AdminLeadsPage({ staffMode = false }: { staffMode?: boolean }) {
   const navigate = useNavigate();
@@ -161,6 +169,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const [page, setPage] = useState(0);
   const [status, setStatus] = useState('all');
   const [officeFilter, setOfficeFilter] = useState('all');
+  const [phoneFilter, setPhoneFilter] = useState('all');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [affiliateName, setAffiliateName] = useState('');
@@ -200,12 +209,12 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await invokeLeadAction({ action: 'dashboard', page, status, search, office_id: officeFilter });
+      const data = await invokeLeadAction({ action: 'dashboard', page, status, search, office_id: officeFilter, phone_filter: phoneFilter });
       setDashboard(data as unknown as Dashboard);
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load leads'); }
     finally { setLoading(false); }
-  }, [invokeLeadAction, page, status, search, officeFilter]);
+  }, [invokeLeadAction, page, status, search, officeFilter, phoneFilter]);
   useEffect(() => { void refresh(); }, [refresh]);
 
   const run = async (key: string, action: () => Promise<string>) => {
@@ -317,6 +326,11 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
     await invokeLeadAction({ action: 'set_lead_office', lead_id: lead.id, office_id: officeId || null });
     return 'Lead Office updated.';
   });
+  const reprocessPhoneRouting = () => void run('phone-routing', async () => {
+    const data = await invokeLeadAction({ action: 'reprocess_phone_routing' });
+    const result = data.result as { updated?: number } | undefined;
+    return `${result?.updated || 0} lead phone number${result?.updated === 1 ? '' : 's'} revalidated and routed.`;
+  });
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/affiliate-leads`;
   const copyToClipboard = async (value: string, message: string) => {
@@ -339,18 +353,19 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => navigate(staffMode ? '/crm' : '/admin')} aria-label="Back to CRM" className={`${button} border border-white/10 text-slate-300 hover:text-white`}><ArrowLeft size={18} /></button>
           <div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300"><Users size={21} /></div>
-          <div><h1 className="text-2xl font-bold">Lead inbox</h1><p className="text-sm text-slate-400">{staffMode ? 'All Sales Offices. Use the Office selector as a filter.' : 'Collect affiliate leads and invite them to become clients.'}</p></div>
+          <div><h1 className="text-2xl font-bold">Lead inbox</h1><p className="text-sm text-slate-400">{staffMode ? (dashboard.actor_role === 'desk_manager' ? 'Phone-routed leads for your Office.' : 'All Sales Offices. Use the Office selector as a filter.') : 'Validate, route, and register incoming affiliate leads.'}</p></div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">{!staffMode && isPlatformNetwork && companies.length > 0 && <AppSelect value={companyId} onChange={event => { setCompanyId(event.target.value); setSelectedCrmCompanyId(event.target.value); setPage(0); }} className="min-w-[220px] rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-violet-100">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</AppSelect>}<button type="button" onClick={() => void refresh()} disabled={loading || !!busy} className={`${button} border border-white/10 text-slate-300 hover:text-white`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button></div>
+        <div className="flex flex-wrap items-center gap-2">{!staffMode && isPlatformNetwork && companies.length > 0 && <AppSelect value={companyId} onChange={event => { setCompanyId(event.target.value); setSelectedCrmCompanyId(event.target.value); setPage(0); }} className="min-w-[220px] rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-violet-100">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</AppSelect>}{!staffMode && <button type="button" onClick={reprocessPhoneRouting} disabled={loading || !!busy} className={`${button} border border-violet-400/25 text-violet-200 hover:bg-violet-500/10`}><PhoneCall size={16} />{busy === 'phone-routing' ? 'Checking...' : 'Recheck phone routing'}</button>}<button type="button" onClick={() => void refresh()} disabled={loading || !!busy} className={`${button} border border-white/10 text-slate-300 hover:text-white`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button></div>
       </header>
 
       {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
       {notice && <div role="status" className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"><Check size={16} />{notice}</div>}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className={`${panel} px-5 py-4`}><div className="text-xs text-slate-400">Matching leads</div><div className="mt-1 text-2xl font-bold">{dashboard.total.toLocaleString()}</div></div>
         <div className={`${panel} px-5 py-4`}><div className="text-xs text-slate-400">New on this page</div><div className="mt-1 text-2xl font-bold text-violet-300">{newCount}</div></div>
-        <div className={`${panel} px-5 py-4`}><div className="text-xs text-slate-400">Active connections</div><div className="mt-1 text-2xl font-bold">{dashboard.sources.filter(source => source.active).length}</div></div>
+        <button type="button" onClick={() => { setPage(0); setPhoneFilter('incorrect'); }} className={`${panel} px-5 py-4 text-left transition hover:border-red-400/30 ${phoneFilter === 'incorrect' ? 'border-red-400/40 bg-red-500/[0.06]' : ''}`}><div className="text-xs text-slate-400">Incorrect numbers</div><div className="mt-1 text-2xl font-bold text-red-300">{dashboard.incorrect_phone_count.toLocaleString()}</div></button>
+        <button type="button" onClick={() => { setPage(0); setPhoneFilter('routing_review'); }} className={`${panel} px-5 py-4 text-left transition hover:border-amber-400/30 ${phoneFilter === 'routing_review' ? 'border-amber-400/40 bg-amber-500/[0.06]' : ''}`}><div className="text-xs text-slate-400">Routing review</div><div className="mt-1 text-2xl font-bold text-amber-300">{dashboard.routing_review_count.toLocaleString()}</div></button>
       </div>
 
       <div className={`grid items-start gap-5 ${staffMode ? '' : 'xl:grid-cols-[minmax(0,1fr)_390px]'}`}>
@@ -358,14 +373,15 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
           <div className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
             <div className="mr-auto"><h2 className="font-semibold">Leads</h2><p className="text-xs text-slate-400">Register a lead to create and initialize the complete client account.</p></div>
             <form onSubmit={event => { event.preventDefault(); setPage(0); setSearch(searchInput.trim()); }} className="flex gap-2"><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search email" className={`${input} w-40 sm:w-48`} /><button type="submit" className={`${button} border border-white/10 text-slate-200 hover:text-white`}>Search</button></form>
-            <AppSelect value={officeFilter} onChange={event => { setPage(0); setOfficeFilter(event.target.value); }} className={`${input} w-44`} aria-label="Filter by Office"><option value="all">All Offices</option><option value="unassigned">No Office</option>{dashboard.offices.map(office => <option key={office.id} value={office.id}>{office.code} · {office.name}</option>)}</AppSelect>
+            <AppSelect value={phoneFilter} onChange={event => { setPage(0); setPhoneFilter(event.target.value); }} className={`${input} w-48`} aria-label="Filter phone quality"><option value="all">All phone numbers</option><option value="valid">Correct numbers</option><option value="incorrect">Incorrect numbers</option><option value="routing_review">Routing review</option></AppSelect>
+            {dashboard.actor_role !== 'desk_manager' && <AppSelect value={officeFilter} onChange={event => { setPage(0); setOfficeFilter(event.target.value); }} className={`${input} w-44`} aria-label="Filter by Office"><option value="all">All Offices</option><option value="unassigned">No Office</option>{dashboard.offices.map(office => <option key={office.id} value={office.id}>{office.code} · {office.name}</option>)}</AppSelect>}
             <AppSelect value={status} onChange={event => { setPage(0); setStatus(event.target.value); }} className={`${input} w-36`} aria-label="Filter lead status"><option value="all">All statuses</option><option value="new">New</option><option value="inviting">Processing</option><option value="registered">Registered</option><option value="existing">Existing</option></AppSelect>
           </div>
           <div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="border-b border-white/10 bg-[#111723] text-xs text-slate-400"><tr><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Received</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-white/[0.07]">
             {dashboard.leads.map(lead => <tr key={lead.id} className="hover:bg-white/[0.025]">
               <td className="px-4 py-3"><div className="font-semibold text-white">{nameOf(lead)}</div><div className="text-xs text-slate-400">{lead.email}</div>{lead.campaign && <div className="mt-1 text-[11px] text-violet-300">{lead.campaign}</div>}</td>
-              <td className="px-4 py-3 text-xs text-slate-300">{lead.phone || '—'}{lead.country && <div className="text-slate-500">{lead.country}</div>}</td>
-              <td className="px-4 py-3"><AppSelect value={lead.office_id || ''} onChange={event => setLeadOffice(lead, event.target.value)} disabled={!!busy || lead.status !== 'new'} className={`${input} min-w-36 py-2 text-xs`}><option value="" disabled={staffMode}>No office</option>{dashboard.offices.filter(office => office.status === 'active').map(office => <option key={office.id} value={office.id}>{office.code} · {office.name}</option>)}</AppSelect>{lead.source_metadata?.incoming_office && <div className="mt-1 text-[10px] text-slate-500">Incoming: {lead.source_metadata.incoming_office}</div>}</td>
+              <td className="px-4 py-3 text-xs text-slate-300"><div>{lead.phone_e164 || lead.phone || '—'}</div>{lead.phone_validation_status === 'valid' ? <div className="mt-1 text-[11px] font-medium text-emerald-300">Correct · {lead.phone_country_code} (+{lead.phone_calling_code})</div> : <div className="mt-1 max-w-52 text-[11px] leading-4 text-red-300">{lead.phone_validation_status === 'pending' ? 'Not checked yet' : lead.phone_validation_reason || 'Incorrect number'}</div>}{lead.country && <div className="mt-1 text-[10px] text-slate-500">Submitted country: {lead.country}</div>}</td>
+              <td className="px-4 py-3"><AppSelect value={lead.office_id || ''} onChange={event => setLeadOffice(lead, event.target.value)} disabled={!!busy || lead.status !== 'new' || dashboard.actor_role === 'desk_manager'} className={`${input} min-w-36 py-2 text-xs`}><option value="" disabled={staffMode}>No office</option>{dashboard.offices.filter(office => office.status === 'active').map(office => <option key={office.id} value={office.id}>{office.code} · {office.name}</option>)}</AppSelect><div className={`mt-1 text-[10px] ${lead.phone_routing_status === 'routed' || lead.phone_routing_status === 'manual' ? 'text-emerald-300' : 'text-amber-300'}`}>{lead.phone_routing_status === 'routed' ? 'Auto-routed by phone' : lead.phone_routing_status === 'no_desk_manager' ? 'Office has no Desk Manager' : lead.phone_routing_status === 'no_office' ? 'No Office for detected country' : lead.phone_routing_status === 'manual' ? 'Manually classified' : lead.phone_routing_status === 'invalid' ? 'Waiting for phone correction' : 'Routing not checked'}</div>{lead.office_id && dashboard.desk_managers.filter(manager => { const user = Array.isArray(manager.users) ? manager.users[0] : manager.users; return user?.office_id === lead.office_id; }).length > 0 && <div className="mt-1 max-w-52 text-[10px] text-slate-400">Desk: {dashboard.desk_managers.filter(manager => { const user = Array.isArray(manager.users) ? manager.users[0] : manager.users; return user?.office_id === lead.office_id; }).map(deskManagerName).join(', ')}</div>}</td>
               <td className="px-4 py-3 text-xs text-slate-300"><div>{lead.source_name || 'Import'}</div><div className="text-slate-500">{lead.source_kind.replaceAll('_', ' ')}</div></td>
               <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-400">{new Date(lead.created_at).toLocaleDateString()}</td>
               <td className="px-4 py-3"><span className={`rounded-md px-2 py-1 text-xs ${lead.status === 'new' ? 'bg-violet-500/15 text-violet-200' : lead.status === 'registered' ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/5 text-slate-300'}`}>{lead.status === 'inviting' ? 'Processing' : lead.status === 'existing' ? 'Existing client' : lead.status}</span>{lead.registration_error && <div className="mt-2 max-w-64 text-[11px] leading-4 text-red-300">Last attempt: {lead.registration_error}</div>}</td>
@@ -387,7 +403,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
             <p className="mt-2 text-[11px] leading-4 text-amber-200/80">The secret key is displayed once. Create a different key for each affiliate.</p>
           </section>
           <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><Link2 size={18} className="text-violet-300" /><h2 className="font-semibold">Google Sheet</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Connect a Google Sheet that can be exported as CSV. The server checks active sheets every 10 minutes.</p><form onSubmit={createSheet} className="space-y-2.5"><input required maxLength={100} value={sheetName} onChange={event => setSheetName(event.target.value)} placeholder="Sheet name" className={input} /><input required type="url" value={sheetUrl} onChange={event => setSheetUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/..." className={input} /><button type="submit" disabled={!!busy} className={`${button} w-full bg-violet-600 text-white hover:bg-violet-500`}><Plus size={16} />Connect and sync</button></form></section>
-          <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><FileSpreadsheet size={18} className="text-violet-300" /><h2 className="font-semibold">Import a file</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Upload CSV or Excel .xlsx with an Email column. Office or Team is optional; unknown values remain safely unclassified.</p><label className={`${button} w-full cursor-pointer border border-white/15 text-slate-200 hover:border-violet-400/40`}><Upload size={16} />{busy === 'import' ? 'Importing...' : 'Choose CSV or Excel file'}<input type="file" accept=".csv,.xlsx" className="sr-only" disabled={!!busy} onChange={event => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }} /></label></section>
+          <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><FileSpreadsheet size={18} className="text-violet-300" /><h2 className="font-semibold">Import a file</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Upload CSV or Excel .xlsx with an Email column. International phone numbers are validated and routed automatically.</p><label className={`${button} w-full cursor-pointer border border-white/15 text-slate-200 hover:border-violet-400/40`}><Upload size={16} />{busy === 'import' ? 'Importing...' : 'Choose CSV or Excel file'}<input type="file" accept=".csv,.xlsx" className="sr-only" disabled={!!busy} onChange={event => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }} /></label></section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold">Connections</h2><p className="mt-1 text-xs text-slate-400">Rename, pause, rotate, or delete an Affiliate API connection.</p></div>
             {dashboard.sources.length === 0 ? <div className="px-5 py-6 text-xs text-slate-400">No connections yet.</div> : <div className="divide-y divide-white/[0.07]">{dashboard.sources.map(source => <div key={source.id} className="p-4">
@@ -436,20 +452,19 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
             <section><h3 className="font-semibold text-white">Request fields</h3><div className="mt-3 overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[680px] text-left text-xs"><thead className="bg-white/[0.04] text-slate-400"><tr><th className="px-4 py-3">Field</th><th className="px-4 py-3">Required</th><th className="px-4 py-3">Limit</th><th className="px-4 py-3">Meaning</th></tr></thead><tbody className="divide-y divide-white/[0.07]">{[
                 ['email', 'Yes', '254', 'Valid email address; converted to lowercase and used for duplicate detection.'],
                 ['first_name', 'No', '100', 'Lead’s first name.'], ['last_name', 'No', '100', 'Lead’s last name.'],
-                ['full_name', 'No', '200', 'Alternative to first_name and last_name.'], ['phone', 'No', '60', 'Phone number including country prefix.'],
-                ['country', 'No', '100', 'Country name or code.'], ['office', 'No', '100', 'Active company Office code or name.'],
+                ['full_name', 'No', '200', 'Alternative to first_name and last_name.'], ['phone', 'No', '60', 'International number beginning with + or 00; validated and routed by detected country.'],
+                ['country', 'No', '100', 'Affiliate-provided country metadata; the detected phone country controls routing.'], ['office', 'No', '100', 'Affiliate-provided Office metadata; it does not override phone routing.'],
                 ['campaign', 'No', '120', 'Campaign or marketing source label.'], ['notes', 'No', '2,000', 'Additional lead information.'],
                 ['external_id', 'No', '120', 'Affiliate’s own reference; it is not used for duplicate detection.']
-              ].map(row => <tr key={row[0]}><td className="px-4 py-3 font-mono text-violet-200">{row[0]}</td><td className="px-4 py-3">{row[1]}</td><td className="px-4 py-3">{row[2]}</td><td className="px-4 py-3 text-slate-400">{row[3]}</td></tr>)}</tbody></table></div><p className="mt-2 text-xs leading-5 text-slate-400">Office assignment is optional. If <span className="font-mono text-slate-300">office</span> matches an active Office code or name in this company, it is assigned automatically; otherwise the lead remains unassigned. When office is omitted, country is also checked as a possible Office code or name.</p></section>
+              ].map(row => <tr key={row[0]}><td className="px-4 py-3 font-mono text-violet-200">{row[0]}</td><td className="px-4 py-3">{row[1]}</td><td className="px-4 py-3">{row[2]}</td><td className="px-4 py-3 text-slate-400">{row[3]}</td></tr>)}</tbody></table></div><p className="mt-2 text-xs leading-5 text-slate-400">The validated phone country controls Office routing: +49 → DE, +33 → FR, +34 → ES and +39 → IT when those active Office codes exist. Invalid or missing numbers go to <b>Incorrect numbers</b>. Valid countries without an Office or Desk Manager go to <b>Routing review</b>. Submitted country or office text cannot override the detected number.</p></section>
 
             <section className="grid gap-5 lg:grid-cols-2">
               <div><h3 className="font-semibold text-white">Single-lead JSON</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`{
   "email": "jane@example.com",
   "first_name": "Jane",
   "last_name": "Doe",
-  "phone": "+1 555 0100",
-  "country": "US",
-  "office": "DE",
+  "phone": "+49 30 901820",
+  "country": "DE",
   "campaign": "Spring campaign",
   "notes": "Requested a callback",
   "external_id": "partner-123"
@@ -472,7 +487,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
             <section><h3 className="font-semibold text-white">cURL example</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`curl --request POST '${apiUrl}' \\
   --header 'Content-Type: application/json' \\
   --header 'x-affiliate-key: ${secret?.key || 'YOUR_AFFILIATE_KEY'}' \\
-  --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+1 555 0100","country":"US","campaign":"Spring campaign","external_id":"partner-123"}'`}</code></pre></section>
+  --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+49 30 901820","country":"DE","campaign":"Spring campaign","external_id":"partner-123"}'`}</code></pre></section>
 
             <section><h3 className="font-semibold text-white">JavaScript / Node.js example</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`const response = await fetch('${apiUrl}', {
   method: 'POST',
@@ -484,8 +499,8 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
     email: 'jane@example.com',
     first_name: 'Jane',
     last_name: 'Doe',
-    phone: '+1 555 0100',
-    country: 'US',
+    phone: '+49 30 901820',
+    country: 'DE',
     campaign: 'Spring campaign',
     external_id: 'partner-123'
   })

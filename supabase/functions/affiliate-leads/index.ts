@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
 import { normalizeLead } from "../../../src/lib/leadImport.ts";
+import { classifyInternationalPhone, routePhoneToOffice } from "../_shared/leadPhoneRouting.ts";
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
@@ -21,12 +22,22 @@ Deno.serve(async request => {
       .select("id,name,company_id").eq("kind", "affiliate_api").eq("api_key_hash", keyHash).eq("active", true).maybeSingle();
     if (sourceError) throw sourceError;
     if (!source) return json({ error: "Affiliate key is inactive or unknown" }, 401);
-    const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active").eq("company_id", source.company_id);
-    if (officeError) throw officeError;
-    const officeMap = new Map<string, string>();
+    const [{ data: offices, error: officeError }, { data: managers, error: managerError }] = await Promise.all([
+      admin.from("crm_offices").select("id,name,code").eq("status", "active").eq("company_id", source.company_id),
+      admin.from("crm_staff_roles").select("user_id,users!inner(office_id,company_id)")
+        .eq("role", "desk_manager").eq("users.company_id", source.company_id),
+    ]);
+    if (officeError || managerError) throw officeError || managerError;
+    const officesByCountry = new Map<string, string>();
     for (const office of offices || []) {
-      officeMap.set(String(office.code).trim().toLowerCase(), String(office.id));
-      officeMap.set(String(office.name).trim().toLowerCase(), String(office.id));
+      const code = String(office.code || "").trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(code)) officesByCountry.set(code, String(office.id));
+    }
+    const deskManagerOfficeIds = new Set<string>();
+    for (const row of managers || []) {
+      const users = Array.isArray(row.users) ? row.users[0] : row.users;
+      const officeId = (users as { office_id?: string | null } | null)?.office_id;
+      if (officeId) deskManagerOfficeIds.add(String(officeId));
     }
 
     const raw = await request.text();
@@ -44,7 +55,9 @@ Deno.serve(async request => {
       if (lead) {
         const { office, ...record } = lead;
         const incomingOffice = office || lead.country;
-        leads.set(lead.email, { ...record, company_id: source.company_id, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
+        const phone = classifyInternationalPhone(lead.phone);
+        const route = routePhoneToOffice(phone, officesByCountry, deskManagerOfficeIds);
+        leads.set(lead.email, { ...record, ...phone, ...route, phone_routed_at: new Date().toISOString(), company_id: source.company_id,
           source_metadata: { incoming_office: incomingOffice || null }, source_id: source.id, source_kind: "affiliate_api", source_name: source.name });
       }
       else invalid++;

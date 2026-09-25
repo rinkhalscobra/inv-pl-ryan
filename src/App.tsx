@@ -26,7 +26,6 @@ import HomePage from './pages/HomePage';
 import LandingPage from './pages/LandingPage';
 import SignInPage from './pages/SignInPage';
 import SignUpPage from './pages/SignUpPage';
-import RegistrationLinkRequiredPage from './pages/RegistrationLinkRequiredPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
@@ -891,7 +890,7 @@ const handleUpdatePassword = async (newPassword: string) => {
               user ? <Navigate to="/dashboard" replace /> : <SignInPage />
             } />
             <Route path="/signup" element={
-              user ? <Navigate to="/dashboard" replace /> : <RegistrationLinkRequiredPage />
+              user ? <Navigate to="/dashboard" replace /> : <SignUpPage />
             } />
             <Route path="/signup/:companyKey" element={
               user ? <Navigate to="/dashboard" replace /> : <SignUpPage />

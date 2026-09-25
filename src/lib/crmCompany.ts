@@ -14,6 +14,7 @@ export interface CrmCompany {
   id: string;
   name: string;
   code: string;
+  client_registration_code: string;
   status: 'active' | 'inactive';
   registration_key: string;
   registration_slug: string;

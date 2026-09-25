@@ -32,6 +32,7 @@ export const useAuth = () => {
     country?: string,
     phoneNumber?: string,
     companyKey?: string,
+    registrationCode?: string,
   ) => {
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -46,6 +47,7 @@ export const useAuth = () => {
             phone_number: phoneNumber || null,
             onboarding_source: 'website_signup',
             crm_company_key: companyKey || null,
+            crm_registration_code: registrationCode?.trim().toUpperCase() || null,
           },
         },
       });

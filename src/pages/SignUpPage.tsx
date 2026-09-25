@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, AlertCircle, Gift, User, Globe, ChevronRight, ChevronDown } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, Building2, Gift, User, Globe, ChevronRight, ChevronDown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import BrandLogo from '../components/BrandLogo';
 import PhoneInput from '../components/PhoneInput';
+import { supabase } from '../lib/supabaseClient';
 
 const SignUpPage: React.FC = () => {
   const { t } = useTranslation();
@@ -17,6 +18,9 @@ const SignUpPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [referralCode, setReferralCode] = useState('');
+  const [securityCode, setSecurityCode] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [resolvingCompany, setResolvingCompany] = useState(false);
   const [country, setCountry] = useState('');
   const [countryCode, setCountryCode] = useState('+1');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -28,6 +32,7 @@ const SignUpPage: React.FC = () => {
   const navigate = useNavigate();
 
   const { signUp, signIn } = useAuth();
+  const registrationKey = companyKey || searchParams.get('company') || '';
 
   useEffect(() => {
     const refParam = searchParams.get('ref');
@@ -35,6 +40,43 @@ const SignUpPage: React.FC = () => {
       setReferralCode(refParam);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!registrationKey) {
+      setCompanyName('');
+      return;
+    }
+
+    const validLegacyKey = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(registrationKey);
+    const validShortKey = /^[a-z0-9]{12}$/i.test(registrationKey);
+    if (!validLegacyKey && !validShortKey) {
+      setError('This registration link is invalid. Request a new link.');
+      return;
+    }
+
+    let active = true;
+    setResolvingCompany(true);
+    void supabase.rpc('crm_resolve_registration_company', {
+      p_company_code: null,
+      p_registration_key: registrationKey,
+    }).then(({ data, error: resolveError }) => {
+      if (!active) return;
+      if (resolveError) {
+        setError(resolveError.message || 'This registration link is invalid or inactive.');
+        return;
+      }
+      const company = data as { code?: string; security_code?: string; name?: string } | null;
+      if (!company?.security_code && !company?.code) {
+        setError('This registration link is invalid or inactive.');
+        return;
+      }
+      setSecurityCode(company.security_code || company.code);
+      setCompanyName(company.name || company.code);
+      setError('');
+    }).finally(() => { if (active) setResolvingCompany(false); });
+
+    return () => { active = false; };
+  }, [registrationKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,12 +88,21 @@ const SignUpPage: React.FC = () => {
         throw new Error('Passwords do not match');
       }
 
-      const registrationKey = companyKey || searchParams.get('company') || undefined;
-      const validLegacyKey = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(registrationKey || '');
-      const validShortKey = /^[a-z0-9]{12}$/i.test(registrationKey || '');
-      if (registrationKey && !validLegacyKey && !validShortKey) {
-        throw new Error('This registration link is invalid. Request a new link.');
+      const normalizedSecurityCode = securityCode.trim().toUpperCase();
+      if (!/^[A-F0-9]{10}$/.test(normalizedSecurityCode)) {
+        throw new Error('Enter the valid 10-character registration security code provided by your company.');
       }
+
+      const { data: resolvedCompany, error: companyError } = await supabase.rpc('crm_resolve_registration_company', {
+        p_company_code: normalizedSecurityCode,
+        p_registration_key: registrationKey || null,
+      });
+      if (companyError) throw new Error(companyError.message);
+      const verifiedCompany = resolvedCompany as { code?: string; security_code?: string; name?: string } | null;
+      const verifiedSecurityCode = verifiedCompany?.security_code || verifiedCompany?.code;
+      if (!verifiedSecurityCode) throw new Error('Registration security code is invalid or inactive.');
+      setSecurityCode(verifiedSecurityCode);
+      setCompanyName(verifiedCompany?.name || 'your company');
 
       const { data, error: signUpError } = await signUp(
         email,
@@ -61,7 +112,8 @@ const SignUpPage: React.FC = () => {
         lastName,
         country,
         phoneNumber.trim() ? `${countryCode} ${phoneNumber.trim()}` : '',
-        registrationKey
+        registrationKey || undefined,
+        verifiedSecurityCode
       );
 
       if (signUpError) {
@@ -145,6 +197,32 @@ const SignUpPage: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <h2 className="text-xl font-semibold text-white mb-4">{t('auth.createYourAccountStep')}</h2>
+
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">
+                    Registration security code <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Building2 size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={securityCode}
+                      onChange={(event) => setSecurityCode(event.target.value.toUpperCase().replace(/[^A-F0-9]/g, '').slice(0, 10))}
+                      placeholder="Enter security code"
+                      className="w-full app-input pl-10 pr-4 py-3 rounded-xl font-mono uppercase transition-all read-only:cursor-not-allowed read-only:opacity-80"
+                      minLength={10}
+                      maxLength={10}
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      readOnly={Boolean(registrationKey && companyName)}
+                      disabled={resolvingCompany}
+                      required
+                    />
+                  </div>
+                  <p className={`mt-2 text-xs ${companyName ? 'text-emerald-300' : 'text-slate-500'}`}>
+                    {resolvingCompany ? 'Checking the secure registration link...' : companyName ? `Security code verified for ${companyName}.` : 'Enter the private code provided by your company. It securely connects your registration to the correct company.'}
+                  </p>
+                </div>
                 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
@@ -335,7 +413,7 @@ const SignUpPage: React.FC = () => {
                 <div className="flex gap-3">
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || resolvingCompany}
                     className="w-full app-action-primary text-white py-4 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 sm:w-2/3"
                   >
                     {loading ? (

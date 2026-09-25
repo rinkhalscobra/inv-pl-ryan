@@ -28,7 +28,7 @@ export default function AdminIpAccessPage() {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [newCompany, setNewCompany] = useState({ name: '', code: '', primaryIp: '' });
+  const [newCompany, setNewCompany] = useState({ name: '', primaryIp: '' });
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [editingCompanyName, setEditingCompanyName] = useState('');
   const [deleteCompany, setDeleteCompany] = useState<CrmCompany | null>(null);
@@ -84,18 +84,39 @@ export default function AdminIpAccessPage() {
     setSelectedCrmCompanyId(companyId);
   };
 
+  const copySecurityCode = async (company: CrmCompany) => {
+    try {
+      await navigator.clipboard.writeText(company.client_registration_code);
+      setError(null);
+      setNotice(`${company.name} registration security code copied: ${company.client_registration_code}`);
+    } catch {
+      setError('Could not copy the registration security code. Select and copy it manually.');
+    }
+  };
+
+  const copyRegistrationLink = async (company: CrmCompany) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${company.registration_path}`);
+      setError(null);
+      setNotice(`${company.name} registration link copied.`);
+    } catch {
+      setError('Could not copy the registration link. Select and copy it manually.');
+    }
+  };
+
   const createCompany = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy || !newCompany.name.trim() || !newCompany.code.trim() || !newCompany.primaryIp.trim()) return;
+    if (busy || !newCompany.name.trim() || !newCompany.primaryIp.trim()) return;
     setBusy(true); setError(null); setNotice(null);
+    const internalCode = `CMP_${crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
     const { data, error: requestError } = await supabase.rpc('crm_admin_create_company', {
-      p_name: newCompany.name.trim(), p_code: newCompany.code.trim().toUpperCase(), p_primary_ip: newCompany.primaryIp.trim(),
+      p_name: newCompany.name.trim(), p_code: internalCode, p_primary_ip: newCompany.primaryIp.trim(),
     });
     if (requestError) setError(requestError.message);
     else {
       const created = data as { id: string; name: string };
       chooseCompany(created.id);
-      setNewCompany({ name: '', code: '', primaryIp: '' });
+      setNewCompany({ name: '', primaryIp: '' });
       setNotice(`${created.name} was created with zero clients and its primary IP is approved.`);
       await refresh();
     }
@@ -174,16 +195,17 @@ export default function AdminIpAccessPage() {
       {notice && <div role="status" className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"><CheckCircle2 size={16} />{notice}</div>}
 
       {!isPlatform && companies[0] && <section className="mb-5 rounded-xl border border-violet-400/20 bg-violet-500/[0.06] p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">Client registration link</h2><p className="mt-1 text-xs text-slate-400">Clients who register through this link are assigned to your CRM automatically.</p><div className="mt-3 break-all font-mono text-xs text-violet-200">{window.location.origin}{companies[0].registration_path}</div></div><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${companies[0].registration_path}`); setNotice('Registration link copied.'); }} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-100 hover:bg-violet-500/20"><Copy size={16} />Copy link</button></div>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0"><h2 className="font-semibold text-white">Client registration details</h2><p className="mt-1 text-xs text-slate-400">Give clients this private security code when they use the public Create account page. The company link fills it automatically.</p><div className="mt-4 flex flex-wrap items-center gap-3"><div className="rounded-lg border border-emerald-400/30 bg-[#0e1420] px-4 py-3"><div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Registration security code</div><div className="mt-1 font-mono text-lg font-bold tracking-[0.18em] text-emerald-200">{companies[0].client_registration_code}</div></div><div className="min-w-0 break-all font-mono text-xs text-violet-200">{window.location.origin}{companies[0].registration_path}</div></div></div><div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => void copySecurityCode(companies[0])} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"><Copy size={16} />Copy security code</button><button type="button" onClick={() => void copyRegistrationLink(companies[0])} className="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-100 hover:bg-violet-500/20"><Copy size={16} />Copy link</button></div></div>
       </section>}
 
       {isPlatform && <section className="mb-5 rounded-xl border border-white/10 bg-[#151b26] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div><h2 className="flex items-center gap-2 font-semibold"><Building2 size={18} className="text-violet-300" />Company workspace</h2><p className="mt-1 text-xs text-slate-400">The selected company controls the Clients, hierarchy and Lead inbox shown to platform administrators.</p></div>
-          <label className="min-w-[280px] text-xs text-slate-400">Active company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name} · {company.code}</option>)}</select></label>
+          <label className="min-w-[280px] text-xs text-slate-400">Active company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{companies.map(company => <article key={company.id} className={`rounded-lg border p-4 ${company.id === selectedCompanyId ? 'border-violet-400/40 bg-violet-500/[0.07]' : 'border-white/10 bg-black/10'}`}>
-          {editingCompanyId === company.id ? <form onSubmit={saveCompanyName} className="mb-3 flex items-center gap-2"><input autoFocus value={editingCompanyName} onChange={event => setEditingCompanyName(event.target.value)} maxLength={100} required className="min-w-0 flex-1 rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-white outline-none focus:border-violet-400" aria-label="Company name" /><button type="submit" disabled={busy || !editingCompanyName.trim()} className="rounded-lg border border-emerald-400/30 p-2 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50" aria-label="Save company name"><Save size={15} /></button><button type="button" onClick={() => { setEditingCompanyId(null); setEditingCompanyName(''); }} disabled={busy} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Cancel editing"><X size={15} /></button></form> : <div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-white">{company.name}</div><div className="mt-1 font-mono text-xs text-slate-500">{company.code}</div></div><div className="flex items-center gap-1"><button type="button" onClick={() => { setEditingCompanyId(company.id); setEditingCompanyName(company.name); setError(null); setNotice(null); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label={`Edit ${company.name}`}><Pencil size={15} /></button><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${company.registration_path}`); setNotice('Registration link copied.'); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Copy registration link"><Copy size={15} /></button>{company.code !== 'PRIMARY' && <button type="button" onClick={() => { setDeleteCompany(company); setDeleteCompanyConfirmation(''); setError(null); setNotice(null); }} className="rounded-lg border border-red-400/20 p-2 text-red-300 hover:bg-red-500/10" aria-label={`Delete ${company.name}`}><Trash2 size={15} /></button>}</div></div>}
+          {editingCompanyId === company.id ? <form onSubmit={saveCompanyName} className="mb-3 flex items-center gap-2"><input autoFocus value={editingCompanyName} onChange={event => setEditingCompanyName(event.target.value)} maxLength={100} required className="min-w-0 flex-1 rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-white outline-none focus:border-violet-400" aria-label="Company name" /><button type="submit" disabled={busy || !editingCompanyName.trim()} className="rounded-lg border border-emerald-400/30 p-2 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50" aria-label="Save company name"><Save size={15} /></button><button type="button" onClick={() => { setEditingCompanyId(null); setEditingCompanyName(''); }} disabled={busy} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Cancel editing"><X size={15} /></button></form> : <div className="flex items-start justify-between gap-3"><div className="font-semibold text-white">{company.name}</div><div className="flex items-center gap-1"><button type="button" onClick={() => { setEditingCompanyId(company.id); setEditingCompanyName(company.name); setError(null); setNotice(null); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label={`Edit ${company.name}`}><Pencil size={15} /></button><button type="button" onClick={() => void copyRegistrationLink(company)} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label={`Copy ${company.name} registration link`} title="Copy registration link"><Copy size={15} /></button>{company.code !== 'PRIMARY' && <button type="button" onClick={() => { setDeleteCompany(company); setDeleteCompanyConfirmation(''); setError(null); setNotice(null); }} className="rounded-lg border border-red-400/20 p-2 text-red-300 hover:bg-red-500/10" aria-label={`Delete ${company.name}`}><Trash2 size={15} /></button>}</div></div>}
+          <div className="mt-3 rounded-lg border border-emerald-400/25 bg-[#0e1420] p-3"><div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Registration security code</div><div className="mt-1 flex items-center justify-between gap-3"><span className="break-all font-mono text-lg font-bold tracking-[0.18em] text-emerald-200">{company.client_registration_code}</span><button type="button" onClick={() => void copySecurityCode(company)} className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500" aria-label={`Copy ${company.name} registration security code`}><Copy size={13} />Copy code</button></div><p className="mt-1.5 text-[10px] leading-4 text-slate-500">Private client verification code. Share it only with clients registering for this company.</p></div>
           <div className="mt-3 text-xs text-slate-400">{company.user_count} users · {company.lead_count} leads · {company.office_count} offices</div>
           <div className="mt-2 break-all text-[11px] text-slate-500">{company.registration_path}</div>
         </article>)}</div>
@@ -224,9 +246,8 @@ export default function AdminIpAccessPage() {
 
       {isPlatform && <section className="mt-5 rounded-xl border border-white/10 bg-[#151b26] p-5">
         <div className="mb-5 flex items-center gap-2"><Building2 size={19} className="text-violet-300" /><div><h2 className="font-semibold">Create an isolated company</h2><p className="mt-1 text-xs text-slate-400">The company starts with zero clients, leads, users and offices.</p></div></div>
-        <form onSubmit={createCompany} className="grid gap-4 md:grid-cols-3 xl:grid-cols-[1fr_220px_1fr_auto]">
+        <form onSubmit={createCompany} className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <label className="text-xs text-slate-300">Company name<input value={newCompany.name} onChange={event => setNewCompany(current => ({ ...current, name: event.target.value }))} required maxLength={100} className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400" /></label>
-          <label className="text-xs text-slate-300">Code<input value={newCompany.code} onChange={event => setNewCompany(current => ({ ...current, code: event.target.value.toUpperCase() }))} required maxLength={24} placeholder="COMPANY_B" className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-violet-400" /></label>
           <label className="text-xs text-slate-300">Primary IP<input value={newCompany.primaryIp} onChange={event => setNewCompany(current => ({ ...current, primaryIp: event.target.value }))} required maxLength={45} placeholder="203.0.113.10" className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-violet-400" /></label>
           <button type="submit" disabled={busy} className="mt-5 inline-flex h-[42px] items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold hover:bg-violet-500 disabled:opacity-50"><Plus size={16} />Create company</button>
         </form>

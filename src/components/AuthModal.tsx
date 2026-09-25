@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, AlertCircle, ArrowLeft, Gift } from 'lucide-react';
+import { X, Mail, Lock, User, AlertCircle, ArrowLeft, Building2, Gift } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import LanguageSwitcher from './LanguageSwitcher';
 import BrandLogo from './BrandLogo';
+import { supabase } from '../lib/supabaseClient';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [referralCode, setReferralCode] = useState('');
+  const [securityCode, setSecurityCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetEmailSent, setResetEmailSent] = useState(false);
@@ -30,7 +32,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     try {
       if (authView === 'signIn') {
-        const { data, error } = await signIn(email, password);
+        const { error } = await signIn(email, password);
 
         if (error) {
           throw error;
@@ -43,7 +45,20 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           throw new Error('Passwords do not match');
         }
 
-        const { data, error } = await signUp(email, password, referralCode);
+        const normalizedSecurityCode = securityCode.trim().toUpperCase();
+        if (!/^[A-F0-9]{10}$/.test(normalizedSecurityCode)) {
+          throw new Error('Enter the valid 10-character registration security code provided by your company.');
+        }
+        const { data: company, error: companyError } = await supabase.rpc('crm_resolve_registration_company', {
+          p_company_code: normalizedSecurityCode,
+          p_registration_key: null,
+        });
+        if (companyError) throw companyError;
+        const resolved = company as { code?: string; security_code?: string } | null;
+        const verifiedCode = resolved?.security_code || resolved?.code;
+        if (!verifiedCode) throw new Error('Registration security code is invalid or inactive.');
+
+        const { error } = await signUp(email, password, referralCode, undefined, undefined, undefined, undefined, undefined, verifiedCode);
 
         if (error) throw error;
 
@@ -54,8 +69,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         if (error) throw error;
         setResetEmailSent(true);
       }
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'The request failed');
     } finally {
       setLoading(false);
     }
@@ -66,6 +81,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setPassword('');
     setConfirmPassword('');
     setReferralCode('');
+    setSecurityCode('');
     setError('');
     setResetEmailSent(false);
     setAuthView('signIn');
@@ -203,6 +219,25 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         {/* Sign Up Form */}
         {authView === 'signUp' && (
           <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-sm text-slate-400 mb-2">Registration security code <span className="text-red-400">*</span></label>
+              <div className="relative">
+                <Building2 size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={securityCode}
+                  onChange={(event) => setSecurityCode(event.target.value.toUpperCase().replace(/[^A-F0-9]/g, '').slice(0, 10))}
+                  placeholder="Enter security code"
+                  className="w-full app-input pl-10 pr-4 py-3 rounded-xl border border-slate-600/50 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                  minLength={10}
+                  maxLength={10}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  required
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1 ml-1">This private code securely connects your registration to the correct company.</p>
+            </div>
             <div>
               <label className="block text-sm text-slate-400 mb-2">Email</label>
               <div className="relative">

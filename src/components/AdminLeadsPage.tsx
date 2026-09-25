@@ -7,11 +7,13 @@ import { parseCsv, rowsToLeads, type LeadInput } from '../lib/leadImport';
 import { getSelectedCrmCompanyId, setSelectedCrmCompanyId, type CrmCompany } from '../lib/crmCompany';
 
 type LeadStatus = 'new' | 'inviting' | 'registered' | 'existing';
+type LeadDisposition = 'new' | 'no_answer' | 'call_back' | 'low_potential' | 'no_money' | 'wrong_number' | 'ftd';
 type SourceKind = 'affiliate_api' | 'google_sheet';
 interface Lead {
   id: string; email: string; first_name: string; last_name: string; phone: string;
   country: string; campaign: string; notes: string; source_kind: string;
   source_name: string; status: LeadStatus; registered_user_id: string | null;
+  disposition_status: LeadDisposition; disposition_changed_at: string; disposition_changed_by: string | null;
   registration_error: string | null; last_registration_attempt_at: string | null;
   created_at: string; invited_at: string | null;
   office_id: string | null; source_metadata: { incoming_office?: string | null };
@@ -35,6 +37,16 @@ const panel = 'rounded-xl border border-white/10 bg-[#151b26]';
 const input = 'w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400';
 const button = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50';
 const emptyDashboard: Dashboard = { leads: [], total: 0, sources: [], owners: [], offices: [], desk_managers: [], incorrect_phone_count: 0, routing_review_count: 0, actor_role: 'admin' };
+const dispositionLabels: Record<LeadDisposition, string> = {
+  new: 'NEW', no_answer: 'No Answer', call_back: 'Call Back', low_potential: 'Low Potential',
+  no_money: 'No Money', wrong_number: 'Wrong Number', ftd: 'FTD',
+};
+const dispositionStyles: Record<LeadDisposition, string> = {
+  new: 'border-violet-400/30 text-violet-200', no_answer: 'border-slate-400/30 text-slate-200',
+  call_back: 'border-cyan-400/30 text-cyan-200', low_potential: 'border-amber-400/30 text-amber-200',
+  no_money: 'border-orange-400/30 text-orange-200', wrong_number: 'border-red-400/30 text-red-200',
+  ftd: 'border-emerald-400/30 text-emerald-200',
+};
 
 const affiliateDocumentation = (apiUrl: string, apiKey = 'YOUR_AFFILIATE_KEY') => `AFFILIATE LEAD API - INTEGRATION GUIDE
 
@@ -168,6 +180,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [status, setStatus] = useState('all');
+  const [disposition, setDisposition] = useState('all');
   const [officeFilter, setOfficeFilter] = useState('all');
   const [phoneFilter, setPhoneFilter] = useState('all');
   const [searchInput, setSearchInput] = useState('');
@@ -209,12 +222,12 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await invokeLeadAction({ action: 'dashboard', page, status, search, office_id: officeFilter, phone_filter: phoneFilter });
+      const data = await invokeLeadAction({ action: 'dashboard', page, status, disposition, search, office_id: officeFilter, phone_filter: phoneFilter });
       setDashboard(data as unknown as Dashboard);
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load leads'); }
     finally { setLoading(false); }
-  }, [invokeLeadAction, page, status, search, officeFilter, phoneFilter]);
+  }, [invokeLeadAction, page, status, disposition, search, officeFilter, phoneFilter]);
   useEffect(() => { void refresh(); }, [refresh]);
 
   const run = async (key: string, action: () => Promise<string>) => {
@@ -326,6 +339,10 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
     await invokeLeadAction({ action: 'set_lead_office', lead_id: lead.id, office_id: officeId || null });
     return 'Lead Office updated.';
   });
+  const setLeadDisposition = (lead: Lead, nextDisposition: LeadDisposition) => void run(`disposition-${lead.id}`, async () => {
+    await invokeLeadAction({ action: 'set_lead_disposition', lead_id: lead.id, disposition: nextDisposition });
+    return `${nameOf(lead)} marked as ${dispositionLabels[nextDisposition]}.`;
+  });
   const reprocessPhoneRouting = () => void run('phone-routing', async () => {
     const data = await invokeLeadAction({ action: 'reprocess_phone_routing' });
     const result = data.result as { updated?: number } | undefined;
@@ -345,7 +362,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
     link.href = url; link.download = safeName ? `${safeName}-affiliate-api-package.txt` : 'affiliate-api-integration-guide.txt'; link.click();
     URL.revokeObjectURL(url);
   };
-  const newCount = dashboard.leads.filter(lead => lead.status === 'new').length;
+  const newCount = dashboard.leads.filter(lead => lead.disposition_status === 'new').length;
 
   return <main className="min-h-screen bg-[#0d1118] px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
     <div className="mx-auto max-w-[1800px]">
@@ -375,16 +392,17 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
             <form onSubmit={event => { event.preventDefault(); setPage(0); setSearch(searchInput.trim()); }} className="flex gap-2"><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search email" className={`${input} w-40 sm:w-48`} /><button type="submit" className={`${button} border border-white/10 text-slate-200 hover:text-white`}>Search</button></form>
             <AppSelect value={phoneFilter} onChange={event => { setPage(0); setPhoneFilter(event.target.value); }} className={`${input} w-48`} aria-label="Filter phone quality"><option value="all">All phone numbers</option><option value="valid">Correct numbers</option><option value="incorrect">Incorrect numbers</option><option value="routing_review">Routing review</option></AppSelect>
             {dashboard.actor_role !== 'desk_manager' && <AppSelect value={officeFilter} onChange={event => { setPage(0); setOfficeFilter(event.target.value); }} className={`${input} w-44`} aria-label="Filter by Office"><option value="all">All Offices</option><option value="unassigned">No Office</option>{dashboard.offices.map(office => <option key={office.id} value={office.id}>{office.code} · {office.name}</option>)}</AppSelect>}
-            <AppSelect value={status} onChange={event => { setPage(0); setStatus(event.target.value); }} className={`${input} w-36`} aria-label="Filter lead status"><option value="all">All statuses</option><option value="new">New</option><option value="inviting">Processing</option><option value="registered">Registered</option><option value="existing">Existing</option></AppSelect>
+            <AppSelect value={disposition} onChange={event => { setPage(0); setDisposition(event.target.value); }} className={`${input} w-44`} aria-label="Filter sales status"><option value="all">All lead statuses</option>{(Object.entries(dispositionLabels) as [LeadDisposition, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</AppSelect>
+            <AppSelect value={status} onChange={event => { setPage(0); setStatus(event.target.value); }} className={`${input} w-40`} aria-label="Filter account status"><option value="all">All account states</option><option value="new">Not registered</option><option value="inviting">Processing</option><option value="registered">Registered</option><option value="existing">Existing client</option></AppSelect>
           </div>
-          <div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="border-b border-white/10 bg-[#111723] text-xs text-slate-400"><tr><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Received</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-white/[0.07]">
+          <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="border-b border-white/10 bg-[#111723] text-xs text-slate-400"><tr><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Received</th><th className="px-4 py-3">Lead status</th><th className="px-4 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-white/[0.07]">
             {dashboard.leads.map(lead => <tr key={lead.id} className="hover:bg-white/[0.025]">
               <td className="px-4 py-3"><div className="font-semibold text-white">{nameOf(lead)}</div><div className="text-xs text-slate-400">{lead.email}</div>{lead.campaign && <div className="mt-1 text-[11px] text-violet-300">{lead.campaign}</div>}</td>
               <td className="px-4 py-3 text-xs text-slate-300"><div>{lead.phone_e164 || lead.phone || '—'}</div>{lead.phone_validation_status === 'valid' ? <div className="mt-1 text-[11px] font-medium text-emerald-300">Correct · {lead.phone_country_code} (+{lead.phone_calling_code})</div> : <div className="mt-1 max-w-52 text-[11px] leading-4 text-red-300">{lead.phone_validation_status === 'pending' ? 'Not checked yet' : lead.phone_validation_reason || 'Incorrect number'}</div>}{lead.country && <div className="mt-1 text-[10px] text-slate-500">Submitted country: {lead.country}</div>}</td>
               <td className="px-4 py-3"><AppSelect value={lead.office_id || ''} onChange={event => setLeadOffice(lead, event.target.value)} disabled={!!busy || lead.status !== 'new' || dashboard.actor_role === 'desk_manager'} className={`${input} min-w-36 py-2 text-xs`}><option value="" disabled={staffMode}>No office</option>{dashboard.offices.filter(office => office.status === 'active').map(office => <option key={office.id} value={office.id}>{office.code} · {office.name}</option>)}</AppSelect><div className={`mt-1 text-[10px] ${lead.phone_routing_status === 'routed' || lead.phone_routing_status === 'manual' ? 'text-emerald-300' : 'text-amber-300'}`}>{lead.phone_routing_status === 'routed' ? 'Auto-routed by phone' : lead.phone_routing_status === 'no_desk_manager' ? 'Office has no Desk Manager' : lead.phone_routing_status === 'no_office' ? 'No Office for detected country' : lead.phone_routing_status === 'manual' ? 'Manually classified' : lead.phone_routing_status === 'invalid' ? 'Waiting for phone correction' : 'Routing not checked'}</div>{lead.office_id && dashboard.desk_managers.filter(manager => { const user = Array.isArray(manager.users) ? manager.users[0] : manager.users; return user?.office_id === lead.office_id; }).length > 0 && <div className="mt-1 max-w-52 text-[10px] text-slate-400">Desk: {dashboard.desk_managers.filter(manager => { const user = Array.isArray(manager.users) ? manager.users[0] : manager.users; return user?.office_id === lead.office_id; }).map(deskManagerName).join(', ')}</div>}</td>
               <td className="px-4 py-3 text-xs text-slate-300"><div>{lead.source_name || 'Import'}</div><div className="text-slate-500">{lead.source_kind.replaceAll('_', ' ')}</div></td>
               <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-400">{new Date(lead.created_at).toLocaleDateString()}</td>
-              <td className="px-4 py-3"><span className={`rounded-md px-2 py-1 text-xs ${lead.status === 'new' ? 'bg-violet-500/15 text-violet-200' : lead.status === 'registered' ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/5 text-slate-300'}`}>{lead.status === 'inviting' ? 'Processing' : lead.status === 'existing' ? 'Existing client' : lead.status}</span>{lead.registration_error && <div className="mt-2 max-w-64 text-[11px] leading-4 text-red-300">Last attempt: {lead.registration_error}</div>}</td>
+              <td className="px-4 py-3"><AppSelect value={lead.disposition_status} onChange={event => setLeadDisposition(lead, event.target.value as LeadDisposition)} disabled={!!busy} className={`${input} min-w-40 border ${dispositionStyles[lead.disposition_status]} py-2 text-xs font-semibold`}>{(Object.entries(dispositionLabels) as [LeadDisposition, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</AppSelect><div className="mt-1 text-[10px] text-slate-500">Account: {lead.status === 'new' ? 'Not registered' : lead.status === 'inviting' ? 'Processing' : lead.status === 'existing' ? 'Existing client' : 'Registered'}</div>{lead.registration_error && <div className="mt-2 max-w-64 text-[11px] leading-4 text-red-300">Last attempt: {lead.registration_error}</div>}</td>
               <td className="px-4 py-3 text-right">{lead.status === 'new' ? <button type="button" onClick={() => { setSelectedLead(lead); setOwner(''); }} disabled={!!busy} className={`${button} bg-violet-600 text-white hover:bg-violet-500`}><Send size={14} />Register</button> : lead.status === 'inviting' ? <span className="text-xs text-slate-400">Account creation in progress</span> : <span className="text-xs text-slate-500">Linked</span>}</td>
             </tr>)}
             </tbody></table>{!loading && dashboard.leads.length === 0 && <div className="p-10 text-center text-sm text-slate-400">No leads match this view yet.</div>}{loading && <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-400"><Loader2 size={17} className="animate-spin" />Loading leads</div>}</div>

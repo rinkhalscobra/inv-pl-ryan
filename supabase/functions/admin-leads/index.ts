@@ -320,8 +320,8 @@ Deno.serve(async request => {
       if (ipError || ipAllowed !== true) return json({ error: "Administrator network access required" }, 403);
     }
     const staffActions = actorRole === "workflow_manager"
-      ? ["dashboard", "set_lead_office", "register_lead"]
-      : ["dashboard", "register_lead"];
+      ? ["dashboard", "set_lead_office", "set_lead_disposition", "register_lead"]
+      : ["dashboard", "set_lead_disposition", "register_lead"];
     if (!isAdmin && !staffActions.includes(action)) {
       return json({ error: "Only Admin can manage lead sources and imports" }, 403);
     }
@@ -340,14 +340,17 @@ Deno.serve(async request => {
       const officeId = String(body.office_id || "all");
       const phoneFilter = ["all", "valid", "incorrect", "routing_review"].includes(String(body.phone_filter))
         ? String(body.phone_filter) : "all";
+      const disposition = ["new", "no_answer", "call_back", "low_potential", "no_money", "wrong_number", "ftd"].includes(String(body.disposition))
+        ? String(body.disposition) : null;
       if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
-      let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata,phone_e164,phone_country_code,phone_calling_code,phone_validation_status,phone_validation_reason,phone_routing_status,phone_routed_at", { count: "exact" })
+      let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,disposition_status,disposition_changed_at,disposition_changed_by,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata,phone_e164,phone_country_code,phone_calling_code,phone_validation_status,phone_validation_reason,phone_routing_status,phone_routed_at", { count: "exact" })
         .eq("company_id", companyId).order("created_at", { ascending: false }).range(page * 50, page * 50 + 49);
       const deskOfficeId = actorRole === "desk_manager" ? String(profile.office_id || "00000000-0000-0000-0000-000000000000") : null;
       if (deskOfficeId) query = query.eq("office_id", deskOfficeId);
       else if (officeId === "unassigned") query = query.is("office_id", null);
       else if (officeId !== "all") query = query.eq("office_id", officeId);
       if (status) query = query.eq("status", status);
+      if (disposition) query = query.eq("disposition_status", disposition);
       if (search) query = query.ilike("email", `%${search}%`);
       if (phoneFilter === "valid") query = query.eq("phone_validation_status", "valid");
       else if (phoneFilter === "incorrect") query = query.in("phone_validation_status", ["invalid", "unsupported", "missing"]);
@@ -398,6 +401,22 @@ Deno.serve(async request => {
       if (!scopedLead || (officeId && !scopedOffice)) return json({ error: "Lead or Office belongs to another company" }, 403);
       const { error } = await admin.rpc("crm_set_lead_office_for_actor", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_office_id: officeId });
       if (error) throw error;
+      return json({ success: true });
+    }
+
+    if (action === "set_lead_disposition") {
+      if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
+      const disposition = String(body.disposition || "");
+      if (!["new", "no_answer", "call_back", "low_potential", "no_money", "wrong_number", "ftd"].includes(disposition)) {
+        return json({ error: "Select a valid lead status" }, 400);
+      }
+      const { data: scopedLead } = await admin.from("crm_leads").select("id")
+        .eq("id", String(body.lead_id)).eq("company_id", companyId).maybeSingle();
+      if (!scopedLead) return json({ error: "Lead belongs to another company or no longer exists" }, 403);
+      const { error } = await admin.rpc("crm_set_lead_disposition_for_actor", {
+        p_actor_id: actorId, p_lead_id: String(body.lead_id), p_status: disposition,
+      });
+      if (error) return json({ error: error.message || "Lead status could not be updated" }, 400);
       return json({ success: true });
     }
 

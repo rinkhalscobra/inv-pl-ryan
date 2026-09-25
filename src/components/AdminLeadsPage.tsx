@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Check, Clipboard, Copy, Download, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Plus, RefreshCw, Send, ShieldCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, Check, Clipboard, Copy, Download, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Plus, RefreshCw, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import AppSelect from './AppSelect';
 import { supabase } from '../lib/supabaseClient';
 import { parseCsv, rowsToLeads, type LeadInput } from '../lib/leadImport';
@@ -169,6 +169,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const [sheetUrl, setSheetUrl] = useState('');
   const [secret, setSecret] = useState<{ name: string; key: string } | null>(null);
   const [confirmRotate, setConfirmRotate] = useState<string | null>(null);
+  const [deleteAffiliate, setDeleteAffiliate] = useState<Source | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [owner, setOwner] = useState('');
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
@@ -245,6 +246,19 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
     setSecret({ name: source.name, key: String(data.api_key) });
     return 'Key rotated. The previous affiliate key stopped working immediately.';
   });
+
+  const deleteAffiliateSource = (deleteLeads: boolean) => {
+    if (!deleteAffiliate) return;
+    const source = deleteAffiliate;
+    void run(`delete-${source.id}`, async () => {
+      const data = await invokeLeadAction({ action: 'delete_affiliate_source', source_id: source.id, delete_leads: deleteLeads });
+      const result = data.result as { deleted_leads?: number; linked_leads?: number } | undefined;
+      setDeleteAffiliate(null);
+      return deleteLeads
+        ? `${source.name} and ${result?.deleted_leads || 0} linked lead record${result?.deleted_leads === 1 ? '' : 's'} were deleted. Existing client accounts were preserved.`
+        : `${source.name} was deleted. ${result?.linked_leads || 0} linked lead record${result?.linked_leads === 1 ? '' : 's'} were preserved.`;
+    });
+  };
 
   const importFile = (file: File) => void run('import', async () => {
     if (file.size > 5_000_000) throw new Error('Choose a file smaller than 5 MB.');
@@ -353,9 +367,34 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
           </section>
           <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><Link2 size={18} className="text-violet-300" /><h2 className="font-semibold">Google Sheet</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Connect a Google Sheet that can be exported as CSV. The server checks active sheets every 10 minutes.</p><form onSubmit={createSheet} className="space-y-2.5"><input required maxLength={100} value={sheetName} onChange={event => setSheetName(event.target.value)} placeholder="Sheet name" className={input} /><input required type="url" value={sheetUrl} onChange={event => setSheetUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/..." className={input} /><button type="submit" disabled={!!busy} className={`${button} w-full bg-violet-600 text-white hover:bg-violet-500`}><Plus size={16} />Connect and sync</button></form></section>
           <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><FileSpreadsheet size={18} className="text-violet-300" /><h2 className="font-semibold">Import a file</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Upload CSV or Excel .xlsx with an Email column. Office or Team is optional; unknown values remain safely unclassified.</p><label className={`${button} w-full cursor-pointer border border-white/15 text-slate-200 hover:border-violet-400/40`}><Upload size={16} />{busy === 'import' ? 'Importing...' : 'Choose CSV or Excel file'}<input type="file" accept=".csv,.xlsx" className="sr-only" disabled={!!busy} onChange={event => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }} /></label></section>
-          <section className={`${panel} overflow-hidden`}><div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold">Connections</h2><p className="mt-1 text-xs text-slate-400">Pause, sync, or rotate a source.</p></div>{dashboard.sources.length === 0 ? <div className="px-5 py-6 text-xs text-slate-400">No connections yet.</div> : <div className="divide-y divide-white/[0.07]">{dashboard.sources.map(source => <div key={source.id} className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="text-sm font-semibold">{source.name}</div><div className="mt-0.5 text-xs text-slate-500">{source.kind === 'google_sheet' ? 'Google Sheet' : 'Affiliate API'} · {source.active ? 'Active' : 'Paused'}</div></div><span className={`mt-1 h-2 w-2 rounded-full ${source.active ? 'bg-emerald-400' : 'bg-slate-600'}`} /></div>{source.last_synced_at && <div className="mt-2 text-[11px] text-slate-500">Last sync {new Date(source.last_synced_at).toLocaleString()}</div>}{source.last_sync_error && <div className="mt-2 text-xs text-amber-300">{source.last_sync_error}</div>}<div className="mt-3 flex flex-wrap gap-2">{source.kind === 'google_sheet' && <button type="button" onClick={() => syncSource(source)} disabled={!!busy || !source.active} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}><RefreshCw size={13} />Sync now</button>}{source.kind === 'affiliate_api' && (confirmRotate === source.id ? <><button type="button" onClick={() => setConfirmRotate(null)} className={`${button} text-xs text-slate-400`}>Cancel</button><button type="button" onClick={() => rotateKey(source)} disabled={!!busy} className={`${button} bg-amber-500/15 text-xs text-amber-200`}>Confirm rotation</button></> : <button type="button" onClick={() => setConfirmRotate(source.id)} disabled={!!busy} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}><KeyRound size={13} />Rotate key</button>)}<button type="button" onClick={() => toggleSource(source)} disabled={!!busy} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}>{source.active ? 'Pause' : 'Activate'}</button></div></div>)}</div>}</section>
+          <section className={`${panel} overflow-hidden`}>
+            <div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold">Connections</h2><p className="mt-1 text-xs text-slate-400">Pause, rotate, or delete an Affiliate API connection.</p></div>
+            {dashboard.sources.length === 0 ? <div className="px-5 py-6 text-xs text-slate-400">No connections yet.</div> : <div className="divide-y divide-white/[0.07]">{dashboard.sources.map(source => <div key={source.id} className="p-4">
+              <div className="flex items-start justify-between gap-2"><div><div className="text-sm font-semibold">{source.name}</div><div className="mt-0.5 text-xs text-slate-500">{source.kind === 'google_sheet' ? 'Google Sheet' : 'Affiliate API'} · {source.active ? 'Active' : 'Paused'}</div></div><span className={`mt-1 h-2 w-2 rounded-full ${source.active ? 'bg-emerald-400' : 'bg-slate-600'}`} /></div>
+              {source.last_synced_at && <div className="mt-2 text-[11px] text-slate-500">Last sync {new Date(source.last_synced_at).toLocaleString()}</div>}
+              {source.last_sync_error && <div className="mt-2 text-xs text-amber-300">{source.last_sync_error}</div>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {source.kind === 'google_sheet' && <button type="button" onClick={() => syncSource(source)} disabled={!!busy || !source.active} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}><RefreshCw size={13} />Sync now</button>}
+                {source.kind === 'affiliate_api' && (confirmRotate === source.id ? <><button type="button" onClick={() => setConfirmRotate(null)} className={`${button} text-xs text-slate-400`}>Cancel</button><button type="button" onClick={() => rotateKey(source)} disabled={!!busy} className={`${button} bg-amber-500/15 text-xs text-amber-200`}>Confirm rotation</button></> : <button type="button" onClick={() => setConfirmRotate(source.id)} disabled={!!busy} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}><KeyRound size={13} />Rotate key</button>)}
+                <button type="button" onClick={() => toggleSource(source)} disabled={!!busy} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}>{source.active ? 'Pause' : 'Activate'}</button>
+                {source.kind === 'affiliate_api' && <button type="button" onClick={() => { setConfirmRotate(null); setDeleteAffiliate(source); }} disabled={!!busy} className={`${button} border border-red-400/20 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200`}><Trash2 size={13} />Delete</button>}
+              </div>
+            </div>)}</div>}
+          </section>
         </aside>}
       </div>
+
+      {deleteAffiliate && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="delete-affiliate-title" className="w-full max-w-2xl rounded-2xl border border-red-400/25 bg-[#171e2b] p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4"><div><div className="flex items-center gap-2 text-red-300"><AlertTriangle size={19} /><span className="text-xs font-semibold uppercase tracking-wider">Permanent deletion</span></div><h2 id="delete-affiliate-title" className="mt-1 text-xl font-bold text-white">Delete {deleteAffiliate.name}?</h2><p className="mt-2 text-sm leading-6 text-slate-400">Choose what happens to the Lead Inbox records received from this affiliate. The affiliate key will stop working immediately with either option.</p></div><button type="button" onClick={() => setDeleteAffiliate(null)} disabled={!!busy} aria-label="Cancel affiliate deletion" className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-50"><X size={20} /></button></div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => deleteAffiliateSource(false)} disabled={!!busy} className="rounded-xl border border-amber-400/25 bg-amber-500/[0.06] p-4 text-left transition hover:bg-amber-500/10 disabled:opacity-50"><div className="flex items-center gap-2 font-semibold text-amber-100"><Trash2 size={17} />Delete affiliate only</div><p className="mt-2 text-xs leading-5 text-slate-300">Deletes the connection and API key but keeps every existing lead record in the Lead Inbox.</p></button>
+            <button type="button" onClick={() => deleteAffiliateSource(true)} disabled={!!busy} className="rounded-xl border border-red-400/30 bg-red-500/[0.08] p-4 text-left transition hover:bg-red-500/15 disabled:opacity-50"><div className="flex items-center gap-2 font-semibold text-red-100"><Trash2 size={17} />Delete affiliate and leads</div><p className="mt-2 text-xs leading-5 text-slate-300">Deletes the connection, API key, and all Lead Inbox records linked to this affiliate.</p></button>
+          </div>
+          <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-400"><b className="text-slate-200">Client accounts are always preserved.</b> If a linked lead was already registered as a client, this deletion never removes that client’s login, wallet, funds, or trading data.</div>
+          <div className="mt-5 flex justify-end"><button type="button" onClick={() => setDeleteAffiliate(null)} disabled={!!busy} className={`${button} border border-white/10 text-slate-300 hover:text-white`}>Cancel</button></div>
+        </section>
+      </div>}
 
       {showAffiliateDocs && <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 p-3 sm:p-6">
         <section role="dialog" aria-modal="true" aria-labelledby="affiliate-docs-title" className="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-white/15 bg-[#171e2b] shadow-2xl">

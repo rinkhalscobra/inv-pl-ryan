@@ -220,7 +220,7 @@ const SignUpPage: React.FC = () => {
                     />
                   </div>
                   <p className={`mt-2 text-xs ${companyName ? 'text-emerald-300' : 'text-slate-500'}`}>
-                    {resolvingCompany ? 'Checking the secure registration link...' : companyName ? `Security code verified for ${companyName}.` : 'Enter the private code provided by your company. It securely connects your registration to the correct company.'}
+                    {resolvingCompany ? 'Checking the secure registration link...' : companyName ? 'Security code verified.' : 'Enter the private code provided by your company. It securely connects your registration to the correct company.'}
                   </p>
                 </div>
                 

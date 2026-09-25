@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Clipboard, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Plus, RefreshCw, Send, ShieldCheck, Users, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, Clipboard, Copy, Download, Upload, FileSpreadsheet, KeyRound, Link2, Loader2, Plus, RefreshCw, Send, ShieldCheck, Users, X } from 'lucide-react';
 import AppSelect from './AppSelect';
 import { supabase } from '../lib/supabaseClient';
 import { parseCsv, rowsToLeads, type LeadInput } from '../lib/leadImport';
@@ -30,6 +30,108 @@ const panel = 'rounded-xl border border-white/10 bg-[#151b26]';
 const input = 'w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400';
 const button = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50';
 const emptyDashboard: Dashboard = { leads: [], total: 0, sources: [], owners: [], offices: [] };
+
+const affiliateDocumentation = (apiUrl: string, apiKey = 'YOUR_AFFILIATE_KEY') => `AFFILIATE LEAD API - INTEGRATION GUIDE
+
+Purpose
+This is a server-to-server API for sending prospective client details into the company's CRM Lead inbox. It does not give the affiliate CRM access and it does not create a client account, deposit, or trade. CRM staff review the lead and register it separately.
+
+Endpoint
+POST ${apiUrl}
+
+Required headers
+Content-Type: application/json
+x-affiliate-key: ${apiKey}
+
+Single-lead request
+{
+  "email": "jane@example.com",
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "phone": "+1 555 0100",
+  "country": "US",
+  "office": "DE",
+  "campaign": "Spring campaign",
+  "notes": "Requested a callback",
+  "external_id": "partner-123"
+}
+
+Batch request (1 to 100 leads)
+{
+  "leads": [
+    {
+      "email": "jane@example.com",
+      "first_name": "Jane",
+      "last_name": "Doe"
+    }
+  ]
+}
+
+cURL example
+curl --request POST '${apiUrl}' \\
+  --header 'Content-Type: application/json' \\
+  --header 'x-affiliate-key: ${apiKey}' \\
+  --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+1 555 0100","country":"US","campaign":"Spring campaign","external_id":"partner-123"}'
+
+JavaScript / Node.js example
+const response = await fetch('${apiUrl}', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-affiliate-key': process.env.AFFILIATE_API_KEY
+  },
+  body: JSON.stringify({
+    email: 'jane@example.com',
+    first_name: 'Jane',
+    last_name: 'Doe',
+    phone: '+1 555 0100',
+    country: 'US',
+    campaign: 'Spring campaign',
+    external_id: 'partner-123'
+  })
+});
+const result = await response.json();
+if (!response.ok) throw new Error(result.error || 'Lead submission failed');
+
+Success response
+HTTP 200
+{"accepted":1,"duplicates":0,"invalid":0}
+
+Response counters
+- accepted: new leads saved to the CRM
+- duplicates: valid leads already present for this company, or repeated emails in the request
+- invalid: records missing a valid email address
+
+Field rules
+- email: required, valid email, maximum 254 characters; normalized to lowercase
+- first_name: optional, maximum 100 characters
+- last_name: optional, maximum 100 characters
+- full_name: optional alternative to first_name and last_name, maximum 200 characters
+- phone: optional, maximum 60 characters
+- country: optional, maximum 100 characters
+- office: optional company Office code or name, maximum 100 characters
+- campaign: optional, maximum 120 characters
+- notes: optional, maximum 2,000 characters
+- external_id: optional affiliate reference, maximum 120 characters
+
+Office assignment
+If office matches an active Office code or name in the destination company, the lead is assigned to it. Otherwise the lead remains unassigned. If office is omitted, country is also checked as a possible Office code/name.
+
+Errors
+- 400: malformed JSON, empty batch, or more than 100 leads
+- 401: missing, invalid, paused, rotated, or unknown affiliate key
+- 405: method other than POST
+- 413: request body larger than 500,000 characters
+- 500: temporary server error; retry later
+
+Security and delivery rules
+- Call this endpoint from the affiliate's backend/server, not browser JavaScript.
+- Never expose the key in a website, mobile app, URL, query string, log, or public repository.
+- The key is shown only once. Store it as a secret environment variable.
+- Email is the duplicate key inside the destination company. external_id is a reference field, not the duplicate key.
+- A paused connection or rotated key stops accepting leads immediately.
+- For a 500 response, retry safely. A retry may return the lead as a duplicate if the original request was saved.
+`;
 
 async function invokeLeadActionRequest(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { data, error } = await supabase.functions.invoke('admin-leads', { body });
@@ -62,6 +164,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [affiliateName, setAffiliateName] = useState('');
+  const [showAffiliateDocs, setShowAffiliateDocs] = useState(false);
   const [sheetName, setSheetName] = useState('');
   const [sheetUrl, setSheetUrl] = useState('');
   const [secret, setSecret] = useState<{ name: string; key: string } | null>(null);
@@ -181,6 +284,18 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   });
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/affiliate-leads`;
+  const copyToClipboard = async (value: string, message: string) => {
+    try { await navigator.clipboard.writeText(value); setError(null); setNotice(message); }
+    catch { setError('Copy failed. Select and copy the text manually.'); }
+  };
+  const downloadAffiliateDocs = () => {
+    const file = new Blob([affiliateDocumentation(apiUrl, secret?.key)], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    const safeName = secret?.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    link.href = url; link.download = safeName ? `${safeName}-affiliate-api-package.txt` : 'affiliate-api-integration-guide.txt'; link.click();
+    URL.revokeObjectURL(url);
+  };
   const newCount = dashboard.leads.filter(lead => lead.status === 'new').length;
 
   return <main className="min-h-screen bg-[#0d1118] px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
@@ -226,14 +341,113 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
         </section>
 
         {!staffMode && <aside className="space-y-4">
-          <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><KeyRound size={18} className="text-violet-300" /><h2 className="font-semibold">Affiliate API</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Create a key for each affiliate. They can send leads to your endpoint without CRM access.</p><form onSubmit={createAffiliate} className="flex gap-2"><input required maxLength={100} value={affiliateName} onChange={event => setAffiliateName(event.target.value)} placeholder="Affiliate name" className={input} /><button type="submit" disabled={!!busy} className={`${button} bg-violet-600 text-white hover:bg-violet-500`}><Plus size={16} /></button></form><div className="mt-3 break-all rounded-lg bg-[#0e1420] p-3 font-mono text-[11px] text-slate-400">{apiUrl}</div></section>
+          <section className={`${panel} p-5`}>
+            <div className="mb-3 flex items-center gap-2"><KeyRound size={18} className="text-violet-300" /><h2 className="font-semibold">Affiliate API</h2></div>
+            <p className="text-xs leading-5 text-slate-400">A secure server-to-server connection that lets an affiliate deliver leads to this company’s CRM without receiving CRM access.</p>
+            <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.07] p-3 text-xs leading-5 text-emerald-100"><b>What to send:</b> create the affiliate’s key, then download and send the generated <b>Affiliate API package</b>. It contains their private key and the complete instructions in one file.</div>
+            <button type="button" onClick={() => setShowAffiliateDocs(true)} className={`${button} mt-4 w-full border border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20`}><BookOpen size={16} />View full integration guide</button>
+            <div className="my-4 border-t border-white/10" />
+            <label className="mb-1.5 block text-xs font-medium text-slate-300">Create a private key</label>
+            <form onSubmit={createAffiliate} className="flex gap-2"><input required maxLength={100} value={affiliateName} onChange={event => setAffiliateName(event.target.value)} placeholder="Affiliate or partner name" className={input} /><button type="submit" disabled={!!busy} aria-label="Create affiliate key" className={`${button} bg-violet-600 text-white hover:bg-violet-500`}><Plus size={16} /></button></form>
+            <p className="mt-2 text-[11px] leading-4 text-amber-200/80">The secret key is displayed once. Create a different key for each affiliate.</p>
+          </section>
           <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><Link2 size={18} className="text-violet-300" /><h2 className="font-semibold">Google Sheet</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Connect a Google Sheet that can be exported as CSV. The server checks active sheets every 10 minutes.</p><form onSubmit={createSheet} className="space-y-2.5"><input required maxLength={100} value={sheetName} onChange={event => setSheetName(event.target.value)} placeholder="Sheet name" className={input} /><input required type="url" value={sheetUrl} onChange={event => setSheetUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/..." className={input} /><button type="submit" disabled={!!busy} className={`${button} w-full bg-violet-600 text-white hover:bg-violet-500`}><Plus size={16} />Connect and sync</button></form></section>
           <section className={`${panel} p-5`}><div className="mb-4 flex items-center gap-2"><FileSpreadsheet size={18} className="text-violet-300" /><h2 className="font-semibold">Import a file</h2></div><p className="mb-4 text-xs leading-5 text-slate-400">Upload CSV or Excel .xlsx with an Email column. Office or Team is optional; unknown values remain safely unclassified.</p><label className={`${button} w-full cursor-pointer border border-white/15 text-slate-200 hover:border-violet-400/40`}><Upload size={16} />{busy === 'import' ? 'Importing...' : 'Choose CSV or Excel file'}<input type="file" accept=".csv,.xlsx" className="sr-only" disabled={!!busy} onChange={event => { const file = event.target.files?.[0]; if (file) importFile(file); event.target.value = ''; }} /></label></section>
           <section className={`${panel} overflow-hidden`}><div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold">Connections</h2><p className="mt-1 text-xs text-slate-400">Pause, sync, or rotate a source.</p></div>{dashboard.sources.length === 0 ? <div className="px-5 py-6 text-xs text-slate-400">No connections yet.</div> : <div className="divide-y divide-white/[0.07]">{dashboard.sources.map(source => <div key={source.id} className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="text-sm font-semibold">{source.name}</div><div className="mt-0.5 text-xs text-slate-500">{source.kind === 'google_sheet' ? 'Google Sheet' : 'Affiliate API'} · {source.active ? 'Active' : 'Paused'}</div></div><span className={`mt-1 h-2 w-2 rounded-full ${source.active ? 'bg-emerald-400' : 'bg-slate-600'}`} /></div>{source.last_synced_at && <div className="mt-2 text-[11px] text-slate-500">Last sync {new Date(source.last_synced_at).toLocaleString()}</div>}{source.last_sync_error && <div className="mt-2 text-xs text-amber-300">{source.last_sync_error}</div>}<div className="mt-3 flex flex-wrap gap-2">{source.kind === 'google_sheet' && <button type="button" onClick={() => syncSource(source)} disabled={!!busy || !source.active} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}><RefreshCw size={13} />Sync now</button>}{source.kind === 'affiliate_api' && (confirmRotate === source.id ? <><button type="button" onClick={() => setConfirmRotate(null)} className={`${button} text-xs text-slate-400`}>Cancel</button><button type="button" onClick={() => rotateKey(source)} disabled={!!busy} className={`${button} bg-amber-500/15 text-xs text-amber-200`}>Confirm rotation</button></> : <button type="button" onClick={() => setConfirmRotate(source.id)} disabled={!!busy} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}><KeyRound size={13} />Rotate key</button>)}<button type="button" onClick={() => toggleSource(source)} disabled={!!busy} className={`${button} border border-white/10 text-xs text-slate-300 hover:text-white`}>{source.active ? 'Pause' : 'Activate'}</button></div></div>)}</div>}</section>
         </aside>}
       </div>
 
-      {secret && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"><section role="dialog" aria-modal="true" aria-labelledby="affiliate-key-title" className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#171e2b] p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><h2 id="affiliate-key-title" className="text-lg font-semibold">{secret.name} API key</h2><p className="mt-1 text-sm text-amber-200">Copy this key now. It cannot be viewed again.</p></div><button type="button" onClick={() => setSecret(null)} aria-label="Close" className="text-slate-400 hover:text-white"><X size={20} /></button></div><div className="mt-5 break-all rounded-lg border border-white/10 bg-[#0d1118] p-4 font-mono text-xs text-white">{secret.key}</div><button type="button" onClick={() => void navigator.clipboard.writeText(secret.key).then(() => setNotice('Affiliate key copied.')).catch(() => setError('Copy failed. Select the key manually.'))} className={`${button} mt-4 w-full bg-violet-600 text-white hover:bg-violet-500`}><Clipboard size={16} />Copy key</button><div className="mt-4 rounded-lg bg-white/5 p-3 text-xs leading-5 text-slate-300">Send a POST request to <span className="break-all font-mono">{apiUrl}</span> with header <span className="font-mono">x-affiliate-key: YOUR_KEY</span> and JSON body <span className="font-mono">{'{"email":"lead@example.com","first_name":"Jane","last_name":"Doe"}'}</span>.</div></section></div>}
+      {showAffiliateDocs && <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 p-3 sm:p-6">
+        <section role="dialog" aria-modal="true" aria-labelledby="affiliate-docs-title" className="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-white/15 bg-[#171e2b] shadow-2xl">
+          <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#171e2b]/95 px-5 py-4 backdrop-blur sm:px-7">
+            <div><div className="flex items-center gap-2 text-violet-300"><BookOpen size={19} /><span className="text-xs font-semibold uppercase tracking-wider">Technical documentation</span></div><h2 id="affiliate-docs-title" className="mt-1 text-xl font-bold text-white">Affiliate Lead API integration guide</h2><p className="mt-1 text-sm text-slate-400">Everything an affiliate needs to securely deliver leads into the CRM.</p></div>
+            <button type="button" onClick={() => setShowAffiliateDocs(false)} aria-label="Close documentation" className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white"><X size={20} /></button>
+          </header>
+          <div className="space-y-7 px-5 py-6 text-sm text-slate-300 sm:px-7">
+            {secret ? <section className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4"><h3 className="flex items-center gap-2 font-semibold text-emerald-100"><Send size={17} />Ready to send to {secret.name}</h3><p className="mt-2 text-xs leading-5 text-emerald-50/80">This guide contains the real private key. Click <b>Download file to send to affiliate</b> at the bottom and send that one file to the affiliate through a secure channel. They do not need a screenshot or anything else from this CRM page.</p></section> : <section className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-4"><h3 className="flex items-center gap-2 font-semibold text-amber-100"><KeyRound size={17} />Documentation preview only — do not send yet</h3><p className="mt-2 text-xs leading-5 text-amber-50/80">The value <span className="font-mono">YOUR_AFFILIATE_KEY</span> is only a placeholder. Close this guide, create a private key using the affiliate’s name, and then download the package from the key window.</p></section>}
+            <section><h3 className="font-semibold text-white">What this API does</h3><p className="mt-2 max-w-4xl leading-6 text-slate-400">This is a server-to-server lead intake API. An affiliate sends prospective client details, and valid submissions appear in the selected company’s CRM Lead inbox. It does not give the affiliate CRM access and does not automatically create a client account, deposit, or trade. CRM staff review and register each lead separately.</p></section>
+
+            <section className="grid gap-3 md:grid-cols-3">
+              {[['1', 'Create a connection', 'Enter the affiliate name and generate a private key. Use a separate key for every partner.'], ['2', 'Send the documentation', 'Give the affiliate this guide, endpoint, and their key through a secure channel.'], ['3', 'Receive CRM leads', 'Accepted submissions appear in this company’s Lead inbox with the affiliate as their source.']].map(([number, title, description]) => <div key={number} className="rounded-xl border border-white/10 bg-white/[0.025] p-4"><div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-violet-500/20 text-xs font-bold text-violet-200">{number}</div><h4 className="font-semibold text-white">{title}</h4><p className="mt-1 text-xs leading-5 text-slate-400">{description}</p></div>)}
+            </section>
+
+            <section><h3 className="font-semibold text-white">Endpoint and authentication</h3><div className="mt-3 space-y-2 rounded-xl border border-white/10 bg-[#0d1118] p-4 font-mono text-xs"><div><span className="mr-3 rounded bg-emerald-500/15 px-2 py-1 font-sans font-bold text-emerald-300">POST</span><span className="break-all text-slate-200">{apiUrl}</span></div><div className="border-t border-white/10 pt-3 text-slate-300">Content-Type: application/json</div><div className="break-all text-slate-300">x-affiliate-key: {secret?.key || 'YOUR_AFFILIATE_KEY'}</div></div>{secret && <p className="mt-2 text-xs text-amber-200">This guide currently contains the newly generated key. Copy or download it before closing the key window.</p>}</section>
+
+            <section><h3 className="font-semibold text-white">Request fields</h3><div className="mt-3 overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[680px] text-left text-xs"><thead className="bg-white/[0.04] text-slate-400"><tr><th className="px-4 py-3">Field</th><th className="px-4 py-3">Required</th><th className="px-4 py-3">Limit</th><th className="px-4 py-3">Meaning</th></tr></thead><tbody className="divide-y divide-white/[0.07]">{[
+                ['email', 'Yes', '254', 'Valid email address; converted to lowercase and used for duplicate detection.'],
+                ['first_name', 'No', '100', 'Lead’s first name.'], ['last_name', 'No', '100', 'Lead’s last name.'],
+                ['full_name', 'No', '200', 'Alternative to first_name and last_name.'], ['phone', 'No', '60', 'Phone number including country prefix.'],
+                ['country', 'No', '100', 'Country name or code.'], ['office', 'No', '100', 'Active company Office code or name.'],
+                ['campaign', 'No', '120', 'Campaign or marketing source label.'], ['notes', 'No', '2,000', 'Additional lead information.'],
+                ['external_id', 'No', '120', 'Affiliate’s own reference; it is not used for duplicate detection.']
+              ].map(row => <tr key={row[0]}><td className="px-4 py-3 font-mono text-violet-200">{row[0]}</td><td className="px-4 py-3">{row[1]}</td><td className="px-4 py-3">{row[2]}</td><td className="px-4 py-3 text-slate-400">{row[3]}</td></tr>)}</tbody></table></div><p className="mt-2 text-xs leading-5 text-slate-400">Office assignment is optional. If <span className="font-mono text-slate-300">office</span> matches an active Office code or name in this company, it is assigned automatically; otherwise the lead remains unassigned. When office is omitted, country is also checked as a possible Office code or name.</p></section>
+
+            <section className="grid gap-5 lg:grid-cols-2">
+              <div><h3 className="font-semibold text-white">Single-lead JSON</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`{
+  "email": "jane@example.com",
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "phone": "+1 555 0100",
+  "country": "US",
+  "office": "DE",
+  "campaign": "Spring campaign",
+  "notes": "Requested a callback",
+  "external_id": "partner-123"
+}`}</code></pre></div>
+              <div><h3 className="font-semibold text-white">Batch JSON (1–100 leads)</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`{
+  "leads": [
+    {
+      "email": "jane@example.com",
+      "first_name": "Jane",
+      "last_name": "Doe"
+    },
+    {
+      "email": "john@example.com",
+      "first_name": "John"
+    }
+  ]
+}`}</code></pre></div>
+            </section>
+
+            <section><h3 className="font-semibold text-white">cURL example</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`curl --request POST '${apiUrl}' \\
+  --header 'Content-Type: application/json' \\
+  --header 'x-affiliate-key: ${secret?.key || 'YOUR_AFFILIATE_KEY'}' \\
+  --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+1 555 0100","country":"US","campaign":"Spring campaign","external_id":"partner-123"}'`}</code></pre></section>
+
+            <section><h3 className="font-semibold text-white">JavaScript / Node.js example</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`const response = await fetch('${apiUrl}', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-affiliate-key': process.env.AFFILIATE_API_KEY
+  },
+  body: JSON.stringify({
+    email: 'jane@example.com',
+    first_name: 'Jane',
+    last_name: 'Doe',
+    phone: '+1 555 0100',
+    country: 'US',
+    campaign: 'Spring campaign',
+    external_id: 'partner-123'
+  })
+});
+
+const result = await response.json();
+if (!response.ok) throw new Error(result.error || 'Lead submission failed');`}</code></pre></section>
+
+            <section className="grid gap-5 lg:grid-cols-2"><div><h3 className="font-semibold text-white">Successful response</h3><pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300"><code>{`HTTP 200
+{
+  "accepted": 1,
+  "duplicates": 0,
+  "invalid": 0
+}`}</code></pre><ul className="mt-3 space-y-1 text-xs leading-5 text-slate-400"><li><span className="font-mono text-slate-300">accepted</span>: new leads saved</li><li><span className="font-mono text-slate-300">duplicates</span>: valid emails already present or repeated in the request</li><li><span className="font-mono text-slate-300">invalid</span>: entries without a valid email</li></ul></div><div><h3 className="font-semibold text-white">HTTP errors</h3><div className="mt-3 overflow-hidden rounded-xl border border-white/10 text-xs"><div className="grid grid-cols-[60px_1fr] gap-3 border-b border-white/[0.07] px-4 py-3"><b className="text-amber-200">400</b><span className="text-slate-400">Malformed JSON, empty batch, or over 100 leads</span></div><div className="grid grid-cols-[60px_1fr] gap-3 border-b border-white/[0.07] px-4 py-3"><b className="text-amber-200">401</b><span className="text-slate-400">Missing, invalid, paused, rotated, or unknown key</span></div><div className="grid grid-cols-[60px_1fr] gap-3 border-b border-white/[0.07] px-4 py-3"><b className="text-amber-200">405</b><span className="text-slate-400">A method other than POST was used</span></div><div className="grid grid-cols-[60px_1fr] gap-3 border-b border-white/[0.07] px-4 py-3"><b className="text-amber-200">413</b><span className="text-slate-400">Request body is larger than 500,000 characters</span></div><div className="grid grid-cols-[60px_1fr] gap-3 px-4 py-3"><b className="text-amber-200">500</b><span className="text-slate-400">Temporary server error; retry later</span></div></div></div></section>
+
+            <section className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] p-4"><h3 className="flex items-center gap-2 font-semibold text-amber-100"><ShieldCheck size={17} />Security and delivery rules</h3><ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-5 text-slate-300"><li>Call the endpoint from the affiliate’s backend/server, not from browser JavaScript.</li><li>Never expose the key in a website, mobile app, URL, query string, log, or public repository.</li><li>The key is shown only once and should be stored as a secret environment variable.</li><li>Email is the duplicate key within the destination company. <span className="font-mono">external_id</span> is only a reference.</li><li>Pausing a connection or rotating its key stops the previous access immediately.</li><li>A 500 response may be retried. If the original request was saved, the retry is safely reported as a duplicate.</li></ul></section>
+          </div>
+          <footer className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-white/10 bg-[#171e2b]/95 px-5 py-4 backdrop-blur sm:px-7"><button type="button" onClick={() => void copyToClipboard(affiliateDocumentation(apiUrl, secret?.key), secret ? 'Complete affiliate package copied.' : 'Documentation template copied. Create a key before sending it.')} className={`${button} border border-white/15 text-slate-200 hover:bg-white/5`}><Copy size={15} />{secret ? 'Copy package' : 'Copy template'}</button>{secret && <button type="button" onClick={downloadAffiliateDocs} className={`${button} bg-emerald-600 text-white hover:bg-emerald-500`}><Download size={15} />Download file to send to affiliate</button>}<button type="button" onClick={() => setShowAffiliateDocs(false)} className={`${button} ${secret ? 'border border-white/15 text-slate-200' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>Done</button></footer>
+        </section>
+      </div>}
+
+      {secret && !showAffiliateDocs && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"><section role="dialog" aria-modal="true" aria-labelledby="affiliate-key-title" className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#171e2b] p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><h2 id="affiliate-key-title" className="text-lg font-semibold">{secret.name} affiliate package</h2><p className="mt-1 text-sm text-amber-200">The private key is shown only now. Download the package before closing.</p></div><button type="button" onClick={() => setSecret(null)} aria-label="Close" className="text-slate-400 hover:text-white"><X size={20} /></button></div><div className="mt-5 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4"><div className="flex items-center gap-2 font-semibold text-emerald-100"><Send size={17} />This is what you send to the affiliate</div><p className="mt-2 text-xs leading-5 text-emerald-50/80">Download the file below and send that one file securely. It contains the endpoint, this affiliate’s key, all fields, examples, responses, errors, and security instructions.</p></div><button type="button" onClick={downloadAffiliateDocs} className={`${button} mt-4 w-full bg-emerald-600 py-3 text-white hover:bg-emerald-500`}><Download size={17} />Download file to send to affiliate</button><button type="button" onClick={() => setShowAffiliateDocs(true)} className={`${button} mt-2 w-full border border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20`}><BookOpen size={16} />Review package before sending</button><details className="mt-4 rounded-lg border border-white/10 bg-[#0d1118] p-3"><summary className="cursor-pointer text-xs font-medium text-slate-300">Show or copy private key separately</summary><div className="mt-3 break-all rounded-lg bg-black/20 p-3 font-mono text-xs text-white">{secret.key}</div><button type="button" onClick={() => void copyToClipboard(secret.key, 'Affiliate key copied.')} className={`${button} mt-2 w-full border border-white/10 text-slate-200 hover:bg-white/5`}><Clipboard size={16} />Copy key only</button></details><p className="mt-3 text-center text-[11px] leading-4 text-slate-500">Do not send a screenshot. The downloaded package is the complete handoff.</p></section></div>}
 
       {selectedLead && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"><section role="dialog" aria-modal="true" aria-labelledby="register-lead-title" className="w-full max-w-lg rounded-2xl border border-white/15 bg-[#171e2b] p-6 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="register-lead-title" className="text-lg font-semibold">Create client account</h2><p className="mt-1 text-sm text-slate-400">{nameOf(selectedLead)} · {selectedLead.email}</p></div><button type="button" onClick={() => setSelectedLead(null)} disabled={!!busy} aria-label="Close" className="text-slate-400 hover:text-white"><X size={20} /></button></div><div className="mt-5 rounded-lg border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-slate-200"><ShieldCheck size={18} className="mb-2 text-violet-300" />Creates an unpromoted Sales client in {dashboard.offices.find(item => item.id === selectedLead.office_id)?.code || 'No office'}. Retention assignment becomes available only after promotion.</div>{error && <div role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</div>}<label className="mt-5 block text-xs font-medium text-slate-300">Assign same-Office sales agent <span className="font-normal text-slate-500">(optional)</span><AppSelect value={owner} onChange={event => setOwner(event.target.value)} className={`mt-1.5 ${input}`}><option value="">Unassigned</option>{dashboard.owners.filter(item => { const user = Array.isArray(item.users) ? item.users[0] : item.users; return (user?.office_id || '') === (selectedLead.office_id || ''); }).map(item => <option key={item.user_id} value={`agent:${item.user_id}`}>{ownerName(item)}</option>)}</AppSelect></label><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setSelectedLead(null)} disabled={!!busy} className={`${button} border border-white/10 text-slate-300`}>Cancel</button><button type="button" onClick={registerLead} disabled={!!busy} className={`${button} bg-violet-600 text-white hover:bg-violet-500`}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}Create client</button></div></section></div>}
     </div>

@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Clipboard, Upload, FileSpreadsheet, KeyRound, Link2, 
 import AppSelect from './AppSelect';
 import { supabase } from '../lib/supabaseClient';
 import { parseCsv, rowsToLeads, type LeadInput } from '../lib/leadImport';
+import { getSelectedCrmCompanyId, setSelectedCrmCompanyId, type CrmCompany } from '../lib/crmCompany';
 
 type LeadStatus = 'new' | 'inviting' | 'registered' | 'existing';
 type SourceKind = 'affiliate_api' | 'google_sheet';
@@ -30,7 +31,7 @@ const input = 'w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5
 const button = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50';
 const emptyDashboard: Dashboard = { leads: [], total: 0, sources: [], owners: [], offices: [] };
 
-async function invokeLeadAction(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function invokeLeadActionRequest(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { data, error } = await supabase.functions.invoke('admin-leads', { body });
   if (error) {
     const response = (error as { context?: Response }).context;
@@ -67,6 +68,22 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
   const [confirmRotate, setConfirmRotate] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [owner, setOwner] = useState('');
+  const [companies, setCompanies] = useState<CrmCompany[]>([]);
+  const [companyId, setCompanyId] = useState(getSelectedCrmCompanyId() || '');
+  const [isPlatformNetwork, setIsPlatformNetwork] = useState(false);
+
+  const invokeLeadAction = useCallback((body: Record<string, unknown>) => invokeLeadActionRequest({ ...body, company_id: companyId || null }), [companyId]);
+
+  useEffect(() => {
+    if (staffMode) return;
+    void Promise.all([supabase.rpc('crm_admin_list_companies'), supabase.rpc('crm_admin_network_context')]).then(([companyResult, contextResult]) => {
+      const next = (companyResult.data as CrmCompany[] | null) || [];
+      setCompanies(next);
+      setIsPlatformNetwork((contextResult.data as { is_platform?: boolean } | null)?.is_platform === true);
+      const selected = next.some(company => company.id === companyId) ? companyId : next[0]?.id || '';
+      if (selected) { setCompanyId(selected); setSelectedCrmCompanyId(selected); }
+    });
+  }, [companyId, staffMode]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -76,7 +93,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load leads'); }
     finally { setLoading(false); }
-  }, [page, status, search, officeFilter]);
+  }, [invokeLeadAction, page, status, search, officeFilter]);
   useEffect(() => { void refresh(); }, [refresh]);
 
   const run = async (key: string, action: () => Promise<string>) => {
@@ -174,7 +191,7 @@ export default function AdminLeadsPage({ staffMode = false }: { staffMode?: bool
           <div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300"><Users size={21} /></div>
           <div><h1 className="text-2xl font-bold">Lead inbox</h1><p className="text-sm text-slate-400">{staffMode ? 'All Sales Offices. Use the Office selector as a filter.' : 'Collect affiliate leads and invite them to become clients.'}</p></div>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={loading || !!busy} className={`${button} border border-white/10 text-slate-300 hover:text-white`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button>
+        <div className="flex flex-wrap items-center gap-2">{!staffMode && isPlatformNetwork && companies.length > 0 && <AppSelect value={companyId} onChange={event => { setCompanyId(event.target.value); setSelectedCrmCompanyId(event.target.value); setPage(0); }} className="min-w-[220px] rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-violet-100">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</AppSelect>}<button type="button" onClick={() => void refresh()} disabled={loading || !!busy} className={`${button} border border-white/10 text-slate-300 hover:text-white`}><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button></div>
       </header>
 
       {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}

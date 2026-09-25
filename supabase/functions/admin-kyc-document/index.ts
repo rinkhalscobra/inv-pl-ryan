@@ -33,6 +33,15 @@ Deno.serve(async request => {
   if (!path || path.length > 500 || path.startsWith("/") || path.includes("..") || path.includes("\\")) {
     return errorResponse("Invalid document path", 400);
   }
+  const targetUserId = path.split("/")[0];
+  const { data: target } = await admin.from("users").select("company_id").eq("id", targetUserId).maybeSingle();
+  if (!target?.company_id) return errorResponse("Document account is unavailable", 404);
+  const { data: actorContext, error: contextError } = await admin.rpc("crm_service_actor_context", {
+    p_actor_id: actor.user.id,
+    p_ip: clientIp,
+    p_requested_company_id: target.company_id,
+  });
+  if (contextError || actorContext?.company_id !== target.company_id) return errorResponse("Document belongs to another company", 403);
   const { data: document, error } = await admin.storage.from("kyc-documents").download(path);
   if (error || !document) return errorResponse("Document unavailable", 404);
   const safeTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);

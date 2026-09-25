@@ -4,7 +4,7 @@ import { Package, X, AlertCircle, Clock, CheckCircle, TrendingUp, TrendingDown, 
 import { useFuturesTrading } from '../hooks/useFuturesTrading';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
-import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
+import { CFD_INSTRUMENTS, isCryptoDerivativeSymbol } from '../constants/tradingPairs';
 import { TradingMode } from '../App';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
@@ -31,6 +31,7 @@ interface FuturesMyOrdersProps {
   tradingMode: TradingMode;
   currentSelectedPairPrice: number;
   terminal?: boolean;
+  onTradingModeChange?: (mode: 'futures' | 'cfd') => void;
 }
 
 interface FuturesOrder {
@@ -148,7 +149,8 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
   selectedPair,
   tradingMode,
   currentSelectedPairPrice,
-  terminal = false
+  terminal = false,
+  onTradingModeChange
 }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -308,6 +310,8 @@ const getPricePrecision = useCallback((symbol: string): number => {
 
   // Helper function to determine instrument type
   const getInstrumentType = useCallback((symbol: string): string => {
+    if (isCryptoDerivativeSymbol(symbol)) return 'crypto';
+
     if (tradingMode === 'cfd') {
       // For CFD mode, look up the instrument in CFD_INSTRUMENTS
       const instrument = CFD_INSTRUMENTS.find(item => item.symbol === symbol);
@@ -317,10 +321,6 @@ const getPricePrecision = useCallback((symbol: string): number => {
     }
     
     // For non-CFD modes, check if it's crypto
-    if (symbol.endsWith('USDT') || symbol.endsWith('BTC') || symbol.endsWith('ETH')) {
-      return 'crypto';
-    }
-    
     // Default fallback
     return 'other';
   }, [tradingMode]);
@@ -337,13 +337,13 @@ const getPricePrecision = useCallback((symbol: string): number => {
   // Filter positions based on trading mode
   const filteredFuturesPositions = useMemo(() => {
     if (tradingMode === 'cfd') {
-      // In CFD mode, show all non-crypto positions
-      return futuresPositions.filter(position => getInstrumentType(position.symbol) !== 'crypto');
+      return futuresPositions.filter(position => !isCryptoDerivativeSymbol(position.symbol));
     } else { // tradingMode === 'futures'
-      // In Futures mode, show all crypto positions (not just the selected pair)
-      return futuresPositions.filter(position => getInstrumentType(position.symbol) === 'crypto');
+      return futuresPositions.filter(position => isCryptoDerivativeSymbol(position.symbol));
     }
-  }, [futuresPositions, tradingMode, getInstrumentType]);
+  }, [futuresPositions, tradingMode]);
+
+  const positionsInOtherWorkspace = futuresPositions.length - filteredFuturesPositions.length;
 
   // Filter open orders based on selectedPair and tradingMode
   const filteredOpenOrders = useMemo(() => {
@@ -1076,7 +1076,18 @@ const getPricePrecision = useCallback((symbol: string): number => {
             <div className="flex flex-col items-center justify-center py-16 text-slate-500 flex-1">
               <Package size={64} className="mb-6 opacity-30" />
               <p className="text-lg">{t('futures.noPositionsFound')}</p>
-              <p className="text-sm text-slate-600 mt-2">{t('futures.positionsWillAppear')}</p>
+              {positionsInOtherWorkspace > 0 ? <>
+                <p className="mt-2 max-w-md px-4 text-center text-sm text-slate-400">
+                  This client has {positionsInOtherWorkspace} open {isCfdMode ? 'crypto Futures' : 'CFD'} {positionsInOtherWorkspace === 1 ? 'position' : 'positions'}.
+                </p>
+                {onTradingModeChange && <button
+                  type="button"
+                  onClick={() => onTradingModeChange(isCfdMode ? 'futures' : 'cfd')}
+                  className="mt-4 rounded-lg border border-violet-400/30 bg-violet-500/10 px-4 py-2 text-sm font-semibold text-violet-200 transition hover:bg-violet-500/20"
+                >
+                  View {isCfdMode ? 'Futures' : 'CFD'} positions
+                </button>}
+              </> : <p className="text-sm text-slate-600 mt-2">{t('futures.positionsWillAppear')}</p>}
             </div>
           )}
         </div>

@@ -47,9 +47,9 @@ function sheetCsvUrl(input: string) {
 async function insertLeads(
   admin: SupabaseClient,
   inputs: unknown[],
-  source: { id: string | null; kind: "affiliate_api" | "google_sheet" | "file"; name: string },
+  source: { id: string | null; kind: "affiliate_api" | "google_sheet" | "file"; name: string; companyId: string },
 ) {
-  const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active");
+  const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active").eq("company_id", source.companyId);
   if (officeError) throw new Error(`Could not load Offices: ${officeError.message}`);
   const officeMap = new Map<string, string>();
   for (const office of offices || []) {
@@ -73,16 +73,16 @@ async function insertLeads(
     const { data, error } = await admin.from("crm_leads").upsert(batch.map(lead => {
       const { office, ...record } = lead;
       const incomingOffice = office || lead.country;
-      return { ...record, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
+      return { ...record, company_id: source.companyId, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
         source_metadata: { incoming_office: incomingOffice || null }, source_id: source.id, source_kind: source.kind, source_name: source.name };
-    }), { onConflict: "email", ignoreDuplicates: true }).select("id");
+    }), { onConflict: "company_id,email", ignoreDuplicates: true }).select("id");
     if (error) throw new Error(`Could not save leads: ${error.message}`);
     added += data?.length || 0;
   }
   return { added, duplicates: inputs.length - invalid - added, invalid };
 }
 
-async function syncSheet(admin: SupabaseClient, source: { id: string; name: string; sheet_url: string }) {
+async function syncSheet(admin: SupabaseClient, source: { id: string; name: string; sheet_url: string; company_id: string }) {
   try {
     const response = await fetch(sheetCsvUrl(source.sheet_url), {
       headers: { Accept: "text/csv,text/plain" }, signal: AbortSignal.timeout(12000), cache: "no-store",
@@ -94,7 +94,7 @@ async function syncSheet(admin: SupabaseClient, source: { id: string; name: stri
     const rows = parseCsv(csv);
     if (rows.length > 5001) throw new Error("The sheet exceeds 5,000 lead rows");
     const parsed = rowsToLeads(rows);
-    const result = await insertLeads(admin, parsed.leads, { id: source.id, kind: "google_sheet", name: source.name });
+    const result = await insertLeads(admin, parsed.leads, { id: source.id, kind: "google_sheet", name: source.name, companyId: source.company_id });
     result.invalid += parsed.invalid;
     const { error } = await admin.from("crm_lead_sources").update({ last_synced_at: new Date().toISOString(), last_sync_error: null }).eq("id", source.id);
     if (error) throw error;
@@ -106,7 +106,7 @@ async function syncSheet(admin: SupabaseClient, source: { id: string; name: stri
   }
 }
 
-async function registerLead(admin: SupabaseClient, leadId: string, actorId: string, ownerRole: string | null, ownerId: string | null) {
+async function registerLead(admin: SupabaseClient, leadId: string, actorId: string, companyId: string, ownerRole: string | null, ownerId: string | null) {
   if ((ownerRole === null) !== (ownerId === null) || (ownerRole !== null && ownerRole !== "agent") || (ownerId !== null && !uuid(ownerId))) {
     throw new Error("Select a valid sales agent");
   }
@@ -114,27 +114,27 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
   let step = "claim lead";
   let { data: lead, error: claimError } = await admin.from("crm_leads")
     .update({ status: "inviting", registration_started_at: startedAt, last_registration_attempt_at: startedAt, registration_error: null })
-    .eq("id", leadId).eq("status", "new").select("*").maybeSingle();
+    .eq("id", leadId).eq("company_id", companyId).eq("status", "new").select("*").maybeSingle();
   if (claimError) throw claimError;
   if (!lead) {
     const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
     const result = await admin.from("crm_leads")
       .update({ status: "inviting", registration_started_at: startedAt })
-      .eq("id", leadId).eq("status", "inviting").lt("registration_started_at", staleBefore).select("*").maybeSingle();
+      .eq("id", leadId).eq("company_id", companyId).eq("status", "inviting").lt("registration_started_at", staleBefore).select("*").maybeSingle();
     lead = result.data;
     claimError = result.error;
     if (claimError) throw claimError;
   }
   if (!lead) throw new Error("This lead is already registered or is being processed. Refresh the inbox.");
   if (ownerId) {
-    const { data: owner, error: ownerError } = await admin.from("users").select("office_id").eq("id", ownerId).maybeSingle();
+    const { data: owner, error: ownerError } = await admin.from("users").select("office_id").eq("id", ownerId).eq("company_id", companyId).maybeSingle();
     if (ownerError || !owner || owner.office_id !== lead.office_id) throw new Error("The Sales Agent must belong to the same Office as the lead");
   }
 
   let createdUserId: string | null = null;
   try {
     step = "duplicate account check";
-    const { data: existing, error: existingError } = await admin.from("users").select("id").eq("email", lead.email).maybeSingle();
+    const { data: existing, error: existingError } = await admin.from("users").select("id").eq("email", lead.email).eq("company_id", companyId).maybeSingle();
     if (existingError) throw existingError;
     if (existing) {
       step = "existing client onboarding";
@@ -155,6 +155,8 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
 
     step = "authentication account";
     const initialPassword = Deno.env.get("CRM_DEFAULT_CLIENT_PASSWORD") || "12345678";
+    const { data: company, error: companyError } = await admin.from("crm_companies").select("registration_key").eq("id", companyId).single();
+    if (companyError || !company) throw new Error("Lead company is unavailable");
     const { data: created, error: createError } = await admin.auth.admin.createUser({
       email: lead.email,
       password: initialPassword,
@@ -166,6 +168,7 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
         country: lead.country,
         crm_lead_id: leadId,
         onboarding_source: "lead_inbox",
+        crm_company_key: company.registration_key,
       },
     });
     if (createError || !created.user) throw new Error(createError?.message || "Could not create the authentication account");
@@ -176,6 +179,8 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
     if (onboardingError || onboarding?.success !== true) {
       throw new Error(onboardingError?.message || onboarding?.error || "Client onboarding did not complete");
     }
+    const { error: companyAssignmentError } = await admin.rpc("crm_service_set_user_company", { p_user_id: createdUserId, p_company_id: companyId });
+    if (companyAssignmentError) throw new Error(companyAssignmentError.message);
     const { error: officeSetError } = await admin.rpc("crm_service_set_user_office", { p_user_id: createdUserId, p_office_id: lead.office_id });
     if (officeSetError) throw new Error(officeSetError.message);
 
@@ -240,7 +245,7 @@ Deno.serve(async request => {
     const cronToken = request.headers.get("x-lead-sync-token");
     if (action === "sync_all_sheets" && cronToken && cronToken === Deno.env.get("LEADS_SYNC_TOKEN")) {
       const { data: sources, error } = await admin.from("crm_lead_sources")
-        .select("id,name,sheet_url").eq("kind", "google_sheet").eq("active", true).limit(10);
+        .select("id,name,sheet_url,company_id").eq("kind", "google_sheet").eq("active", true).limit(10);
       if (error) throw error;
       let index = 0;
       const results: unknown[] = [];
@@ -267,8 +272,8 @@ Deno.serve(async request => {
     const isAdmin = profile.is_admin === true;
     const actorRole = isAdmin ? "admin" : String(staffRole?.role || "client");
     if (!isAdmin && actorRole !== "workflow_manager") return json({ error: "Lead management access required" }, 403);
+    const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
     if (isAdmin) {
-      const clientIp = request.headers.get("cf-connecting-ip") || "";
       if (!clientIp) return json({ error: "Administrator network access required" }, 403);
       const { data: ipAllowed, error: ipError } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
       if (ipError || ipAllowed !== true) return json({ error: "Administrator network access required" }, 403);
@@ -276,6 +281,13 @@ Deno.serve(async request => {
     if (!isAdmin && !["dashboard", "set_lead_office", "register_lead"].includes(action)) {
       return json({ error: "Only Admin can manage lead sources and imports" }, 403);
     }
+    if (!clientIp) return json({ error: "CRM network access required" }, 403);
+    const requestedCompanyId = typeof body.company_id === "string" ? body.company_id : null;
+    const { data: actorContext, error: contextError } = await admin.rpc("crm_service_actor_context", {
+      p_actor_id: actorId, p_ip: clientIp, p_requested_company_id: requestedCompanyId,
+    });
+    const companyId = String(actorContext?.company_id || "");
+    if (contextError || !companyId) return json({ error: contextError?.message || "CRM company access could not be resolved" }, 403);
 
     if (action === "dashboard") {
       const page = Math.max(0, Math.min(1000, Number(body.page) || 0));
@@ -284,16 +296,16 @@ Deno.serve(async request => {
       const officeId = String(body.office_id || "all");
       if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
       let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata", { count: "exact" })
-        .order("created_at", { ascending: false }).range(page * 50, page * 50 + 49);
+        .eq("company_id", companyId).order("created_at", { ascending: false }).range(page * 50, page * 50 + 49);
       if (officeId === "unassigned") query = query.is("office_id", null);
       else if (officeId !== "all") query = query.eq("office_id", officeId);
       if (status) query = query.eq("status", status);
       if (search) query = query.ilike("email", `%${search}%`);
       const [leadResult, sourceResult, ownerResult, officeResult] = await Promise.all([
         query,
-        admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").order("created_at", { ascending: false }).limit(100),
-        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id)").eq("role", "agent"),
-        admin.from("crm_offices").select("id,name,code,status").order("name"),
+        admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
+        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)").eq("role", "agent").eq("users.company_id", companyId),
+        admin.from("crm_offices").select("id,name,code,status").eq("company_id", companyId).order("name"),
       ]);
       if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error) {
         throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message);
@@ -305,6 +317,11 @@ Deno.serve(async request => {
       if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
       const officeId = body.office_id ? String(body.office_id) : null;
       if (officeId && !uuid(officeId)) return json({ error: "Select a valid Office" }, 400);
+      const [{ data: scopedLead }, { data: scopedOffice }] = await Promise.all([
+        admin.from("crm_leads").select("id").eq("id", String(body.lead_id)).eq("company_id", companyId).maybeSingle(),
+        officeId ? admin.from("crm_offices").select("id").eq("id", officeId).eq("company_id", companyId).maybeSingle() : Promise.resolve({ data: null }),
+      ]);
+      if (!scopedLead || (officeId && !scopedOffice)) return json({ error: "Lead or Office belongs to another company" }, 403);
       const { error } = await admin.rpc("crm_set_lead_office_for_actor", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_office_id: officeId });
       if (error) throw error;
       return json({ success: true });
@@ -314,7 +331,7 @@ Deno.serve(async request => {
       const name = String(body.name || "").trim().slice(0, 100);
       if (!name) return json({ error: "Enter an affiliate name" }, 400);
       const apiKey = newAffiliateKey();
-      const { data, error } = await admin.from("crm_lead_sources").insert({ name, kind: "affiliate_api", api_key_hash: await keyHash(apiKey), created_by: actorId }).select("id,name").single();
+      const { data, error } = await admin.from("crm_lead_sources").insert({ name, company_id: companyId, kind: "affiliate_api", api_key_hash: await keyHash(apiKey), created_by: actorId }).select("id,name").single();
       if (error) throw error;
       await admin.from("admin_action_logs").insert({ admin_user_id: actorId, action: "crm_affiliate_created", after_data: { source_id: data.id, name }, reason: "Created affiliate lead connection" });
       return json({ source: data, api_key: apiKey });
@@ -324,14 +341,14 @@ Deno.serve(async request => {
       const name = String(body.name || "").trim().slice(0, 100);
       if (!name) return json({ error: "Enter a sheet name" }, 400);
       const sheetUrl = sheetCsvUrl(String(body.url || "").trim());
-      const { data, error } = await admin.from("crm_lead_sources").insert({ name, kind: "google_sheet", sheet_url: sheetUrl, created_by: actorId }).select("id,name,sheet_url").single();
+      const { data, error } = await admin.from("crm_lead_sources").insert({ name, company_id: companyId, kind: "google_sheet", sheet_url: sheetUrl, created_by: actorId }).select("id,name,sheet_url").single();
       if (error) throw error;
       return json({ source: data });
     }
 
     if (["sync_sheet", "set_source_active", "rotate_key"].includes(action)) {
       if (!uuid(body.source_id)) return json({ error: "Select a valid source" }, 400);
-      const { data: source, error } = await admin.from("crm_lead_sources").select("*").eq("id", body.source_id).single();
+      const { data: source, error } = await admin.from("crm_lead_sources").select("*").eq("id", body.source_id).eq("company_id", companyId).single();
       if (error || !source) return json({ error: "Source not found" }, 404);
       if (action === "sync_sheet") {
         if (source.kind !== "google_sheet" || !source.active) return json({ error: "Activate a Google Sheet to sync it" }, 400);
@@ -355,7 +372,7 @@ Deno.serve(async request => {
     if (action === "import_rows") {
       if (!Array.isArray(body.rows) || body.rows.length > 200) return json({ error: "Upload up to 200 rows per batch" }, 400);
       const name = String(body.filename || "Imported file").trim().slice(0, 100);
-      return json({ result: await insertLeads(admin, body.rows, { id: null, kind: "file", name }) });
+      return json({ result: await insertLeads(admin, body.rows, { id: null, kind: "file", name, companyId }) });
     }
 
     if (action === "register_lead") {
@@ -364,7 +381,7 @@ Deno.serve(async request => {
       const ownerId = body.owner_id ? String(body.owner_id) : null;
       const { data: allowed, error: accessError } = await admin.rpc("crm_actor_can_manage_lead", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_agent_id: ownerId });
       if (accessError || allowed !== true) return json({ error: "This lead is unavailable or the Agent belongs to a different Office" }, 403);
-      return json(await registerLead(admin, String(body.lead_id), actorId, ownerRole, ownerId));
+      return json(await registerLead(admin, String(body.lead_id), actorId, companyId, ownerRole, ownerId));
     }
 
     return json({ error: "Unsupported lead action" }, 400);

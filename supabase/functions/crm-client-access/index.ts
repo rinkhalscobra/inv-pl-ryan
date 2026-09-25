@@ -69,19 +69,28 @@ Deno.serve(async request => {
       return json({ error: "CRM staff access required" }, 403);
     }
 
+    const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    if (!clientIp) return json({ error: "CRM network access required" }, 403);
     if (actorRole === "admin") {
-      const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
       if (!clientIp) return json({ error: "Administrator network access required" }, 403);
       const { data: allowed, error } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
       if (error || allowed !== true) return json({ error: "Administrator network access required" }, 403);
     }
 
     const [{ data: target, error: targetError }, { data: targetStaff, error: targetStaffError }] = await Promise.all([
-      admin.from("users").select("id,email,is_admin").eq("id", targetId).maybeSingle(),
+      admin.from("users").select("id,email,is_admin,company_id").eq("id", targetId).maybeSingle(),
       admin.from("crm_staff_roles").select("role").eq("user_id", targetId).maybeSingle(),
     ]);
     if (targetError || targetStaffError || !target || target.is_admin === true || targetStaff) {
       return json({ error: "The selected account is not a client" }, 403);
+    }
+    const { data: actorContext, error: contextError } = await admin.rpc("crm_service_actor_context", {
+      p_actor_id: actorId,
+      p_ip: clientIp,
+      p_requested_company_id: target.company_id,
+    });
+    if (contextError || actorContext?.company_id !== target.company_id) {
+      return json({ error: contextError?.message || "This client belongs to another company" }, 403);
     }
 
     const { data: allowed, error: accessError } = await admin.rpc("crm_actor_can_view_client", {

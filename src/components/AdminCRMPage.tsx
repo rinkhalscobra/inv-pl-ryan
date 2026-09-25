@@ -31,6 +31,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { getSelectedCrmCompanyId, setSelectedCrmCompanyId, type CrmCompany } from '../lib/crmCompany';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 type JsonRow = Record<string, unknown>;
@@ -287,6 +288,19 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [currentAdminId, setCurrentAdminId] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [companies, setCompanies] = useState<CrmCompany[]>([]);
+  const [companyId, setCompanyId] = useState(getSelectedCrmCompanyId() || '');
+  const [isPlatformNetwork, setIsPlatformNetwork] = useState(false);
+
+  useEffect(() => {
+    void Promise.all([supabase.rpc('crm_admin_list_companies'), supabase.rpc('crm_admin_network_context')]).then(([companyResult, contextResult]) => {
+      const next = (companyResult.data as CrmCompany[] | null) || [];
+      setCompanies(next);
+      setIsPlatformNetwork((contextResult.data as { is_platform?: boolean } | null)?.is_platform === true);
+      const selected = next.some(company => company.id === companyId) ? companyId : next[0]?.id || '';
+      if (selected) { setCompanyId(selected); setSelectedCrmCompanyId(selected); }
+    });
+  }, [companyId]);
 
   const showError = useCallback((error: unknown) => setMessage({ type: 'error', text: errorText(error) }), []);
 
@@ -302,7 +316,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       p_search: query.trim() || null,
       p_limit: 100,
       p_offset: 0,
-      p_kyc_status: kycFilter
+      p_kyc_status: kycFilter,
+      p_company_id: companyId || null
     });
     setLoadingUsers(false);
     if (error) {
@@ -316,7 +331,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setSelectedUserId(current => current && nextUsers.some(user => user.id === current)
       ? current
       : nextUsers[0]?.id || null);
-  }, [focusedAccountId, isAdmin, kycFilter, showError]);
+  }, [companyId, focusedAccountId, isAdmin, kycFilter, showError]);
 
   const loadWorkspace = useCallback(async (userId: string) => {
     const requestId = ++workspaceRequestId.current;
@@ -628,7 +643,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const invokeAdminUserAction = async (body: Record<string, unknown>) => {
     const callWithToken = async (accessToken: string) => {
       const { data, error } = await supabase.functions.invoke('admin-user-management', {
-        body,
+        body: { ...body, company_id: companyId || null },
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (error) {
@@ -855,6 +870,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {isPlatformNetwork && companies.length > 0 && <select value={companyId} onChange={event => { setCompanyId(event.target.value); setSelectedCrmCompanyId(event.target.value); navigate('/admin/clients'); }} className="rounded-xl border border-violet-400/30 bg-[#111827] px-3 py-2.5 text-sm font-semibold text-violet-100 outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select>}
             <button type="button" onClick={() => navigate('/admin/clients')} aria-current={!focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${!focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />Clients</button>
             <button onClick={() => navigate('/admin/hierarchy')} aria-current={focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />Team hierarchy</button>
             <button onClick={() => navigate('/admin/leads')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Lead inbox</button>

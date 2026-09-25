@@ -52,6 +52,7 @@ import AdminIpAccessPage from './components/AdminIpAccessPage';
 import AdminLeadsPage from './components/AdminLeadsPage';
 import CRMHierarchyPage from './components/CRMHierarchyPage';
 import CRMStaffPage from './components/CRMStaffPage';
+import CRMNetworkGate from './components/CRMNetworkGate';
 
 export type TradingMode = 'home' | 'swap' | 'futures' | 'cfd' | 'robot' | 'wallet' | 'profile' | 'staking' | 'wheel' | 'payment_sandbox';
 
@@ -666,6 +667,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                               selectedPair={selectedPair}
                               tradingMode={tradingMode}
                               currentSelectedPairPrice={currentSelectedPairPrice}
+                              onTradingModeChange={handleTradingModeChange}
                             />
                           </section>
                         </div>
@@ -719,6 +721,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                               tradingMode={tradingMode}
                               currentSelectedPairPrice={currentSelectedPairPrice}
                               terminal
+                              onTradingModeChange={handleTradingModeChange}
                             />
                           </section>
                         </div>
@@ -857,7 +860,7 @@ const handleUpdatePassword = async (newPassword: string) => {
               ) : user ? (
                 isAdmin ? <Navigate to="/admin/clients" replace /> :
                   (['workflow_manager', 'desk_manager', 'agent', 'retention_manager', 'retention'] as const).some(role => role === crmRole)
-                    ? <CRMStaffPage role={crmRole as 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention'} />
+                    ? <CRMNetworkGate><CRMStaffPage role={crmRole as 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention'} /></CRMNetworkGate>
                     : <Navigate to="/dashboard" replace />
               ) : <Navigate to="/auth" replace />
             } />
@@ -866,7 +869,7 @@ const handleUpdatePassword = async (newPassword: string) => {
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>
               ) : user && crmRole === 'workflow_manager' ? (
-                <AdminLeadsPage staffMode />
+                <CRMNetworkGate><AdminLeadsPage staffMode /></CRMNetworkGate>
               ) : <Navigate to="/dashboard" replace />
             } />
             

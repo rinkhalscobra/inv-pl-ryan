@@ -71,6 +71,13 @@ export const TOP_CRYPTO_PAIRS: CryptoPairConfig[] = [
   { symbol: 'KASUSDT', name: 'Kaspa', type: 'crypto', active: false, priority: 'normal' },
 ];
 
+const CRYPTO_DERIVATIVE_SYMBOLS = new Set(TOP_CRYPTO_PAIRS.map(pair => pair.symbol.toUpperCase()));
+
+export const isCryptoDerivativeSymbol = (symbol: string): boolean => {
+  const normalized = symbol.trim().toUpperCase().replace(/[\s/_-]/g, '');
+  return CRYPTO_DERIVATIVE_SYMBOLS.has(normalized) || normalized.endsWith('USDT') || normalized.endsWith('USDC');
+};
+
 const CFD_INSTRUMENTS_BASE: CfdInstrumentConfig[] = [
   // Forex Pairs - Majors
   { symbol: 'EUR/USD', name: 'Euro/US Dollar', type: 'forex', active: true },

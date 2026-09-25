@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Globe2, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle2, Copy, Globe2, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { getSelectedCrmCompanyId, setSelectedCrmCompanyId, type CrmCompany } from '../lib/crmCompany';
 
 interface AllowedIp {
   ip_address: string;
@@ -9,11 +10,17 @@ interface AllowedIp {
   created_at: string;
   created_by: string | null;
   is_current: boolean;
+  access_scope: 'platform' | 'company';
+  company_id: string | null;
+  company_name: string | null;
 }
 
 export default function AdminIpAccessPage() {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<AllowedIp[]>([]);
+  const [companies, setCompanies] = useState<CrmCompany[]>([]);
+  const [isPlatform, setIsPlatform] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState(getSelectedCrmCompanyId() || '');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [ip, setIp] = useState('');
@@ -21,17 +28,32 @@ export default function AdminIpAccessPage() {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [newCompany, setNewCompany] = useState({ name: '', code: '', primaryIp: '' });
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error: requestError } = await supabase.rpc('crm_admin_list_ips');
-    if (requestError) setError(requestError.message);
+    const [{ data, error: requestError }, { data: companyData, error: companyError }, { data: contextData, error: contextError }] = await Promise.all([
+      supabase.rpc('crm_admin_list_ips'),
+      supabase.rpc('crm_admin_list_companies'),
+      supabase.rpc('crm_admin_network_context'),
+    ]);
+    if (requestError || companyError || contextError) setError(requestError?.message || companyError?.message || contextError?.message || 'Company access could not load.');
     else {
       setEntries((data as AllowedIp[] | null) || []);
+      const nextCompanies = (companyData as CrmCompany[] | null) || [];
+      setCompanies(nextCompanies);
+      const context = contextData as { is_platform?: boolean; company_id?: string | null } | null;
+      setIsPlatform(context?.is_platform === true);
+      const availableSelection = nextCompanies.some(company => company.id === selectedCompanyId)
+        ? selectedCompanyId : context?.company_id || nextCompanies[0]?.id || '';
+      if (availableSelection) {
+        setSelectedCompanyIdState(availableSelection);
+        setSelectedCrmCompanyId(availableSelection);
+      }
       setError(null);
     }
     setLoading(false);
-  }, []);
+  }, [selectedCompanyId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -42,13 +64,36 @@ export default function AdminIpAccessPage() {
     setError(null);
     setNotice(null);
     const value = ip.trim();
-    const { error: requestError } = await supabase.rpc('crm_admin_add_ip', { p_ip: value, p_label: label.trim() });
+    const { error: requestError } = await supabase.rpc('crm_admin_add_ip', { p_ip: value, p_label: label.trim(), p_company_id: selectedCompanyId || null });
     if (requestError) setError(requestError.code === '23505' ? 'This IP address is already approved.' : requestError.message);
     else {
       setIp('');
       setLabel('');
       await refresh();
       setNotice(`${value} can now access the administrator CRM after signing in.`);
+    }
+    setBusy(false);
+  };
+
+  const chooseCompany = (companyId: string) => {
+    setSelectedCompanyIdState(companyId);
+    setSelectedCrmCompanyId(companyId);
+  };
+
+  const createCompany = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !newCompany.name.trim() || !newCompany.code.trim() || !newCompany.primaryIp.trim()) return;
+    setBusy(true); setError(null); setNotice(null);
+    const { data, error: requestError } = await supabase.rpc('crm_admin_create_company', {
+      p_name: newCompany.name.trim(), p_code: newCompany.code.trim().toUpperCase(), p_primary_ip: newCompany.primaryIp.trim(),
+    });
+    if (requestError) setError(requestError.message);
+    else {
+      const created = data as { id: string; name: string };
+      chooseCompany(created.id);
+      setNewCompany({ name: '', code: '', primaryIp: '' });
+      setNotice(`${created.name} was created with zero clients and its primary IP is approved.`);
+      await refresh();
     }
     setBusy(false);
   };
@@ -84,6 +129,18 @@ export default function AdminIpAccessPage() {
       {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
       {notice && <div role="status" className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"><CheckCircle2 size={16} />{notice}</div>}
 
+      {isPlatform && <section className="mb-5 rounded-xl border border-white/10 bg-[#151b26] p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div><h2 className="flex items-center gap-2 font-semibold"><Building2 size={18} className="text-violet-300" />Company workspace</h2><p className="mt-1 text-xs text-slate-400">The selected company controls the Clients, hierarchy and Lead inbox shown to platform administrators.</p></div>
+          <label className="min-w-[280px] text-xs text-slate-400">Active company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name} · {company.code}</option>)}</select></label>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{companies.map(company => <article key={company.id} className={`rounded-lg border p-4 ${company.id === selectedCompanyId ? 'border-violet-400/40 bg-violet-500/[0.07]' : 'border-white/10 bg-black/10'}`}>
+          <div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-white">{company.name}</div><div className="mt-1 font-mono text-xs text-slate-500">{company.code}</div></div><button type="button" onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}${company.registration_path}`); setNotice('Registration link copied.'); }} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Copy registration link"><Copy size={15} /></button></div>
+          <div className="mt-3 text-xs text-slate-400">{company.user_count} users · {company.lead_count} leads · {company.office_count} offices</div>
+          <div className="mt-2 break-all text-[11px] text-slate-500">{company.registration_path}</div>
+        </article>)}</div>
+      </section>}
+
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="overflow-hidden rounded-xl border border-white/10 bg-[#151b26]">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
@@ -95,7 +152,7 @@ export default function AdminIpAccessPage() {
               {entries.map(entry => <div key={entry.ip_address} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-semibold text-white">{entry.ip_address}</span>{entry.is_current && <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Current network</span>}</div>
-                  <div className="mt-1 text-xs text-slate-400">{entry.label || 'No label'} · Added {new Date(entry.created_at).toLocaleDateString()}</div>
+                  <div className="mt-1 text-xs text-slate-400">{entry.label || 'No label'} · {entry.access_scope === 'platform' ? 'Platform access' : entry.company_name} · Added {new Date(entry.created_at).toLocaleDateString()}</div>
                 </div>
                 {entry.is_current ? <span className="text-xs text-slate-500">Protected while in use</span> : confirmRemove === entry.ip_address ?
                   <div className="flex items-center gap-2"><button type="button" onClick={() => setConfirmRemove(null)} disabled={busy} className="rounded-lg px-3 py-2 text-xs text-slate-300 hover:text-white">Cancel</button><button type="button" onClick={() => void removeIp(entry.ip_address)} disabled={busy} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/25 disabled:opacity-50">Confirm removal</button></div> :
@@ -107,6 +164,7 @@ export default function AdminIpAccessPage() {
         <section className="rounded-xl border border-white/10 bg-[#151b26] p-5">
           <div className="mb-5 flex items-center gap-2"><Globe2 size={19} className="text-violet-300" /><h2 className="font-semibold">Add an approved network</h2></div>
           <form onSubmit={addIp} className="space-y-4">
+            {isPlatform && <label className="block text-xs font-medium text-slate-300">Company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} required className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>}
             <label className="block text-xs font-medium text-slate-300">IP address<input type="text" value={ip} onChange={event => setIp(event.target.value)} required maxLength={45} autoComplete="off" spellCheck={false} placeholder="203.0.113.10" className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-violet-400" /></label>
             <label className="block text-xs font-medium text-slate-300">Label <span className="font-normal text-slate-500">(optional)</span><input type="text" value={label} onChange={event => setLabel(event.target.value)} maxLength={80} placeholder="Office, VPN, or location" className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400" /></label>
             <button type="submit" disabled={busy || !ip.trim()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"><Plus size={17} />Approve IP address</button>
@@ -115,6 +173,16 @@ export default function AdminIpAccessPage() {
           {currentIp && <p className="mt-3 text-xs text-slate-500">Your current network: <span className="font-mono text-slate-300">{currentIp}</span></p>}
         </section>
       </div>
+
+      {isPlatform && <section className="mt-5 rounded-xl border border-white/10 bg-[#151b26] p-5">
+        <div className="mb-5 flex items-center gap-2"><Building2 size={19} className="text-violet-300" /><div><h2 className="font-semibold">Create an isolated company</h2><p className="mt-1 text-xs text-slate-400">The company starts with zero clients, leads, users and offices.</p></div></div>
+        <form onSubmit={createCompany} className="grid gap-4 md:grid-cols-3 xl:grid-cols-[1fr_220px_1fr_auto]">
+          <label className="text-xs text-slate-300">Company name<input value={newCompany.name} onChange={event => setNewCompany(current => ({ ...current, name: event.target.value }))} required maxLength={100} className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400" /></label>
+          <label className="text-xs text-slate-300">Code<input value={newCompany.code} onChange={event => setNewCompany(current => ({ ...current, code: event.target.value.toUpperCase() }))} required maxLength={24} placeholder="COMPANY_B" className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-violet-400" /></label>
+          <label className="text-xs text-slate-300">Primary IP<input value={newCompany.primaryIp} onChange={event => setNewCompany(current => ({ ...current, primaryIp: event.target.value }))} required maxLength={45} placeholder="203.0.113.10" className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-violet-400" /></label>
+          <button type="submit" disabled={busy} className="mt-5 inline-flex h-[42px] items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold hover:bg-violet-500 disabled:opacity-50"><Plus size={16} />Create company</button>
+        </form>
+      </section>}
     </div>
   </main>;
 }

@@ -4,6 +4,7 @@ import { AlertCircle, AlertTriangle, ArrowLeft, ExternalLink, Loader2, Plus, Ref
 import AppSelect from './AppSelect';
 import { supabase } from '../lib/supabaseClient';
 import { openClientDashboard } from '../lib/clientAccess';
+import { getSelectedCrmCompanyId, setSelectedCrmCompanyId, type CrmCompany } from '../lib/crmCompany';
 
 type CRMRole = 'client' | 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention' | 'admin';
 type StaffRole = Exclude<CRMRole, 'client' | 'admin'>;
@@ -47,15 +48,27 @@ export default function CRMHierarchyPage() {
   const [newOffice, setNewOffice] = useState({ name: '', code: '' });
   const [deleteOffice, setDeleteOffice] = useState<OfficeDeletePreview | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [companies, setCompanies] = useState<CrmCompany[]>([]);
+  const [companyId, setCompanyId] = useState(getSelectedCrmCompanyId() || '');
+  const [isPlatformNetwork, setIsPlatformNetwork] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error: requestError } = await supabase.rpc('crm_admin_get_hierarchy');
+    const { data, error: requestError } = await supabase.rpc('crm_admin_get_hierarchy', { p_company_id: companyId || null });
     if (requestError) { setError(requestError.message); setHierarchy(emptyHierarchy); }
     else { setHierarchy((data as Hierarchy) || emptyHierarchy); setError(null); }
     setLoading(false);
-  }, []);
+  }, [companyId]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void Promise.all([supabase.rpc('crm_admin_list_companies'), supabase.rpc('crm_admin_network_context')]).then(([companyResult, contextResult]) => {
+      const next = (companyResult.data as CrmCompany[] | null) || [];
+      setCompanies(next);
+      setIsPlatformNetwork((contextResult.data as { is_platform?: boolean } | null)?.is_platform === true);
+      const selected = next.some(company => company.id === companyId) ? companyId : next[0]?.id || '';
+      if (selected) { setCompanyId(selected); setSelectedCrmCompanyId(selected); }
+    });
+  }, [companyId]);
 
   const run = async (key: string, action: () => Promise<{ error: { message: string } | null }>, success: string) => {
     setBusy(key); setError(null); setNotice(null);
@@ -118,7 +131,7 @@ export default function CRMHierarchyPage() {
   const saveOffice = async (office?: Office) => {
     const name = office?.name || newOffice.name.trim(); const code = office?.code || newOffice.code.trim();
     if (!name || !code) { setError('Office name and code are required.'); return; }
-    await run(`office-save-${office?.id || 'new'}`, async () => { const { error } = await supabase.rpc('crm_admin_save_office', { p_office_id: office?.id || null, p_name: name, p_code: code, p_status: office ? (office.status === 'active' ? 'inactive' : 'active') : 'active' }); return { error }; }, office ? 'Office status updated.' : 'Office created.');
+    await run(`office-save-${office?.id || 'new'}`, async () => { const { error } = await supabase.rpc('crm_admin_save_office', { p_office_id: office?.id || null, p_name: name, p_code: code, p_status: office ? (office.status === 'active' ? 'inactive' : 'active') : 'active', p_company_id: companyId || null }); return { error }; }, office ? 'Office status updated.' : 'Office created.');
     if (!office) setNewOffice({ name: '', code: '' });
   };
   const prepareOfficeDeletion = async (office: Office) => {
@@ -131,7 +144,7 @@ export default function CRMHierarchyPage() {
     if (!deleteOffice || deleteConfirmation.trim().toUpperCase() !== deleteOffice.code) return;
     setBusy(`office-delete-${deleteOffice.id}`); setError(null); setNotice(null);
     try {
-      const { data, error: requestError } = await supabase.functions.invoke('admin-user-management', { body: { action: 'delete_office', office_id: deleteOffice.id, confirmation_code: deleteConfirmation.trim() } });
+      const { data, error: requestError } = await supabase.functions.invoke('admin-user-management', { body: { action: 'delete_office', company_id: companyId || null, office_id: deleteOffice.id, confirmation_code: deleteConfirmation.trim() } });
       if (requestError || data?.error) throw new Error(data?.error || requestError?.message || 'Office deletion failed.');
       const deletedName = deleteOffice.name; setDeleteOffice(null); setDeleteConfirmation(''); await refresh(); setNotice(`${deletedName}, its users, leads, and related account data were permanently deleted.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Office deletion failed.'); }
@@ -148,7 +161,7 @@ export default function CRMHierarchyPage() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData.session) throw new Error('Administrator session expired.');
       const ownerRole = ownerRoleFor(newUser.role);
-      const { data, error: requestError } = await supabase.functions.invoke('admin-user-management', { headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'create_user', email: newUser.email.trim().toLowerCase(), first_name: newUser.firstName.trim(), last_name: newUser.lastName.trim(), country: newUser.country.trim(), password: newUser.password, role: newUser.role, office_id: newUser.officeId || null, owner_role: newUser.owner ? ownerRole : null, owner_id: newUser.owner || null } });
+      const { data, error: requestError } = await supabase.functions.invoke('admin-user-management', { headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: { action: 'create_user', company_id: companyId || null, email: newUser.email.trim().toLowerCase(), first_name: newUser.firstName.trim(), last_name: newUser.lastName.trim(), country: newUser.country.trim(), password: newUser.password, role: newUser.role, office_id: newUser.officeId || null, owner_role: newUser.owner ? ownerRole : null, owner_id: newUser.owner || null } });
       if (requestError || data?.error) throw new Error(data?.error || requestError?.message || 'Account creation failed.');
       setShowCreate(false); setNewUser(emptyNewUser); setNotice('CRM account created.'); await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Account creation failed.'); }
@@ -159,6 +172,7 @@ export default function CRMHierarchyPage() {
 
   return <div className="min-h-screen bg-[#0d1118] px-4 py-5 text-slate-100 sm:px-6 lg:px-8"><div className="mx-auto max-w-[1700px]">
     <header className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.09] pb-5"><div className="flex items-center gap-3"><button onClick={() => navigate('/admin')} className="rounded-lg border border-white/[0.12] p-2.5 text-slate-300 hover:text-white"><ArrowLeft size={19} /></button><div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300"><ShieldCheck size={21} /></div><div><h1 className="text-2xl font-bold">CRM hierarchy</h1><p className="text-sm text-slate-400">Strict Sales and Retention workspaces</p></div></div><div className="flex gap-2"><button onClick={() => void refresh()} disabled={loading} className="flex items-center gap-2 rounded-lg border border-white/[0.12] px-3 py-2 text-sm"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} />Refresh</button><button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold hover:bg-violet-500"><Plus size={16} />Create account</button></div></header>
+    {isPlatformNetwork && companies.length > 0 && <label className="mb-5 block max-w-sm text-xs text-slate-400">Active company<AppSelect value={companyId} onChange={event => { setCompanyId(event.target.value); setSelectedCrmCompanyId(event.target.value); }} className={`${field} mt-1.5`}>{companies.map(company => <option key={company.id} value={company.id}>{company.name} · {company.code}</option>)}</AppSelect></label>}
     {error && <div role="alert" className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"><AlertCircle size={17} />{error}</div>}{notice && <div role="status" className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{notice}</div>}
     <section className={`${panel} mb-5 p-4`}><div className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="font-semibold">Offices / Teams</h2><p className="mt-1 text-xs text-slate-400">Organizational scope is independent from role and workspace.</p></div><div className="grid gap-2 sm:grid-cols-[180px_100px_auto]"><input value={newOffice.name} onChange={event => setNewOffice(value => ({ ...value, name: event.target.value }))} placeholder="Office name" className={field} /><input value={newOffice.code} onChange={event => setNewOffice(value => ({ ...value, code: event.target.value.toUpperCase() }))} placeholder="Code" className={field} /><button type="button" onClick={() => void saveOffice()} disabled={!!busy} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold disabled:opacity-50">Add office</button></div></div><div className="mt-4 flex flex-wrap gap-2">{hierarchy.offices.map(office => <div key={office.id} className="flex items-center gap-2 rounded-lg border border-white/[0.1] px-3 py-2 text-sm"><span className="font-semibold">{office.code}</span><span className="text-slate-400">{office.name}</span><button type="button" onClick={() => void saveOffice(office)} disabled={!!busy} className={`ml-2 rounded px-2 py-1 text-xs ${office.status === 'active' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-500/10 text-slate-400'}`}>{office.status}</button><button type="button" onClick={() => void prepareOfficeDeletion(office)} disabled={!!busy} aria-label={`Delete ${office.name}`} className="rounded p-1.5 text-red-300 hover:bg-red-500/10"><Trash2 size={14} /></button></div>)}</div></section>
     <div className="grid gap-5 2xl:grid-cols-2"><section className="space-y-4"><div className={`${panel} border-cyan-400/20 p-4`}><h2 className="text-lg font-bold text-cyan-200">Sales workspace</h2><p className="mt-1 text-sm text-slate-400">Admin → Workflow Manager → Desk Manager → Agent → unpromoted lead</p></div><StaffList title="Workflow Managers" role="workflow_manager" people={workflowManagers} /><StaffList title="Desk Managers" role="desk_manager" people={deskManagers} /><StaffList title="Agents" role="agent" people={agents} /></section><section className="space-y-4"><div className={`${panel} border-amber-400/20 p-4`}><h2 className="text-lg font-bold text-amber-200">Retention workspace</h2><p className="mt-1 text-sm text-slate-400">Admin → Retention Manager → Retention → promoted client</p></div><StaffList title="Retention Managers" role="retention_manager" people={retentionManagers} /><StaffList title="Retention" role="retention" people={retentionUsers} /></section></div>

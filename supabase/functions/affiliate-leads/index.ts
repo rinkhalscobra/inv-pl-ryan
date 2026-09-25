@@ -17,17 +17,17 @@ Deno.serve(async request => {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
     const keyHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
     const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active");
+    const { data: source, error: sourceError } = await admin.from("crm_lead_sources")
+      .select("id,name,company_id").eq("kind", "affiliate_api").eq("api_key_hash", keyHash).eq("active", true).maybeSingle();
+    if (sourceError) throw sourceError;
+    if (!source) return json({ error: "Affiliate key is inactive or unknown" }, 401);
+    const { data: offices, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("status", "active").eq("company_id", source.company_id);
     if (officeError) throw officeError;
     const officeMap = new Map<string, string>();
     for (const office of offices || []) {
       officeMap.set(String(office.code).trim().toLowerCase(), String(office.id));
       officeMap.set(String(office.name).trim().toLowerCase(), String(office.id));
     }
-    const { data: source, error: sourceError } = await admin.from("crm_lead_sources")
-      .select("id,name").eq("kind", "affiliate_api").eq("api_key_hash", keyHash).eq("active", true).maybeSingle();
-    if (sourceError) throw sourceError;
-    if (!source) return json({ error: "Affiliate key is inactive or unknown" }, 401);
 
     const raw = await request.text();
     if (raw.length > 500_000) return json({ error: "Request is too large" }, 413);
@@ -44,7 +44,7 @@ Deno.serve(async request => {
       if (lead) {
         const { office, ...record } = lead;
         const incomingOffice = office || lead.country;
-        leads.set(lead.email, { ...record, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
+        leads.set(lead.email, { ...record, company_id: source.company_id, office_id: officeMap.get(incomingOffice.trim().toLowerCase()) || null,
           source_metadata: { incoming_office: incomingOffice || null }, source_id: source.id, source_kind: "affiliate_api", source_name: source.name });
       }
       else invalid++;
@@ -52,7 +52,7 @@ Deno.serve(async request => {
     let added = 0;
     if (leads.size > 0) {
       const { data, error } = await admin.from("crm_leads")
-        .upsert(Array.from(leads.values()), { onConflict: "email", ignoreDuplicates: true }).select("id");
+        .upsert(Array.from(leads.values()), { onConflict: "company_id,email", ignoreDuplicates: true }).select("id");
       if (error) throw error;
       added = data?.length || 0;
     }

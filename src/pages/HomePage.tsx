@@ -32,7 +32,7 @@ import { FuturesPosition, Transaction, TradingMode } from '../App';
 import { useDatabase } from '../hooks/useDatabase';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
-import { TOP_CRYPTO_PAIRS } from '../constants/tradingPairs';
+import { isCryptoDerivativeSymbol, TOP_CRYPTO_PAIRS } from '../constants/tradingPairs';
 import GiveawayCampaignPopup from '../components/GiveawayCampaignPopup';
 import GiveawayWinnerPopup from '../components/GiveawayWinnerPopup';
 import GiveawayComingSoonPopup from '../components/GiveawayComingSoonPopup';
@@ -880,6 +880,7 @@ const HomePage: React.FC<HomePageProps> = ({
             <div className="space-y-4">
               {futuresPositions.length > 0 ? (
                 futuresPositions.map((position, index) => {
+                  const workspace = isCryptoDerivativeSymbol(position.symbol) ? 'futures' : 'cfd';
                   // Get live price from market data context first, then fallback to position data
                   let currentPrice = 0;
                   const livePrice = position.symbol.endsWith('USDT') ? getBybitPrice(position.symbol) : getPriceBySymbol(position.symbol);
@@ -902,7 +903,7 @@ const HomePage: React.FC<HomePageProps> = ({
                   }
                   
                   return (
-                    <div key={position.id || index} className={`flex flex-col gap-4 ${secondaryItemCardClass} p-4 sm:flex-row sm:items-center sm:justify-between`}>
+                    <button type="button" onClick={() => setTradingMode(workspace)} key={position.id || index} className={`flex w-full flex-col gap-4 text-left ${secondaryItemCardClass} p-4 sm:flex-row sm:items-center sm:justify-between`}>
                       <div className="flex min-w-0 items-center gap-3">
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                           side === 'long' ? 'bg-gradient-to-br from-blue-500/20 to-purple-500/20' : 'bg-red-500/20'
@@ -914,7 +915,10 @@ const HomePage: React.FC<HomePageProps> = ({
                           )}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-white font-medium">{formatTradingPair(position.symbol)}</div>
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-white font-medium">{formatTradingPair(position.symbol)}</span>
+                            <span className="shrink-0 rounded bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200">{workspace}</span>
+                          </div>
                           <div className="text-sm text-slate-400">
                             {side.toUpperCase()} • {position.leverage || 1}x
                           </div>
@@ -928,7 +932,7 @@ const HomePage: React.FC<HomePageProps> = ({
                           {formatFiatPrice(entryPrice, 2)} → {formatFiatPrice(currentPrice, 2)}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })
               ) : (

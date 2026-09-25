@@ -32,7 +32,7 @@ try {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
-    autoRefreshToken: !isCrmClientSession,
+    autoRefreshToken: true,
     ...(isCrmClientSession ? { storage: window.sessionStorage, storageKey: 'atlas-crm-client-auth' } : {}),
   },
   global: {

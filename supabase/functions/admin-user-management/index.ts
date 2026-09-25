@@ -58,7 +58,17 @@ Deno.serve(async (request: Request) => {
       password?: string;
       confirmation_email?: string;
       reason?: string;
+      company_id?: string | null;
     };
+    const requestedCompanyId = body.company_id || null;
+    const { data: actorContext, error: contextError } = await admin.rpc("crm_service_actor_context", {
+      p_actor_id: actorId,
+      p_ip: clientIp,
+      p_requested_company_id: requestedCompanyId,
+    });
+    const companyId = String(actorContext?.company_id || "");
+    if (contextError || !companyId) return json({ error: contextError?.message || "CRM company access could not be resolved" }, 403);
+
     if (body.action === "create_user") {
       const email = body.email?.trim().toLowerCase() || "";
       const firstName = body.first_name?.trim() || "";
@@ -102,11 +112,20 @@ Deno.serve(async (request: Request) => {
         return json({ error: "Select a valid manager or client owner" }, 400);
       }
 
+      const [{ data: company, error: companyError }, { data: office }, { data: owner }] = await Promise.all([
+        admin.from("crm_companies").select("id,registration_key").eq("id", companyId).eq("status", "active").maybeSingle(),
+        officeId ? admin.from("crm_offices").select("id").eq("id", officeId).eq("company_id", companyId).maybeSingle() : Promise.resolve({ data: null }),
+        ownerId ? admin.from("users").select("id").eq("id", ownerId).eq("company_id", companyId).maybeSingle() : Promise.resolve({ data: null }),
+      ]);
+      if (companyError || !company) return json({ error: "Selected company is unavailable" }, 400);
+      if (officeId && !office) return json({ error: "The selected Office belongs to another company" }, 400);
+      if (ownerId && !owner) return json({ error: "The selected owner belongs to another company" }, 400);
+
       const { data: created, error: createError } = await admin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
-        user_metadata: { first_name: firstName, last_name: lastName, country, onboarding_source: "crm_create_user" },
+        user_metadata: { first_name: firstName, last_name: lastName, country, onboarding_source: "crm_create_user", crm_company_key: company.registration_key },
       });
       if (createError || !created.user) {
         return json({ error: createError?.message || "Account creation failed" }, 400);
@@ -122,6 +141,15 @@ Deno.serve(async (request: Request) => {
         if (rollbackError) return json({ error: `Client onboarding failed and cleanup needs administrator attention. User ID: ${newUserId}` }, 500);
         await admin.from("users").delete().eq("id", newUserId);
         return json({ error: `Account was not created: ${onboardingError?.message || onboarding?.error || "Client onboarding did not complete"}` }, 400);
+      }
+      const { error: companyAssignmentError } = await admin.rpc("crm_service_set_user_company", {
+        p_user_id: newUserId,
+        p_company_id: companyId,
+      });
+      if (companyAssignmentError) {
+        await admin.auth.admin.deleteUser(newUserId, false);
+        await admin.from("users").delete().eq("id", newUserId);
+        return json({ error: `Account was not created: ${companyAssignmentError.message}` }, 400);
       }
       const { error: officeError } = await admin.rpc("crm_service_set_user_office", {
         p_user_id: newUserId,
@@ -161,12 +189,12 @@ Deno.serve(async (request: Request) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(officeId)) {
         return json({ error: "Select a valid Office" }, 400);
       }
-      const { data: office, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("id", officeId).maybeSingle();
+      const { data: office, error: officeError } = await admin.from("crm_offices").select("id,name,code").eq("id", officeId).eq("company_id", companyId).maybeSingle();
       if (officeError || !office) return json({ error: "Office not found" }, 404);
       if ((body.confirmation_code || "").trim().toUpperCase() !== String(office.code).toUpperCase()) {
         return json({ error: `Enter ${office.code} to confirm Office deletion` }, 400);
       }
-      const { data: officeUsers, error: usersError } = await admin.from("users").select("id,email,is_admin").eq("office_id", officeId);
+      const { data: officeUsers, error: usersError } = await admin.from("users").select("id,email,is_admin").eq("office_id", officeId).eq("company_id", companyId);
       if (usersError) return json({ error: "Office users could not be verified" }, 500);
       if ((officeUsers || []).some(user => user.id === actorId || user.is_admin === true)) {
         return json({ error: "Move global Administrators out of this Office before deleting it" }, 400);
@@ -198,6 +226,7 @@ Deno.serve(async (request: Request) => {
       .from("users")
       .select("*")
       .eq("id", targetUserId)
+      .eq("company_id", companyId)
       .single();
     if (targetError || !targetProfile) return json({ error: "Target user was not found" }, 404);
 

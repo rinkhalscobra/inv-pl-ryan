@@ -52,7 +52,8 @@ const SignUpPage: React.FC = () => {
         firstName,
         lastName,
         country,
-        phoneNumber.trim() ? `${countryCode} ${phoneNumber.trim()}` : ''
+        phoneNumber.trim() ? `${countryCode} ${phoneNumber.trim()}` : '',
+        searchParams.get('company') || undefined
       );
 
       if (signUpError) {

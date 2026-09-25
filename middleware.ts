@@ -1,6 +1,6 @@
 import { ipAddress, next } from '@vercel/functions';
 
-export const config = { matcher: ['/admin', '/admin/:path*'], runtime: 'nodejs' };
+export const config = { matcher: ['/admin', '/admin/:path*', '/crm', '/crm/:path*'], runtime: 'nodejs' };
 
 const forbidden = () => new Response('Forbidden', {
   status: 403,

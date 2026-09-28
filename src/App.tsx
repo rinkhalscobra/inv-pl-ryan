@@ -24,6 +24,8 @@ import PairDetailsPanel from './components/PairDetailsPanel';
 import StakingPage from './pages/StakingPage';
 import HomePage from './pages/HomePage';
 import LandingPage from './pages/LandingPage';
+import MarketingInfoPage from './pages/MarketingInfoPage';
+import MarketingRoutePage from './pages/MarketingRoutePage';
 import SignInPage from './pages/SignInPage';
 import SignUpPage from './pages/SignUpPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -556,6 +558,24 @@ const handleUpdatePassword = async (newPassword: string) => {
             <Route path="/" element={
               isPasswordSetupLink ? <ResetPasswordPage /> : <LandingPage />
             } />
+            <Route path="/platform" element={<MarketingInfoPage kind="platform" />} />
+            <Route path="/markets" element={<MarketingInfoPage kind="markets" />} />
+            <Route path="/fees" element={<MarketingInfoPage kind="fees" />} />
+            <Route path="/products" element={<MarketingRoutePage kind="products" />} />
+            <Route path="/products/spot" element={<MarketingRoutePage kind="spot" />} />
+            <Route path="/products/futures" element={<MarketingRoutePage kind="futures" />} />
+            <Route path="/products/cfds" element={<MarketingRoutePage kind="cfds" />} />
+            <Route path="/products/staking" element={<MarketingRoutePage kind="staking" />} />
+            <Route path="/learn" element={<MarketingRoutePage kind="learn" />} />
+            <Route path="/learn/trading-basics" element={<MarketingRoutePage kind="basics" />} />
+            <Route path="/learn/risk-management" element={<MarketingRoutePage kind="risk-management" />} />
+            <Route path="/learn/order-types" element={<MarketingRoutePage kind="order-types" />} />
+            <Route path="/security" element={<MarketingInfoPage kind="security" />} />
+            <Route path="/company" element={<MarketingInfoPage kind="company" />} />
+            <Route path="/support" element={<MarketingInfoPage kind="support" />} />
+            <Route path="/legal/risk-disclosure" element={<MarketingInfoPage kind="risk" />} />
+            <Route path="/legal/privacy" element={<MarketingInfoPage kind="privacy" />} />
+            <Route path="/legal/terms" element={<MarketingInfoPage kind="terms" />} />
 
             {/* Authenticated trading workspace */}
             <Route path="/dashboard" element={

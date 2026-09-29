@@ -51,9 +51,10 @@ Use the same server-side key to retrieve a current status snapshot:
 `GET https://vvomlpkrfehkgkxnglrn.supabase.co/functions/v1/affiliate-leads/status?tracking_id=TRACKING_UUID`
 
 The endpoint also accepts `external_id`, `updated_after`, and `limit` (maximum
-100). Results are always restricted to the affiliate connection represented by
-the key. It never exposes CRM notes, assigned staff, client balances, deposits,
-or other affiliates' leads.
+100). Every lead contains `ftd_status` and `ftd_date`. Results are always
+restricted to the affiliate connection represented by the key. It never
+exposes CRM notes, assigned staff, balances, deposit amounts, or other
+affiliates' leads.
 
 ### Near-real-time status events
 
@@ -66,10 +67,30 @@ Each response contains `events`, `next_cursor`, and `has_more`. Save
 seconds. Event cursors are ordered and make reconnecting safe: after a restart,
 continue from the last cursor that the affiliate successfully stored.
 
+Use `from` and `to` with either `YYYY-MM-DD` dates or ISO-8601 timestamps that
+include `Z` or an explicit timezone offset. Date-only `to` values include the
+entire UTC day. The default `date_field=event` filters `occurred_at`; use
+`date_field=lead` for the original lead-received date or `date_field=ftd` for
+the exact first-deposit date:
+
+```text
+GET /affiliate-leads/events?from=2026-09-01&to=2026-09-29&limit=100
+GET /affiliate-leads/events?date_field=lead&from=2026-09-01&to=2026-09-29&limit=100
+GET /affiliate-leads/events?date_field=ftd&from=2026-09-01&to=2026-09-29&after=0&limit=100
+```
+
+Every event contains `lead_received_at`, `ftd_status`, and `ftd_date`. The FTD
+date is the earliest qualifying completed wallet credit timestamp from the
+transaction ledger. It is not manufactured from the CRM status-change time.
+Balance adjustments, sandbox credits, failed/reversed deposits, and non-positive
+amounts do not qualify. Legacy transactions without an authoritative
+wallet-credit time are also excluded; the API returns no FTD date instead of
+inventing one.
+
 Partner-facing statuses are `received`, `contact_attempted`, `follow_up`,
 `invalid`, `not_qualified`, `processing`, `registered`, and `converted`. The
-stream contains both the initial `lead.received` event and later
-`lead.status_changed` events.
+stream contains the initial `lead.received` event, later `lead.status_changed`
+events, and a canonical `lead.ftd` event at the exact first-deposit time.
 
 ```js
 const endpoint =
@@ -85,7 +106,13 @@ for (;;) {
   if (!response.ok) throw new Error(payload.error || "Status feed failed");
 
   for (const event of payload.events) {
-    console.log(event.external_id, event.status, event.occurred_at);
+    console.log(
+      event.external_id,
+      event.status,
+      event.ftd_status,
+      event.ftd_date,
+      event.occurred_at,
+    );
     // Update the affiliate database idempotently using event.cursor.
     cursor = event.cursor;
   }

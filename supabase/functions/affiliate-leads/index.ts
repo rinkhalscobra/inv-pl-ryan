@@ -8,14 +8,23 @@ import {
   classifyInternationalPhone,
   routePhoneToOffice,
 } from "../_shared/leadPhoneRouting.ts";
+import {
+  affiliateEndpoint,
+  parseAffiliateEventQuery,
+} from "../_shared/affiliateEvents.ts";
 
-const json = (value: unknown, status = 200) =>
+const json = (
+  value: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+) =>
   new Response(JSON.stringify(value), {
     status,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      ...headers,
     },
   });
 
@@ -32,6 +41,7 @@ type LeadState = {
     | "no_money"
     | "wrong_number"
     | "ftd";
+  first_deposit_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -71,6 +81,8 @@ function publicLeadState(row: LeadState) {
     status: state.status,
     reason_code: state.reason_code,
     account_status: row.status,
+    ftd_status: row.first_deposit_at !== null,
+    ftd_date: row.first_deposit_at,
     received_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -129,7 +141,7 @@ async function currentStatuses(
   let query = admin
     .from("crm_leads")
     .select(
-      "affiliate_tracking_id,external_id,status,disposition_status,created_at,updated_at",
+      "affiliate_tracking_id,external_id,status,disposition_status,first_deposit_at,created_at,updated_at",
     )
     .eq("source_id", source.id)
     .order("updated_at", { ascending: true })
@@ -158,50 +170,57 @@ async function statusEvents(
   admin: SupabaseClient,
   source: AffiliateSource,
 ) {
-  const afterText = (url.searchParams.get("after") || "0").trim();
-  const after = Number(afterText);
-  if (!Number.isSafeInteger(after) || after < 0)
-    return json({ error: "after must be a non-negative event cursor" }, 400);
+  const parameters = parseAffiliateEventQuery(url);
+  if ("error" in parameters) return json({ error: parameters.error }, 400);
 
-  const limit = requestedLimit(url);
-  const { data, error } = await admin
-    .from("crm_affiliate_lead_events")
-    .select(
-      "id,tracking_id,external_id,event_type,affiliate_status,reason_code,account_status,occurred_at",
-    )
-    .eq("source_id", source.id)
-    .gt("id", after)
-    .order("id", { ascending: true })
-    .limit(limit + 1);
+  const { after, limit, from, to, dateField } = parameters;
+  const { data, error } = await admin.rpc("crm_affiliate_lead_events_page", {
+    p_source_id: source.id,
+    p_after: after,
+    p_limit: limit + 1,
+    p_from: from,
+    p_to: to,
+    p_date_field: dateField,
+  });
   if (error) throw error;
 
-  const rows = data || [];
+  type AffiliateEventRow = {
+    event_id: number;
+    tracking_id: string;
+    external_id: string | null;
+    event_type: string;
+    affiliate_status: string;
+    reason_code: string | null;
+    account_status: string;
+    occurred_at: string;
+    lead_received_at: string;
+    ftd_at: string | null;
+  };
+  const rows = (data || []) as AffiliateEventRow[];
   const hasMore = rows.length > limit;
   const visible = rows.slice(0, limit);
   return json({
-    events: visible.map(
-      (event: {
-        id: number;
-        tracking_id: string;
-        external_id: string | null;
-        event_type: string;
-        affiliate_status: string;
-        reason_code: string | null;
-        account_status: string;
-        occurred_at: string;
-      }) => ({
-        cursor: event.id,
-        type: event.event_type,
-        tracking_id: event.tracking_id,
-        external_id: event.external_id,
-        status: event.affiliate_status,
-        reason_code: event.reason_code,
-        account_status: event.account_status,
-        occurred_at: event.occurred_at,
-      }),
-    ),
-    next_cursor: visible.length > 0 ? visible[visible.length - 1].id : after,
+    events: visible.map((event) => ({
+      cursor: event.event_id,
+      type: event.event_type,
+      tracking_id: event.tracking_id,
+      external_id: event.external_id,
+      status: event.affiliate_status,
+      reason_code: event.reason_code,
+      account_status: event.account_status,
+      ftd_status: event.ftd_at !== null,
+      ftd_date: event.ftd_at,
+      lead_received_at: event.lead_received_at,
+      occurred_at: event.occurred_at,
+    })),
+    next_cursor:
+      visible.length > 0 ? visible[visible.length - 1].event_id : after,
     has_more: hasMore,
+    date_filter: {
+      field: dateField,
+      from,
+      to,
+    },
     server_time: new Date().toISOString(),
   });
 }
@@ -362,7 +381,7 @@ async function submitLeads(
     const { data, error } = await admin
       .from("crm_leads")
       .select(
-        "id,email,affiliate_tracking_id,external_id,status,disposition_status,created_at,updated_at",
+        "id,email,affiliate_tracking_id,external_id,status,disposition_status,first_deposit_at,created_at,updated_at",
       )
       .eq("source_id", source.id)
       .in("email", Array.from(leads.keys()));
@@ -384,6 +403,22 @@ async function submitLeads(
 }
 
 Deno.serve(async (request) => {
+  const url = new URL(request.url);
+  const endpoint = affiliateEndpoint(url.pathname);
+  const allow = "GET, POST, OPTIONS";
+  if (request.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: { Allow: allow } });
+  const methodAllowed =
+    (endpoint === "submit" && request.method === "POST") ||
+    ((endpoint === "status" || endpoint === "events") &&
+      request.method === "GET");
+  if (!endpoint || !methodAllowed)
+    return json(
+      { error: "Method not allowed for this affiliate endpoint" },
+      405,
+      { Allow: allow },
+    );
+
   const serviceUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!serviceUrl || !serviceKey)
@@ -395,22 +430,10 @@ Deno.serve(async (request) => {
   try {
     const source = await authenticate(request, admin);
     if (source instanceof Response) return source;
-    const url = new URL(request.url);
-    const route = url.pathname.replace(/\/+$/, "").split("/").pop();
 
-    if (request.method === "POST" && route === "affiliate-leads")
-      return await submitLeads(request, admin, source);
-    if (request.method === "GET" && route === "status")
-      return await currentStatuses(url, admin, source);
-    if (request.method === "GET" && route === "events")
-      return await statusEvents(url, admin, source);
-    return json(
-      {
-        error:
-          "Use POST /affiliate-leads, GET /affiliate-leads/status, or GET /affiliate-leads/events",
-      },
-      405,
-    );
+    if (endpoint === "submit") return await submitLeads(request, admin, source);
+    if (endpoint === "status") return await currentStatuses(url, admin, source);
+    return await statusEvents(url, admin, source);
   } catch (error) {
     console.error(
       "Affiliate lead API failed",

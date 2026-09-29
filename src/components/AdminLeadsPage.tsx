@@ -169,7 +169,6 @@ const dispositionStyles: Record<LeadDisposition, string> = {
 
 const affiliateDocumentation = (
   apiUrl: string,
-  apiKey = "YOUR_AFFILIATE_KEY",
 ) => `AFFILIATE LEAD API - INTEGRATION GUIDE
 
 Purpose
@@ -186,7 +185,7 @@ GET ${apiUrl}/events?after=0&limit=100
 
 Required headers
 Content-Type: application/json
-x-affiliate-key: ${apiKey}
+x-affiliate-key: YOUR_AFFILIATE_KEY
 
 Single-lead request
 {
@@ -215,7 +214,7 @@ Batch request (1 to 100 leads)
 cURL example
 curl --request POST '${apiUrl}' \\
   --header 'Content-Type: application/json' \\
-  --header 'x-affiliate-key: ${apiKey}' \\
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY' \\
   --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+49 30 901820","country":"DE","campaign":"Spring campaign","external_id":"partner-123"}'
 
 JavaScript / Node.js example
@@ -252,6 +251,8 @@ HTTP 200
       "status": "received",
       "reason_code": null,
       "account_status": "new",
+      "ftd_status": false,
+      "ftd_date": null,
       "received_at": "2026-09-29T10:42:18.000Z",
       "updated_at": "2026-09-29T10:42:18.000Z"
     }
@@ -272,15 +273,23 @@ The status API uses the same x-affiliate-key header and is restricted to leads s
 
 Current snapshot by tracking ID
 curl --request GET '${apiUrl}/status?tracking_id=8a3f63f4-87f5-4dad-b16f-91af0c8d8c14' \
-  --header 'x-affiliate-key: ${apiKey}'
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'
 
 Current snapshot by affiliate reference
 curl --request GET '${apiUrl}/status?external_id=partner-123' \
-  --header 'x-affiliate-key: ${apiKey}'
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'
 
 Ordered event feed
 curl --request GET '${apiUrl}/events?after=0&limit=100' \
-  --header 'x-affiliate-key: ${apiKey}'
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'
+
+Event date range (occurred_at)
+curl --request GET '${apiUrl}/events?from=2026-09-01&to=2026-09-29&after=0&limit=100' \
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'
+
+FTD date range
+curl --request GET '${apiUrl}/events?date_field=ftd&from=2026-09-01&to=2026-09-29&after=0&limit=100' \
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'
 
 Event response
 {
@@ -293,6 +302,9 @@ Event response
       "status": "follow_up",
       "reason_code": null,
       "account_status": "new",
+      "ftd_status": false,
+      "ftd_date": null,
+      "lead_received_at": "2026-09-28T09:20:00.000Z",
       "occurred_at": "2026-09-29T11:18:04.000Z"
     }
   ],
@@ -314,7 +326,7 @@ for (;;) {
   if (!response.ok) throw new Error(payload.error || 'Status feed failed');
 
   for (const event of payload.events) {
-    console.log(event.external_id, event.status, event.occurred_at);
+    console.log(event.external_id, event.status, event.ftd_status, event.ftd_date, event.occurred_at);
     // Save the status and cursor in the affiliate database. Processing by
     // cursor makes reconnects and repeated responses idempotent.
     cursor = event.cursor;
@@ -333,7 +345,15 @@ Status values
 - not_qualified: the lead did not meet the current qualification criteria
 - processing: account registration is currently in progress
 - registered: a platform account was registered or linked
-- converted: the CRM marked the lead as FTD
+- converted: a qualifying first deposit was recorded or the CRM marked the lead as FTD
+
+FTD fields and date filters
+- ftd_status is true only when the linked client has a qualifying completed wallet deposit.
+- ftd_date is the exact first wallet-credit time from transactions.balance_processed_at; it is never inferred from a CRM status timestamp.
+- Legacy transactions without an authoritative wallet-credit time are excluded; the API returns no FTD date instead of inventing one.
+- from and to accept YYYY-MM-DD or ISO-8601 timestamps with a timezone. A date-only to includes the full UTC day.
+- date_field=event (default) filters occurred_at; date_field=lead filters lead_received_at; date_field=ftd filters ftd_date and returns only leads with an FTD.
+- A qualifying deposit creates a canonical lead.ftd event at the exact wallet-credit time.
 
 Cursor rules
 - Start with after=0 to read all retained events for this affiliate.
@@ -730,7 +750,7 @@ export default function AdminLeadsPage({
     }
   };
   const downloadAffiliateDocs = () => {
-    const file = new Blob([affiliateDocumentation(apiUrl, secret?.key)], {
+    const file = new Blob([affiliateDocumentation(apiUrl)], {
       type: "text/plain;charset=utf-8",
     });
     const url = URL.createObjectURL(file);
@@ -1218,10 +1238,10 @@ export default function AdminLeadsPage({
                   access.
                 </p>
                 <div className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.07] p-3 text-xs leading-5 text-emerald-100">
-                  <b>What to send:</b> create the affiliate’s key, then download
-                  and send the generated <b>Affiliate API package</b>. It
-                  contains their private key and the complete instructions in
-                  one file.
+                  <b>What to send:</b> download the integration guide, then
+                  provide the one-time key through a separate secure secret
+                  channel. Documentation and code examples never contain the
+                  real key.
                 </div>
                 <button
                   type="button"
@@ -1635,11 +1655,10 @@ export default function AdminLeadsPage({
                       Ready to send to {secret.name}
                     </h3>
                     <p className="mt-2 text-xs leading-5 text-emerald-50/80">
-                      This guide contains the real private key. Click{" "}
-                      <b>Download file to send to affiliate</b> at the bottom
-                      and send that one file to the affiliate through a secure
-                      channel. They do not need a screenshot or anything else
-                      from this CRM page.
+                      This guide never contains the private key. Download it,
+                      then copy the one-time key separately into the affiliate’s
+                      server-side secret manager. Never place the key in source
+                      code, screenshots, documentation, or logs.
                     </p>
                   </section>
                 ) : (
@@ -1652,8 +1671,8 @@ export default function AdminLeadsPage({
                       The value{" "}
                       <span className="font-mono">YOUR_AFFILIATE_KEY</span> is
                       only a placeholder. Close this guide, create a private key
-                      using the affiliate’s name, and then download the package
-                      from the key window.
+                      using the affiliate’s name, copy it to a server-side
+                      secret manager, and download the key-free guide.
                     </p>
                   </section>
                 )}
@@ -1749,16 +1768,13 @@ export default function AdminLeadsPage({
                       POST Content-Type: application/json
                     </div>
                     <div className="break-all text-slate-300">
-                      All routes: x-affiliate-key:{" "}
-                      {secret?.key || "YOUR_AFFILIATE_KEY"}
+                      All routes: x-affiliate-key: YOUR_AFFILIATE_KEY
                     </div>
                   </div>
-                  {secret && (
-                    <p className="mt-2 text-xs text-amber-200">
-                      This guide currently contains the newly generated key.
-                      Copy or download it before closing the key window.
-                    </p>
-                  )}
+                  <p className="mt-2 text-xs text-amber-200">
+                    Keep the real value in a server-side secret named
+                    AFFILIATE_API_KEY. It is never embedded in this guide.
+                  </p>
                 </section>
 
                 <section>
@@ -1897,7 +1913,7 @@ export default function AdminLeadsPage({
                   <pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300">
                     <code>{`curl --request POST '${apiUrl}' \\
   --header 'Content-Type: application/json' \\
-  --header 'x-affiliate-key: ${secret?.key || "YOUR_AFFILIATE_KEY"}' \\
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY' \\
   --data '{"email":"jane@example.com","first_name":"Jane","last_name":"Doe","phone":"+49 30 901820","country":"DE","campaign":"Spring campaign","external_id":"partner-123"}'`}</code>
                   </pre>
                 </section>
@@ -2034,7 +2050,9 @@ if (!response.ok) throw new Error(result.error || 'Lead submission failed');`}</
                         The affiliate backend reads an ordered cursor feed every
                         five seconds. When a CRM status changes, a new event
                         appears automatically. Saving the cursor makes
-                        reconnects safe and prevents missed changes.
+                        reconnects safe and prevents missed changes. Every event
+                        also reports whether an actual first deposit exists and
+                        its exact wallet-credit time.
                       </p>
                     </div>
                   </div>
@@ -2072,7 +2090,7 @@ if (!response.ok) throw new Error(result.error || 'Lead submission failed');`}</
                     <pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300">
                       <code>{`curl --request GET \\
   '${apiUrl}/status?tracking_id=TRACKING_UUID' \\
-  --header 'x-affiliate-key: ${secret?.key || "YOUR_AFFILIATE_KEY"}'`}</code>
+  --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'`}</code>
                     </pre>
                   </div>
                   <div>
@@ -2088,6 +2106,9 @@ if (!response.ok) throw new Error(result.error || 'Lead submission failed');`}</
     "external_id": "partner-123",
     "status": "follow_up",
     "reason_code": null,
+    "ftd_status": false,
+    "ftd_date": null,
+    "lead_received_at": "2026-09-28T09:20:00.000Z",
     "occurred_at": "2026-09-29T11:18:04.000Z"
   }],
   "next_cursor": 42,
@@ -2095,6 +2116,34 @@ if (!response.ok) throw new Error(result.error || 'Lead submission failed');`}</
 }`}</code>
                     </pre>
                   </div>
+                </section>
+
+                <section className="rounded-xl border border-violet-400/20 bg-violet-500/[0.05] p-5">
+                  <h3 className="font-semibold text-violet-100">
+                    Date-range and FTD reporting
+                  </h3>
+                  <p className="mt-2 text-xs leading-5 text-slate-300">
+                    Date-only ranges include the complete UTC day. The default
+                    filters event time; select lead or FTD time explicitly when
+                    producing acquisition and conversion reports.
+                  </p>
+                  <pre className="mt-3 overflow-x-auto rounded-xl border border-white/10 bg-[#0d1118] p-4 text-xs leading-5 text-slate-300">
+                    <code>{`# Event changes in the period
+GET ${apiUrl}/events?from=2026-09-01&to=2026-09-29&after=0&limit=100
+
+# Leads generated in the period
+GET ${apiUrl}/events?date_field=lead&from=2026-09-01&to=2026-09-29&after=0&limit=100
+
+# Exact first deposits in the period
+GET ${apiUrl}/events?date_field=ftd&from=2026-09-01&to=2026-09-29&after=0&limit=100`}</code>
+                  </pre>
+                  <p className="mt-3 text-xs leading-5 text-slate-400">
+                    <span className="font-mono text-violet-200">ftd_date</span>{" "}
+                    comes from the first qualifying completed wallet credit. It
+                    is never inferred from the editable CRM status timestamp.
+                    Legacy rows without an authoritative credit time are
+                    excluded instead of receiving an invented FTD date.
+                  </p>
                 </section>
 
                 <section>
@@ -2124,7 +2173,13 @@ for (;;) {
   }
 
   for (const event of payload.events) {
-    console.log(event.external_id, event.status, event.occurred_at);
+    console.log(
+      event.external_id,
+      event.status,
+      event.ftd_status,
+      event.ftd_date,
+      event.occurred_at
+    );
     // Update the affiliate database idempotently by event.cursor.
     cursor = event.cursor;
   }
@@ -2193,16 +2248,14 @@ for (;;) {
                   type="button"
                   onClick={() =>
                     void copyToClipboard(
-                      affiliateDocumentation(apiUrl, secret?.key),
-                      secret
-                        ? "Complete affiliate package copied."
-                        : "Documentation template copied. Create a key before sending it.",
+                      affiliateDocumentation(apiUrl),
+                      "Affiliate integration guide copied.",
                     )
                   }
                   className={`${button} border border-white/15 text-slate-200 hover:bg-white/5`}
                 >
                   <Copy size={15} />
-                  {secret ? "Copy package" : "Copy template"}
+                  Copy integration guide
                 </button>
                 {secret && (
                   <button
@@ -2211,7 +2264,7 @@ for (;;) {
                     className={`${button} bg-emerald-600 text-white hover:bg-emerald-500`}
                   >
                     <Download size={15} />
-                    Download file to send to affiliate
+                    Download integration guide
                   </button>
                 )}
                 <button
@@ -2243,8 +2296,8 @@ for (;;) {
                     {secret.name} affiliate package
                   </h2>
                   <p className="mt-1 text-sm text-amber-200">
-                    The private key is shown only now. Download the package
-                    before closing.
+                    The private key is shown only now. Copy it to a secure
+                    server-side secret before closing.
                   </p>
                 </div>
                 <button
@@ -2259,13 +2312,12 @@ for (;;) {
               <div className="mt-5 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4">
                 <div className="flex items-center gap-2 font-semibold text-emerald-100">
                   <Send size={17} />
-                  This is what you send to the affiliate
+                  Key-free integration guide
                 </div>
                 <p className="mt-2 text-xs leading-5 text-emerald-50/80">
-                  Download the file below and send that one file securely. It
-                  contains lead submission, tracking IDs, live status endpoints,
-                  a working Node.js monitor, responses, errors, and security
-                  instructions.
+                  Download the guide below. Send the private key separately
+                  through a secure secret channel and store it only as the
+                  affiliate backend’s AFFILIATE_API_KEY environment secret.
                 </p>
               </div>
               <button
@@ -2274,7 +2326,7 @@ for (;;) {
                 className={`${button} mt-4 w-full bg-emerald-600 py-3 text-white hover:bg-emerald-500`}
               >
                 <Download size={17} />
-                Download file to send to affiliate
+                Download integration guide
               </button>
               <button
                 type="button"
@@ -2303,8 +2355,8 @@ for (;;) {
                 </button>
               </details>
               <p className="mt-3 text-center text-[11px] leading-4 text-slate-500">
-                Do not send a screenshot. The downloaded package is the complete
-                handoff.
+                Do not send a screenshot. The downloaded guide never contains
+                the private key.
               </p>
             </section>
           </div>

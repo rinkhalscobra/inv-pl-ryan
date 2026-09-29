@@ -30,10 +30,66 @@ are accepted:
 }
 ```
 
-The response reports `accepted`, `duplicates`, and `invalid`. Lead email is
-the deduplication key across all sources. A rotated or paused key stops working
-immediately. The endpoint does not allow browser CORS requests; keep the key
-on the affiliate's server.
+The response reports `accepted`, `duplicates`, and `invalid`, plus a `results`
+array. Every visible result includes an opaque `tracking_id`, the affiliate's
+`external_id`, the current partner-facing status, and timestamps. Store either
+`tracking_id` or a unique `external_id` with the affiliate's record.
+
+Lead email is the deduplication key across all sources. A rotated or paused key
+stops working immediately. The endpoint does not allow browser CORS requests;
+keep the key on the affiliate's server.
+
+### Current lead status
+
+Use the same server-side key to retrieve a current status snapshot:
+
+`GET https://vvomlpkrfehkgkxnglrn.supabase.co/functions/v1/affiliate-leads/status?tracking_id=TRACKING_UUID`
+
+The endpoint also accepts `external_id`, `updated_after`, and `limit` (maximum
+100). Results are always restricted to the affiliate connection represented by
+the key. It never exposes CRM notes, assigned staff, client balances, deposits,
+or other affiliates' leads.
+
+### Near-real-time status events
+
+For a reliable ordered feed, poll this endpoint from the affiliate's backend:
+
+`GET https://vvomlpkrfehkgkxnglrn.supabase.co/functions/v1/affiliate-leads/events?after=0&limit=100`
+
+Each response contains `events`, `next_cursor`, and `has_more`. Save
+`next_cursor`, use it as the next `after` value, and poll again every five
+seconds. Event cursors are ordered and make reconnecting safe: after a restart,
+continue from the last cursor that the affiliate successfully stored.
+
+Partner-facing statuses are `received`, `contact_attempted`, `follow_up`,
+`invalid`, `not_qualified`, `processing`, `registered`, and `converted`. The
+stream contains both the initial `lead.received` event and later
+`lead.status_changed` events.
+
+```js
+const endpoint =
+  "https://vvomlpkrfehkgkxnglrn.supabase.co/functions/v1/affiliate-leads";
+const headers = { "x-affiliate-key": process.env.AFFILIATE_API_KEY };
+let cursor = Number(process.env.LAST_AFFILIATE_CURSOR || 0);
+
+for (;;) {
+  const response = await fetch(`${endpoint}/events?after=${cursor}&limit=100`, {
+    headers,
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Status feed failed");
+
+  for (const event of payload.events) {
+    console.log(event.external_id, event.status, event.occurred_at);
+    // Update the affiliate database idempotently using event.cursor.
+    cursor = event.cursor;
+  }
+
+  if (!payload.has_more) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+}
+```
 
 ## Google Sheets
 

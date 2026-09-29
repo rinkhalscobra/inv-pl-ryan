@@ -179,16 +179,27 @@ async function statusEvents(
   const hasMore = rows.length > limit;
   const visible = rows.slice(0, limit);
   return json({
-    events: visible.map((event) => ({
-      cursor: event.id,
-      type: event.event_type,
-      tracking_id: event.tracking_id,
-      external_id: event.external_id,
-      status: event.affiliate_status,
-      reason_code: event.reason_code,
-      account_status: event.account_status,
-      occurred_at: event.occurred_at,
-    })),
+    events: visible.map(
+      (event: {
+        id: number;
+        tracking_id: string;
+        external_id: string | null;
+        event_type: string;
+        affiliate_status: string;
+        reason_code: string | null;
+        account_status: string;
+        occurred_at: string;
+      }) => ({
+        cursor: event.id,
+        type: event.event_type,
+        tracking_id: event.tracking_id,
+        external_id: event.external_id,
+        status: event.affiliate_status,
+        reason_code: event.reason_code,
+        account_status: event.account_status,
+        occurred_at: event.occurred_at,
+      }),
+    ),
     next_cursor: visible.length > 0 ? visible[visible.length - 1].id : after,
     has_more: hasMore,
     server_time: new Date().toISOString(),
@@ -206,7 +217,7 @@ async function submitLeads(
   ] = await Promise.all([
     admin
       .from("crm_offices")
-      .select("id,name,code")
+      .select("id,name,code,routing_country_code")
       .eq("status", "active")
       .eq("company_id", source.company_id),
     admin
@@ -219,10 +230,11 @@ async function submitLeads(
 
   const officesByCountry = new Map<string, string>();
   for (const office of offices || []) {
-    const code = String(office.code || "")
+    const countryCode = String(office.routing_country_code || "")
       .trim()
       .toUpperCase();
-    if (/^[A-Z]{2}$/.test(code)) officesByCountry.set(code, String(office.id));
+    if (/^[A-Z]{2}$/.test(countryCode))
+      officesByCountry.set(countryCode, String(office.id));
   }
   const deskManagerOfficeIds = new Set<string>();
   for (const row of managers || []) {
@@ -292,6 +304,59 @@ async function submitLeads(
     added = insertedIds.size;
   }
 
+  // A source may resend its own unregistered lead after correcting the phone.
+  // Refresh only that lead's phone-derived fields; never mutate another
+  // source's duplicate and never overwrite a manual Office classification.
+  if (leads.size > 0) {
+    const { data: existing, error } = await admin
+      .from("crm_leads")
+      .select("id,email,phone,status,phone_routing_status")
+      .eq("source_id", source.id)
+      .eq("status", "new")
+      .in("email", Array.from(leads.keys()));
+    if (error) throw error;
+    await Promise.all(
+      (
+        (existing || []) as Array<{
+          id: string;
+          email: string;
+          phone: string | null;
+          status: string;
+          phone_routing_status: string;
+        }>
+      ).map(async (row) => {
+        if (
+          insertedIds.has(String(row.id)) ||
+          row.phone_routing_status === "manual"
+        )
+          return;
+        const incoming = leads.get(String(row.email));
+        const correctedPhone = String(incoming?.phone || "").trim();
+        if (!correctedPhone || correctedPhone === String(row.phone || ""))
+          return;
+        const phone = classifyInternationalPhone(correctedPhone);
+        const route = routePhoneToOffice(
+          phone,
+          officesByCountry,
+          deskManagerOfficeIds,
+        );
+        const result = await admin
+          .from("crm_leads")
+          .update({
+            phone: correctedPhone,
+            ...phone,
+            ...route,
+            phone_routed_at: new Date().toISOString(),
+          })
+          .eq("id", row.id)
+          .eq("source_id", source.id)
+          .eq("status", "new")
+          .neq("phone_routing_status", "manual");
+        if (result.error) throw result.error;
+      }),
+    );
+  }
+
   let results: Array<Record<string, unknown>> = [];
   if (leads.size > 0) {
     const { data, error } = await admin
@@ -302,7 +367,9 @@ async function submitLeads(
       .eq("source_id", source.id)
       .in("email", Array.from(leads.keys()));
     if (error) throw error;
-    results = (data || []).map((row) => ({
+    results = (
+      (data || []) as Array<LeadState & { id: string; email: string }>
+    ).map((row) => ({
       outcome: insertedIds.has(String(row.id)) ? "accepted" : "duplicate",
       ...publicLeadState(row as LeadState),
     }));

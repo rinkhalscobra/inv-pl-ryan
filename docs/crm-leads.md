@@ -39,6 +39,11 @@ Lead email is the deduplication key across all sources. A rotated or paused key
 stops working immediately. The endpoint does not allow browser CORS requests;
 keep the key on the affiliate's server.
 
+When the same affiliate resends its own unregistered lead with a corrected,
+non-empty phone number, the server revalidates the number and refreshes the
+automatic Office routing. It never updates another source's duplicate or a
+lead whose Office was manually classified.
+
 ### Current lead status
 
 Use the same server-side key to retrieve a current status snapshot:

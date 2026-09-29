@@ -47,7 +47,7 @@ function sheetCsvUrl(input: string) {
 
 async function loadPhoneRouting(admin: SupabaseClient, companyId: string) {
   const [{ data: offices, error: officeError }, { data: managers, error: managerError }] = await Promise.all([
-    admin.from("crm_offices").select("id,name,code").eq("status", "active").eq("company_id", companyId),
+    admin.from("crm_offices").select("id,name,code,routing_country_code").eq("status", "active").eq("company_id", companyId),
     admin.from("crm_staff_roles").select("user_id,users!inner(office_id,company_id)")
       .eq("role", "desk_manager").eq("users.company_id", companyId),
   ]);
@@ -55,8 +55,8 @@ async function loadPhoneRouting(admin: SupabaseClient, companyId: string) {
   if (managerError) throw new Error(`Could not load Desk Managers: ${managerError.message}`);
   const officesByCountry = new Map<string, string>();
   for (const office of offices || []) {
-    const code = String(office.code || "").trim().toUpperCase();
-    if (/^[A-Z]{2}$/.test(code)) officesByCountry.set(code, String(office.id));
+    const countryCode = String(office.routing_country_code || "").trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(countryCode)) officesByCountry.set(countryCode, String(office.id));
   }
   const deskManagerOfficeIds = new Set<string>();
   for (const row of managers || []) {
@@ -75,18 +75,32 @@ function phoneRoutingRecord(phone: string, officesByCountry: Map<string, string>
 
 async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
   const routing = await loadPhoneRouting(admin, companyId);
-  const { data: leads, error } = await admin.from("crm_leads").select("id,phone")
-    .eq("company_id", companyId).order("created_at", { ascending: true }).limit(5000);
-  if (error) throw new Error(`Could not load leads: ${error.message}`);
   let updated = 0;
-  for (let index = 0; index < (leads || []).length; index += 25) {
-    const batch = (leads || []).slice(index, index + 25);
-    await Promise.all(batch.map(async lead => {
-      const record = phoneRoutingRecord(String(lead.phone || ""), routing.officesByCountry, routing.deskManagerOfficeIds);
-      const result = await admin.from("crm_leads").update(record).eq("id", lead.id).eq("company_id", companyId);
-      if (result.error) throw result.error;
-      updated++;
-    }));
+  let cursor = "";
+  for (;;) {
+    let query = admin.from("crm_leads").select("id,phone")
+      .eq("company_id", companyId)
+      .eq("status", "new")
+      .neq("phone_routing_status", "manual")
+      .order("id", { ascending: true })
+      .limit(500);
+    if (cursor) query = query.gt("id", cursor);
+    const { data: leads, error } = await query;
+    if (error) throw new Error(`Could not load leads: ${error.message}`);
+    const page = (leads || []) as Array<{ id: string; phone: string | null }>;
+    if (!page.length) break;
+    for (let index = 0; index < page.length; index += 25) {
+      const batch = page.slice(index, index + 25);
+      await Promise.all(batch.map(async lead => {
+        const record = phoneRoutingRecord(String(lead.phone || ""), routing.officesByCountry, routing.deskManagerOfficeIds);
+        const result = await admin.from("crm_leads").update(record).eq("id", lead.id).eq("company_id", companyId)
+          .neq("phone_routing_status", "manual");
+        if (result.error) throw result.error;
+        updated++;
+      }));
+    }
+    cursor = String(page[page.length - 1].id);
+    if (page.length < 500) break;
   }
   return { updated };
 }
@@ -119,6 +133,24 @@ async function insertLeads(
     }), { onConflict: "company_id,email", ignoreDuplicates: true }).select("id");
     if (error) throw new Error(`Could not save leads: ${error.message}`);
     added += data?.length || 0;
+    if (source.id) {
+      const insertedIds = new Set(((data || []) as Array<{ id: string }>).map(row => String(row.id)));
+      const { data: existing, error: existingError } = await admin.from("crm_leads")
+        .select("id,email,phone,status,phone_routing_status")
+        .eq("source_id", source.id).eq("status", "new").in("email", batch.map(lead => lead.email));
+      if (existingError) throw new Error(`Could not refresh lead phones: ${existingError.message}`);
+      await Promise.all(((existing || []) as Array<{ id: string; email: string; phone: string | null; phone_routing_status: string }>).map(async row => {
+        if (insertedIds.has(String(row.id)) || row.phone_routing_status === "manual") return;
+        const incoming = batch.find(lead => lead.email === row.email);
+        const correctedPhone = incoming?.phone.trim() || "";
+        if (!correctedPhone || correctedPhone === String(row.phone || "")) return;
+        const record = phoneRoutingRecord(correctedPhone, routing.officesByCountry, routing.deskManagerOfficeIds);
+        const result = await admin.from("crm_leads").update({ phone: correctedPhone, ...record })
+          .eq("id", row.id).eq("source_id", source.id).eq("status", "new")
+          .neq("phone_routing_status", "manual");
+        if (result.error) throw result.error;
+      }));
+    }
   }
   return { added, duplicates: inputs.length - invalid - added, invalid };
 }

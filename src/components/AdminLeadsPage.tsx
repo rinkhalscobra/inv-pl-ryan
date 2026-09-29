@@ -264,6 +264,8 @@ Response counters
 - invalid: records missing a valid email address
 - results: trackable records belonging to this affiliate connection
 
+If this affiliate resends its own unregistered lead with a corrected, non-empty phone number, the phone is revalidated and automatic Office routing is refreshed. Another source's duplicate and a manually classified Office are never overwritten.
+
 REAL-TIME LEAD STATUS
 
 The status API uses the same x-affiliate-key header and is restricted to leads sent by this affiliate connection. It never returns CRM notes, assigned staff, balances, deposit amounts, or other affiliates' records.
@@ -353,7 +355,7 @@ Field rules
 - external_id: recommended affiliate reference, maximum 120 characters; use a unique value for reliable lookup
 
 Phone validation and Office assignment
-The server validates the complete international number against real country numbering plans. A valid number is normalized to E.164 and its detected country code routes the lead to the active Office with the same two-letter code (for example +49 -> DE, +33 -> FR, +34 -> ES, +39 -> IT). Invalid, missing, or unknown numbers appear in the Incorrect numbers review queue. A valid country without a matching Office, or an Office without a Desk Manager, appears in Routing review. The submitted country and office fields cannot override the detected phone country.
+The server validates the complete international number against real country numbering plans. A valid number is normalized to E.164 and its detected country code routes the lead to the active Office configured for that phone country (for example +49 -> DE, +33 -> FR, +34 -> ES, +39 -> IT). This happens automatically before the new lead is saved. Invalid, missing, or unknown numbers appear in the Incorrect numbers review queue. A valid country without a matching Office, or an Office without a Desk Manager, appears in Routing review. The submitted country and office fields cannot override the detected phone country.
 
 Errors
 - 400: malformed JSON, empty batch, or more than 100 leads

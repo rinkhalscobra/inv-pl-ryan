@@ -58,6 +58,32 @@ BEGIN
   )
   RETURNING id INTO v_lead_id;
 
+  /* Staff can explicitly mark FTD without fabricating a deposit timestamp. */
+  UPDATE public.crm_leads
+  SET disposition_status = 'ftd',
+      disposition_changed_at = now(),
+      disposition_changed_by = v_user_id
+  WHERE id = v_lead_id;
+
+  SELECT * INTO v_event
+  FROM public.crm_affiliate_lead_events_page(
+    v_source_id, 0, 101, NULL, NULL, 'event'
+  )
+  ORDER BY event_id DESC
+  LIMIT 1;
+
+  IF v_event.ftd_status IS DISTINCT FROM true
+     OR v_event.ftd_source IS DISTINCT FROM 'manual'
+     OR v_event.ftd_at IS NOT NULL THEN
+    RAISE EXCEPTION 'Manual FTD status/source/date response is incorrect';
+  END IF;
+
+  UPDATE public.crm_leads
+  SET disposition_status = 'new',
+      disposition_changed_at = now(),
+      disposition_changed_by = v_user_id
+  WHERE id = v_lead_id;
+
   /* A legacy migration timestamp is not proof of the real wallet-credit time. */
   INSERT INTO public.transactions(
     user_id,
@@ -88,6 +114,7 @@ BEGIN
     RAISE EXCEPTION 'Legacy transaction incorrectly produced an FTD date';
   END IF;
 
+  /* A real credit below 250 must not create an automatic FTD. */
   INSERT INTO public.transactions(
     user_id,
     type,
@@ -99,7 +126,32 @@ BEGIN
   VALUES (
     v_user_id,
     'deposit',
-    100,
+    249,
+    'USD',
+    'Sub-threshold FTD integration test deposit',
+    'completed'
+  );
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.crm_leads
+    WHERE id = v_lead_id AND first_deposit_at IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'A wallet credit below 250 incorrectly produced an FTD';
+  END IF;
+
+  INSERT INTO public.transactions(
+    user_id,
+    type,
+    amount,
+    currency,
+    description,
+    status
+  )
+  VALUES (
+    v_user_id,
+    'deposit',
+    250,
     'USD',
     'Affiliate FTD integration test deposit',
     'completed'
@@ -144,6 +196,10 @@ BEGIN
   END IF;
   IF v_event.ftd_at IS DISTINCT FROM v_ftd_at THEN
     RAISE EXCEPTION 'Event response FTD date does not match the wallet credit';
+  END IF;
+  IF v_event.ftd_status IS DISTINCT FROM true
+     OR v_event.ftd_source IS DISTINCT FROM 'automatic' THEN
+    RAISE EXCEPTION 'Automatic FTD status/source response is incorrect';
   END IF;
   IF v_event.occurred_at IS DISTINCT FROM v_ftd_at THEN
     RAISE EXCEPTION 'Converted event did not use the actual FTD timestamp';

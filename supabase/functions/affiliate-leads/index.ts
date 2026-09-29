@@ -51,8 +51,10 @@ const uuid = (value: string) =>
     value,
   );
 
-function affiliateState(row: Pick<LeadState, "status" | "disposition_status">) {
-  if (row.disposition_status === "ftd")
+function affiliateState(
+  row: Pick<LeadState, "status" | "disposition_status" | "first_deposit_at">,
+) {
+  if (row.disposition_status === "ftd" || row.first_deposit_at !== null)
     return { status: "converted", reason_code: null };
   if (row.status === "registered")
     return { status: "registered", reason_code: null };
@@ -81,8 +83,15 @@ function publicLeadState(row: LeadState) {
     status: state.status,
     reason_code: state.reason_code,
     account_status: row.status,
-    ftd_status: row.first_deposit_at !== null,
+    ftd_status:
+      row.disposition_status === "ftd" || row.first_deposit_at !== null,
     ftd_date: row.first_deposit_at,
+    ftd_source:
+      row.first_deposit_at !== null
+        ? "automatic"
+        : row.disposition_status === "ftd"
+          ? "manual"
+          : null,
     received_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -194,7 +203,9 @@ async function statusEvents(
     account_status: string;
     occurred_at: string;
     lead_received_at: string;
+    ftd_status: boolean;
     ftd_at: string | null;
+    ftd_source: "automatic" | "manual" | null;
   };
   const rows = (data || []) as AffiliateEventRow[];
   const hasMore = rows.length > limit;
@@ -208,8 +219,9 @@ async function statusEvents(
       status: event.affiliate_status,
       reason_code: event.reason_code,
       account_status: event.account_status,
-      ftd_status: event.ftd_at !== null,
+      ftd_status: event.ftd_status,
       ftd_date: event.ftd_at,
+      ftd_source: event.ftd_source,
       lead_received_at: event.lead_received_at,
       occurred_at: event.occurred_at,
     })),

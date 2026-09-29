@@ -253,6 +253,7 @@ HTTP 200
       "account_status": "new",
       "ftd_status": false,
       "ftd_date": null,
+      "ftd_source": null,
       "received_at": "2026-09-29T10:42:18.000Z",
       "updated_at": "2026-09-29T10:42:18.000Z"
     }
@@ -304,6 +305,7 @@ Event response
       "account_status": "new",
       "ftd_status": false,
       "ftd_date": null,
+      "ftd_source": null,
       "lead_received_at": "2026-09-28T09:20:00.000Z",
       "occurred_at": "2026-09-29T11:18:04.000Z"
     }
@@ -348,11 +350,13 @@ Status values
 - converted: a qualifying first deposit was recorded or the CRM marked the lead as FTD
 
 FTD fields and date filters
-- ftd_status is true only when the linked client has a qualifying completed wallet deposit.
-- ftd_date is the exact first wallet-credit time from transactions.balance_processed_at; it is never inferred from a CRM status timestamp.
+- Automatic FTD requires one completed wallet credit of at least 250 USD/USDT equivalent.
+- Staff may also select FTD manually; this returns ftd_status=true and ftd_source=manual.
+- ftd_date is the exact qualifying wallet-credit time from transactions.balance_processed_at; a manual FTD without a qualifying deposit keeps ftd_date=null.
+- ftd_source is automatic for a deposit-backed FTD, manual for a staff override, or null when the lead is not FTD.
 - Legacy transactions without an authoritative wallet-credit time are excluded; the API returns no FTD date instead of inventing one.
 - from and to accept YYYY-MM-DD or ISO-8601 timestamps with a timezone. A date-only to includes the full UTC day.
-- date_field=event (default) filters occurred_at; date_field=lead filters lead_received_at; date_field=ftd filters ftd_date and returns only leads with an FTD.
+- date_field=event (default) filters occurred_at; date_field=lead filters lead_received_at; date_field=ftd filters ftd_date and returns only deposit-backed FTD events. Manual FTDs without a deposit date remain available through event or lead filtering.
 - A qualifying deposit creates a canonical lead.ftd event at the exact wallet-credit time.
 
 Cursor rules
@@ -2108,6 +2112,7 @@ if (!response.ok) throw new Error(result.error || 'Lead submission failed');`}</
     "reason_code": null,
     "ftd_status": false,
     "ftd_date": null,
+    "ftd_source": null,
     "lead_received_at": "2026-09-28T09:20:00.000Z",
     "occurred_at": "2026-09-29T11:18:04.000Z"
   }],
@@ -2141,8 +2146,12 @@ GET ${apiUrl}/events?date_field=ftd&from=2026-09-01&to=2026-09-29&after=0&limit=
                     <span className="font-mono text-violet-200">ftd_date</span>{" "}
                     comes from the first qualifying completed wallet credit. It
                     is never inferred from the editable CRM status timestamp.
-                    Legacy rows without an authoritative credit time are
-                    excluded instead of receiving an invented FTD date.
+                    Automatic FTD requires one credited amount of at least 250
+                    USD/USDT equivalent. A staff member can still mark FTD
+                    manually; that reports a manual source and keeps the date
+                    null until a qualifying deposit exists. Legacy rows without
+                    an authoritative credit time are excluded instead of
+                    receiving an invented FTD date.
                   </p>
                 </section>
 

@@ -51,7 +51,7 @@ Use the same server-side key to retrieve a current status snapshot:
 `GET https://vvomlpkrfehkgkxnglrn.supabase.co/functions/v1/affiliate-leads/status?tracking_id=TRACKING_UUID`
 
 The endpoint also accepts `external_id`, `updated_after`, and `limit` (maximum
-100). Every lead contains `ftd_status` and `ftd_date`. Results are always
+100). Every lead contains `ftd_status`, `ftd_date`, and `ftd_source`. Results are always
 restricted to the affiliate connection represented by the key. It never
 exposes CRM notes, assigned staff, balances, deposit amounts, or other
 affiliates' leads.
@@ -71,7 +71,9 @@ Use `from` and `to` with either `YYYY-MM-DD` dates or ISO-8601 timestamps that
 include `Z` or an explicit timezone offset. Date-only `to` values include the
 entire UTC day. The default `date_field=event` filters `occurred_at`; use
 `date_field=lead` for the original lead-received date or `date_field=ftd` for
-the exact first-deposit date:
+the exact first-deposit date. The FTD date filter returns deposit-backed FTD
+events; manual FTDs without a deposit date remain available through the event
+or lead filters:
 
 ```text
 GET /affiliate-leads/events?from=2026-09-01&to=2026-09-29&limit=100
@@ -79,13 +81,20 @@ GET /affiliate-leads/events?date_field=lead&from=2026-09-01&to=2026-09-29&limit=
 GET /affiliate-leads/events?date_field=ftd&from=2026-09-01&to=2026-09-29&after=0&limit=100
 ```
 
-Every event contains `lead_received_at`, `ftd_status`, and `ftd_date`. The FTD
-date is the earliest qualifying completed wallet credit timestamp from the
-transaction ledger. It is not manufactured from the CRM status-change time.
+Every event contains `lead_received_at`, `ftd_status`, `ftd_date`, and
+`ftd_source`. Automatic FTD requires one authoritative wallet credit of at
+least 250 USD/USDT equivalent. The FTD date is the earliest qualifying
+completed wallet credit timestamp from the transaction ledger. It is not
+manufactured from the CRM status-change time.
 Balance adjustments, sandbox credits, failed/reversed deposits, and non-positive
 amounts do not qualify. Legacy transactions without an authoritative
 wallet-credit time are also excluded; the API returns no FTD date instead of
 inventing one.
+
+CRM staff can also mark a lead as FTD manually. That produces
+`ftd_status: true`, `ftd_source: "manual"`, and `ftd_date: null` unless a real
+qualifying deposit also exists. Automatic deposit-backed FTDs use
+`ftd_source: "automatic"` and include the exact `ftd_date`.
 
 Partner-facing statuses are `received`, `contact_attempted`, `follow_up`,
 `invalid`, `not_qualified`, `processing`, `registered`, and `converted`. The

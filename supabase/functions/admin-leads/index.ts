@@ -504,7 +504,7 @@ Deno.serve(async request => {
         ownerQuery,
         officeQuery,
         admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)")
-          .eq("role", "desk_manager").eq("users.company_id", companyId),
+          .eq("role", "desk_manager").eq("users.company_id", companyId).order("user_id", { ascending: true }),
         incorrectCountQuery,
         routingCountQuery,
       ]);
@@ -543,19 +543,91 @@ Deno.serve(async request => {
       const leadRows = (leadResult.data || []) as Array<Record<string, unknown> & { registered_user_id?: string | null }>;
       const registeredIds = Array.from(new Set(leadRows.map(lead => lead.registered_user_id).filter((id): id is string => Boolean(id))));
       const promotionByUserId = new Map<string, boolean>();
+      const agentByClientId = new Map<string, string>();
+      const retentionByClientId = new Map<string, string>();
+      const assignedUserById = new Map<string, { id: string; email: string | null; first_name: string | null; last_name: string | null }>();
       if (registeredIds.length) {
-        const { data: registeredUsers, error: registeredUserError } = await admin.from("users")
-          .select("id,is_promoted").eq("company_id", companyId).in("id", registeredIds);
-        if (registeredUserError) throw new Error(`Could not load lead workspaces: ${registeredUserError.message}`);
+        const [registeredUserResult, agentAssignmentResult, retentionAssignmentResult] = await Promise.all([
+          admin.from("users").select("id,is_promoted").eq("company_id", companyId).in("id", registeredIds),
+          admin.from("crm_client_agent_assignments").select("client_id,agent_id").in("client_id", registeredIds),
+          admin.from("crm_client_retention_assignments").select("client_id,retention_id").in("client_id", registeredIds),
+        ]);
+        if (registeredUserResult.error || agentAssignmentResult.error || retentionAssignmentResult.error) {
+          throw new Error(
+            registeredUserResult.error?.message
+              || agentAssignmentResult.error?.message
+              || retentionAssignmentResult.error?.message
+              || "Could not load lead assignments",
+          );
+        }
+        const registeredUsers = registeredUserResult.data || [];
         for (const user of registeredUsers || []) promotionByUserId.set(String(user.id), user.is_promoted === true);
+        for (const assignment of agentAssignmentResult.data || []) {
+          agentByClientId.set(String(assignment.client_id), String(assignment.agent_id));
+        }
+        for (const assignment of retentionAssignmentResult.data || []) {
+          retentionByClientId.set(String(assignment.client_id), String(assignment.retention_id));
+        }
+        const assignedUserIds = Array.from(new Set([
+          ...agentByClientId.values(),
+          ...retentionByClientId.values(),
+        ]));
+        if (assignedUserIds.length) {
+          const { data: assignedUsers, error: assignedUserError } = await admin.from("users")
+            .select("id,email,first_name,last_name").eq("company_id", companyId).in("id", assignedUserIds);
+          if (assignedUserError) throw new Error(`Could not load assigned users: ${assignedUserError.message}`);
+          for (const user of assignedUsers || []) assignedUserById.set(String(user.id), {
+            id: String(user.id),
+            email: user.email == null ? null : String(user.email),
+            first_name: user.first_name == null ? null : String(user.first_name),
+            last_name: user.last_name == null ? null : String(user.last_name),
+          });
+        }
+      }
+      const userName = (user: { email?: unknown; first_name?: unknown; last_name?: unknown } | null | undefined) =>
+        `${String(user?.first_name || "")} ${String(user?.last_name || "")}`.trim()
+          || String(user?.email || "").trim()
+          || "Unnamed user";
+      const deskManagerByOfficeId = new Map<string, { user_id: string; name: string }>();
+      for (const manager of (deskManagerResult.data || []) as Array<{ user_id: unknown; users?: unknown }>) {
+        const relatedUsers = Array.isArray(manager.users) ? manager.users[0] : manager.users;
+        const deskUser = relatedUsers && typeof relatedUsers === "object"
+          ? relatedUsers as { email?: unknown; first_name?: unknown; last_name?: unknown; office_id?: unknown }
+          : null;
+        const officeId = String(deskUser?.office_id || "");
+        if (officeId && (
+          !deskManagerByOfficeId.has(officeId)
+          || String(manager.user_id) === effectiveAssigneeId
+        )) {
+          deskManagerByOfficeId.set(officeId, {
+            user_id: String(manager.user_id),
+            name: userName(deskUser),
+          });
+        }
       }
       return json({
-        leads: leadRows.map(lead => ({
-          ...lead,
-          registered_is_promoted: lead.registered_user_id
-            ? promotionByUserId.get(lead.registered_user_id) ?? null
-            : null,
-        })), total: assigneeTotal ?? leadResult.count ?? 0,
+        leads: leadRows.map(lead => {
+          const clientId = lead.registered_user_id ? String(lead.registered_user_id) : null;
+          const promoted = clientId ? promotionByUserId.get(clientId) ?? null : null;
+          const agentId = clientId ? agentByClientId.get(clientId) || null : null;
+          const retentionId = clientId ? retentionByClientId.get(clientId) || null : null;
+          const directOwnerId = promoted === true
+            ? retentionId
+            : promoted === false
+              ? agentId
+              : retentionId || agentId;
+          const directOwnerRole = directOwnerId === retentionId ? "retention" : directOwnerId ? "agent" : null;
+          const directOwner = directOwnerId ? assignedUserById.get(directOwnerId) : null;
+          const deskManager = !directOwnerId && promoted !== true && lead.office_id
+            ? deskManagerByOfficeId.get(String(lead.office_id))
+            : null;
+          const assignee = directOwnerId && directOwner
+            ? { user_id: directOwnerId, name: userName(directOwner), role: directOwnerRole }
+            : deskManager
+              ? { ...deskManager, role: "desk_manager" }
+              : null;
+          return { ...lead, registered_is_promoted: promoted, assignee };
+        }), total: assigneeTotal ?? leadResult.count ?? 0,
         sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [],
         desk_managers: deskManagerResult.data || [], incorrect_phone_count: incorrectPhoneCount,
         routing_review_count: routingReviewCount, actor_role: actorRole, can_manage_sources: isAdmin,

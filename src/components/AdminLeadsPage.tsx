@@ -91,6 +91,11 @@ interface Lead {
     | "invalid"
     | "manual";
   phone_routed_at: string | null;
+  assignee: {
+    user_id: string;
+    name: string;
+    role: string;
+  } | null;
 }
 interface Source {
   id: string;
@@ -479,6 +484,12 @@ const deskManagerName = (manager: DeskManager) => {
     manager.user_id
   );
 };
+const assigneeRoleLabel = (role: string) =>
+  role
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 const operationError = (cause: unknown) => {
   if (cause instanceof Error) return cause.message;
   if (cause && typeof cause === "object" && "message" in cause)
@@ -1515,7 +1526,7 @@ export default function AdminLeadsPage({
               document.body,
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] text-left text-sm">
+              <table className="w-full min-w-[1240px] text-left text-sm">
                 <thead className="border-b border-white/10 bg-[#111723] text-xs text-slate-400">
                   <tr>
                     <th className="w-12 px-4 py-3">
@@ -1534,6 +1545,7 @@ export default function AdminLeadsPage({
                     <th className="px-4 py-3">Lead</th>
                     <th className="px-4 py-3">Contact</th>
                     <th className="px-4 py-3">Office</th>
+                    <th className="px-4 py-3">Assign To</th>
                     <th className="px-4 py-3">Source</th>
                     <th className="px-4 py-3">Received</th>
                     <th className="px-4 py-3">Lead status</th>
@@ -1654,6 +1666,20 @@ export default function AdminLeadsPage({
                                 .join(", ")}
                             </div>
                           )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {lead.assignee ? (
+                          <>
+                            <div className="max-w-44 font-medium text-slate-200">
+                              {lead.assignee.name}
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              {assigneeRoleLabel(lead.assignee.role)}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-slate-500">Unassigned</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-300">
                         <div>{lead.source_name || "Import"}</div>

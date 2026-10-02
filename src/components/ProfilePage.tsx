@@ -808,7 +808,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
               
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">{t('profile.memberSince')}</span>
-                <span className="text-white font-medium">{new Date(user.created_at || Date.now()).toLocaleDateString()}</span>
+                <span className="text-white font-medium">{new Date(user.created_at || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
               </div>
               
               <div className="flex justify-between items-center">

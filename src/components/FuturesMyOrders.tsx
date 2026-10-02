@@ -1120,9 +1120,10 @@ const getPricePrecision = useCallback((symbol: string): number => {
                     {filteredOpenOrders.map((order) => (
                       <tr key={order.id}>
                         <td className={`${desktopCellClass} font-mono text-xs`}>
-                          {new Date(order.createdAt || order.created_at).toLocaleString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
+                          {new Date(order.createdAt || order.created_at).toLocaleString('en-GB', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
@@ -1170,9 +1171,10 @@ const getPricePrecision = useCallback((symbol: string): number => {
                   <div key={order.id} className={mobileRowSurfaceClass}>
                     <div className="mb-2 flex w-full items-center justify-between xl:mb-0 xl:w-auto">
                       <span className="text-slate-300 text-xs md:text-sm font-mono">
-                        {new Date(order.createdAt || order.created_at).toLocaleString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
+                        {new Date(order.createdAt || order.created_at).toLocaleString('en-GB', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
                           hour: '2-digit',
                           minute: '2-digit'
                         })}
@@ -1263,9 +1265,10 @@ const getPricePrecision = useCallback((symbol: string): number => {
                       <tr key={position.id}>
                         <td className={`${desktopCellClass} font-mono text-xs`}>
                           {position.closeTime
-                            ? new Date(position.closeTime).toLocaleString(undefined, {
-                                month: 'short',
-                                day: 'numeric',
+                            ? new Date(position.closeTime).toLocaleString('en-GB', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })
@@ -1329,9 +1332,10 @@ const getPricePrecision = useCallback((symbol: string): number => {
                     <div className="mb-2 flex w-full items-center justify-between xl:mb-0 xl:w-auto">
                       <span className="text-slate-300 text-xs md:text-sm font-mono">
                         {position.closeTime
-                          ? new Date(position.closeTime).toLocaleString(undefined, {
-                              month: 'short',
-                              day: 'numeric',
+                          ? new Date(position.closeTime).toLocaleString('en-GB', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
                               hour: '2-digit',
                               minute: '2-digit',
                             })

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { getCountries } from "libphonenumber-js";
 import AppSelect from "./AppSelect";
+import AppDateInput from "./AppDateInput";
 import { supabase } from "../lib/supabaseClient";
 import { openClientDashboard } from "../lib/clientAccess";
 import {
@@ -965,22 +966,22 @@ export default function CRMHierarchyPage() {
               </label>
               <label className="min-w-0 text-[11px] text-slate-400">
                 Registered from
-                <input
-                  type="date"
+                <AppDateInput
                   value={registeredFrom}
                   max={registeredTo || undefined}
-                  onChange={(event) => setRegisteredFrom(event.target.value)}
+                  onChange={setRegisteredFrom}
                   className={`${field} mt-1 min-w-0 [color-scheme:dark]`}
+                  aria-label="Filter clients registered from date"
                 />
               </label>
               <label className="min-w-0 text-[11px] text-slate-400">
                 Registered to
-                <input
-                  type="date"
+                <AppDateInput
                   value={registeredTo}
                   min={registeredFrom || undefined}
-                  onChange={(event) => setRegisteredTo(event.target.value)}
+                  onChange={setRegisteredTo}
                   className={`${field} mt-1 min-w-0 [color-scheme:dark]`}
+                  aria-label="Filter clients registered through date"
                 />
               </label>
               <label className="min-w-0 text-[11px] text-slate-400 lg:col-span-2 2xl:col-span-1">
@@ -1040,7 +1041,7 @@ export default function CRMHierarchyPage() {
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-300">
-                      {new Date(client.created_at).toLocaleDateString()}
+                      {new Date(client.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-xs text-slate-200">

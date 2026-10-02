@@ -88,7 +88,7 @@ const SpotMyOrders: React.FC<SpotMyOrdersProps> = ({
               {activeOrders.map((order) => (
                 <div key={order.id} className="flex items-center justify-between app-surface-muted app-surface-hover px-6 py-4 rounded-xl transition-all duration-300 shadow-lg">
                   <span className="text-slate-300 text-sm font-mono">
-                    {new Date(order.created_at).toLocaleString()}
+                    {new Date(order.created_at).toLocaleString('en-GB')}
                   </span>
                   <span className="text-white font-medium">{order.pair}</span>
                   <span className="text-slate-300 text-sm">{formatOrderType(order)}</span>
@@ -145,7 +145,7 @@ const SpotMyOrders: React.FC<SpotMyOrdersProps> = ({
               {activeStopOrders.map((order) => (
                 <div key={order.id} className="flex items-center justify-between app-surface-muted app-surface-hover px-6 py-4 rounded-xl transition-all duration-300 shadow-lg">
                   <span className="text-slate-300 text-sm font-mono">
-                    {new Date(order.created_at).toLocaleString()}
+                    {new Date(order.created_at).toLocaleString('en-GB')}
                   </span>
                   <span className="text-white font-medium">{order.pair}</span>
                   <span className={`text-sm font-bold px-3 py-1 rounded-lg ${
@@ -206,7 +206,7 @@ const SpotMyOrders: React.FC<SpotMyOrdersProps> = ({
               {completedOrders.map((order) => (
                 <div key={order.id} className="flex items-center justify-between app-surface-muted app-surface-hover px-6 py-4 rounded-xl transition-all duration-300 shadow-lg">
                   <span className="text-slate-300 text-sm font-mono">
-                    {new Date(order.created_at).toLocaleString()}
+                    {new Date(order.created_at).toLocaleString('en-GB')}
                   </span>
                   <span className="text-white font-medium">{order.pair}</span>
                   <span className="text-slate-300 text-sm">{formatOrderType(order)}</span>

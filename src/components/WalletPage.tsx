@@ -86,7 +86,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'N/A';
-      return date.toLocaleDateString();
+      return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch {
       return 'N/A';
     }
@@ -836,7 +836,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                         {transaction.description}
                       </div>
                       <div className="text-slate-400 text-sm">
-                        {new Date(transaction.created_at).toLocaleString()}
+                        {new Date(transaction.created_at).toLocaleString('en-GB')}
                       </div>
                     </div>
                   </div>
@@ -933,7 +933,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                       </div>
                       
                       <div className="flex justify-between items-center text-xs text-slate-400">
-                        <span>End Date: {new Date(stake.end_date).toLocaleDateString()}</span>
+                        <span>End Date: {new Date(stake.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                         <span className="font-medium text-slate-500">Locked until maturity</span>
                       </div>
                     </div>

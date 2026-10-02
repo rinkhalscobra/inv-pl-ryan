@@ -17,6 +17,8 @@ import { supabase } from '../lib/supabaseClient';
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
 import { generateTradePdf } from '../utils/generateTradePdf';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import AppDateInput from './AppDateInput';
+import { isoDateToDisplay } from '../utils/dateFormat';
 
 type TradeType = 'all' | 'futures' | 'cfd';
 
@@ -66,13 +68,13 @@ function formatDateTime(dateStr: string): string {
   try {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return '--';
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     const seconds = String(d.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
   } catch {
     return '--';
   }
@@ -103,7 +105,7 @@ function buildHtmlDocument(
 ): string {
   const typeLabel = tradeType === 'all' ? 'All Trades' : tradeType === 'futures' ? 'Futures' : 'CFD';
   const dateRange = dateFrom || dateTo
-    ? `${dateFrom || 'Start'} to ${dateTo || 'Present'}`
+    ? `${isoDateToDisplay(dateFrom) || 'Start'} to ${isoDateToDisplay(dateTo) || 'Present'}`
     : 'All Time';
 
   const thCells = [
@@ -174,7 +176,7 @@ function buildHtmlDocument(
   <h1>TRADES</h1>
   <div class="subtitle">${typeLabel} | ${dateRange}</div>
   <div class="meta">
-    <span>Generated: ${new Date().toLocaleString()}</span>
+    <span>Generated: ${new Date().toLocaleString('en-GB')}</span>
     <span>Total Trades: ${filteredHistory.length}</span>
   </div>
   <table>
@@ -459,18 +461,20 @@ const PnlStatement: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <Calendar size={16} className="text-slate-400" />
-              <input
-                type="date"
+              <AppDateInput
                 value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
+                onChange={setDateFrom}
+                max={dateTo || undefined}
                 className="app-input text-sm px-3 py-1.5 rounded-lg border border-slate-700/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                aria-label="Statement from date"
               />
               <span className="text-slate-500 text-sm">to</span>
-              <input
-                type="date"
+              <AppDateInput
                 value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
+                onChange={setDateTo}
+                min={dateFrom || undefined}
                 className="app-input text-sm px-3 py-1.5 rounded-lg border border-slate-700/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                aria-label="Statement through date"
               />
             </div>
           </div>

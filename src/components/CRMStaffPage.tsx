@@ -151,7 +151,7 @@ function DataTable({
                       className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-300"
                     >
                       {column.endsWith("_at") && row[column]
-                        ? new Date(String(row[column])).toLocaleString()
+                        ? new Date(String(row[column])).toLocaleString('en-GB')
                         : valueOf(row[column])}
                     </td>
                   ))}
@@ -707,7 +707,7 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                                 {Number(row.amount || 0).toFixed(2)} ·{" "}
                                 {new Date(
                                   String(row.created_at),
-                                ).toLocaleString()}
+                                ).toLocaleString('en-GB')}
                               </span>
                               <button
                                 type="button"

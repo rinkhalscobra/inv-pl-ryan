@@ -747,7 +747,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
                         <div className="text-right">
                           <div className="text-emerald-400 font-bold">{stake.apy_rate}% APY</div>
                           <div className="text-xs text-slate-400">
-                            {new Date(stake.end_date).toLocaleDateString()} {t('staking.endDate')}
+                            {new Date(stake.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} {t('staking.endDate')}
                           </div>
                         </div>
                       </div>
@@ -761,8 +761,8 @@ const StakingPage: React.FC<StakingPageProps> = ({
                       </div>
                       
                       <div className="flex justify-between text-xs text-slate-400 mb-3">
-                        <div>{t('staking.started')}: {new Date(stake.start_date).toLocaleDateString()}</div>
-                        <div>{t('staking.ends')}: {new Date(stake.end_date).toLocaleDateString()}</div>
+                        <div>{t('staking.started')}: {new Date(stake.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+                        <div>{t('staking.ends')}: {new Date(stake.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
                       </div>
                       
                       <div className="flex justify-between items-center">
@@ -836,7 +836,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
                         <div className="text-right">
                           <div className="text-emerald-400 font-bold">{stake.apy_rate}% APY</div>
                           <div className="text-xs text-slate-400">
-                            {new Date(stake.start_date).toLocaleDateString()} - {new Date(stake.end_date).toLocaleDateString()}
+                            {new Date(stake.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} - {new Date(stake.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                           </div>
                         </div>
                       </div>
@@ -1105,7 +1105,7 @@ const StakingPage: React.FC<StakingPageProps> = ({
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-400">{t('staking.unlockDate')}</span>
                     <span className="text-white">
-                      {new Date(Date.now() + stakingDuration * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                      {new Date(Date.now() + stakingDuration * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </span>
                   </div>
                 </div>

@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import AppSelect from "./AppSelect";
+import AppDateInput from "./AppDateInput";
 import { supabase } from "../lib/supabaseClient";
 import { parseCsv, rowsToLeads, type LeadInput } from "../lib/leadImport";
 import {
@@ -1371,13 +1372,12 @@ export default function AdminLeadsPage({
               </AppSelect>
               <label className="min-w-40 text-[11px] text-slate-400">
                 Received from
-                <input
-                  type="date"
+                <AppDateInput
                   value={receivedFrom}
                   max={receivedTo || undefined}
-                  onChange={(event) => {
+                  onChange={(value) => {
                     setPage(0);
-                    setReceivedFrom(event.target.value);
+                    setReceivedFrom(value);
                   }}
                   className={`${input} mt-1 min-w-40 [color-scheme:dark]`}
                   aria-label="Filter leads received from date"
@@ -1385,13 +1385,12 @@ export default function AdminLeadsPage({
               </label>
               <label className="min-w-40 text-[11px] text-slate-400">
                 Received to
-                <input
-                  type="date"
+                <AppDateInput
                   value={receivedTo}
                   min={receivedFrom || undefined}
-                  onChange={(event) => {
+                  onChange={(value) => {
                     setPage(0);
-                    setReceivedTo(event.target.value);
+                    setReceivedTo(value);
                   }}
                   className={`${input} mt-1 min-w-40 [color-scheme:dark]`}
                   aria-label="Filter leads received through date"
@@ -1690,10 +1689,14 @@ export default function AdminLeadsPage({
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-400">
                         <time
                           dateTime={lead.created_at}
-                          title={new Date(lead.created_at).toISOString()}
+                          title={new Date(lead.created_at).toLocaleString('en-GB')}
                         >
                           <span className="block">
-                            {new Date(lead.created_at).toLocaleDateString()}
+                            {new Date(lead.created_at).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                            })}
                           </span>
                           <span className="mt-0.5 block font-mono text-[11px] text-slate-500">
                             {new Date(lead.created_at).toLocaleTimeString([], {
@@ -2039,7 +2042,7 @@ export default function AdminLeadsPage({
                         {source.last_synced_at && (
                           <div className="mt-2 text-[11px] text-slate-500">
                             Last sync{" "}
-                            {new Date(source.last_synced_at).toLocaleString()}
+                            {new Date(source.last_synced_at).toLocaleString('en-GB')}
                           </div>
                         )}
                         {source.last_sync_error && (

@@ -148,7 +148,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
       ? 'The stored quote has no valid source time.'
       : quoteTimestamp > Date.now() + 60 * 1000
         ? 'The stored quote has an invalid future time.'
-        : `Last source quote: ${new Date(quoteTimestamp).toLocaleString()}.`;
+        : `Last source quote: ${new Date(quoteTimestamp).toLocaleString('en-GB')}.`;
   const canTradeSelectedInstrument = selectedInstrument?.tradable !== false && hasVerifiedPrice;
   useEffect(() => {
     if (!Number.isFinite(quoteTimestamp)) return;

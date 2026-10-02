@@ -154,7 +154,7 @@ const formatUsd = (value: unknown) => new Intl.NumberFormat('en-US', { style: 'c
 const dateTime = (value: unknown) => {
   if (!value) return '—';
   const valueDate = new Date(String(value));
-  return Number.isNaN(valueDate.getTime()) ? '—' : valueDate.toLocaleString();
+  return Number.isNaN(valueDate.getTime()) ? '—' : valueDate.toLocaleString('en-GB');
 };
 
 const displayName = (user: AdminUser) => {

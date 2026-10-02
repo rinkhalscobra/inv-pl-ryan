@@ -222,7 +222,7 @@ export default function AdminIpAccessPage() {
               {entries.map(entry => <div key={entry.ip_address} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-semibold text-white">{entry.ip_address}</span>{entry.is_current && <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Current network</span>}</div>
-                  <div className="mt-1 text-xs text-slate-400">{entry.label || 'No label'} · {entry.access_scope === 'platform' ? 'Platform access' : entry.company_name} · Added {new Date(entry.created_at).toLocaleDateString()}</div>
+                  <div className="mt-1 text-xs text-slate-400">{entry.label || 'No label'} · {entry.access_scope === 'platform' ? 'Platform access' : entry.company_name} · Added {new Date(entry.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
                 </div>
                 {entry.is_current ? <span className="text-xs text-slate-500">Protected while in use</span> : confirmRemove === entry.ip_address ?
                   <div className="flex items-center gap-2"><button type="button" onClick={() => setConfirmRemove(null)} disabled={busy} className="rounded-lg px-3 py-2 text-xs text-slate-300 hover:text-white">Cancel</button><button type="button" onClick={() => void removeIp(entry.ip_address)} disabled={busy} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/25 disabled:opacity-50">Confirm removal</button></div> :

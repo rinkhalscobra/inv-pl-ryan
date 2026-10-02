@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { isoDateToDisplay } from './dateFormat';
 
 interface ColumnVisibility {
   sl: boolean;
@@ -31,13 +32,13 @@ function formatDateTime(dateStr: string): string {
   try {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return '--';
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     const seconds = String(d.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
   } catch {
     return '--';
   }
@@ -96,7 +97,7 @@ export async function generateTradePdf(
 
   const typeLabel = tradeType === 'all' ? 'All Trades' : tradeType === 'futures' ? 'Futures' : 'CFD';
   const dateRange = dateFrom || dateTo
-    ? `${dateFrom || 'Start'} \u2013 ${dateTo || 'Present'}`
+    ? `${isoDateToDisplay(dateFrom) || 'Start'} \u2013 ${isoDateToDisplay(dateTo) || 'Present'}`
     : 'All Time';
 
   doc.setFont('helvetica', 'normal');
@@ -105,7 +106,7 @@ export async function generateTradePdf(
   doc.text(`${typeLabel}  |  ${dateRange}`, pageWidth / 2, 24, { align: 'center' });
 
   doc.setFontSize(9);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 31);
+  doc.text(`Generated: ${new Date().toLocaleString('en-GB')}`, margin, 31);
   doc.text(`Total Trades: ${filteredHistory.length}`, pageWidth - margin, 31, { align: 'right' });
 
   doc.setDrawColor(200, 200, 200);

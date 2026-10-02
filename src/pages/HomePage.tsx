@@ -114,7 +114,7 @@ const HomePage: React.FC<HomePageProps> = ({
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'N/A';
-      return date.toLocaleDateString();
+      return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch (error) {
       return 'N/A';
     }
@@ -395,7 +395,7 @@ const HomePage: React.FC<HomePageProps> = ({
         return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       }
 
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }),
     datasets: [
       {
@@ -1039,7 +1039,7 @@ const HomePage: React.FC<HomePageProps> = ({
                       <span className="text-xs text-slate-400">{news.source}</span>
                       <span className="text-xs text-slate-400">•</span>
                       <span className="text-xs text-slate-400">
-                        {new Date(news.published_at).toLocaleDateString()}
+                        {new Date(news.published_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </span>
                     </div>
                     <h3 className="mb-3 text-base font-semibold leading-relaxed text-white sm:text-lg">{news.title}</h3>

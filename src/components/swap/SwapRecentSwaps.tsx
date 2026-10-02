@@ -24,7 +24,7 @@ export default function SwapRecentSwaps({ transactions, formatEur, formatFiat }:
                     : formatFiat(tx.amount)}
               </span>
             </div>
-            <div className="text-xs text-slate-400">{new Date(tx.created_at).toLocaleString()}</div>
+            <div className="text-xs text-slate-400">{new Date(tx.created_at).toLocaleString('en-GB')}</div>
           </div>
         )) : <div className="py-5 text-center text-sm text-slate-400"><Package size={28} className="mx-auto mb-2 opacity-50" /><p>No swap history yet</p></div>}
       </div>

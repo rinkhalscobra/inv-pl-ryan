@@ -214,7 +214,7 @@ const ReferralTab: React.FC = () => {
                       <div className="text-white font-medium">{referredUser.email}</div>
                     </td>
                     <td className="py-3 px-2 text-slate-400 text-sm">
-                      {new Date(referredUser.created_at).toLocaleDateString()}
+                      {new Date(referredUser.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </td>
                     <td className="py-3 px-2 text-right">
                       <span className="text-emerald-400 font-semibold">
@@ -223,7 +223,7 @@ const ReferralTab: React.FC = () => {
                     </td>
                     <td className="py-3 px-2 text-right text-slate-400 text-sm">
                       {referredUser.last_earning_date
-                        ? new Date(referredUser.last_earning_date).toLocaleDateString()
+                        ? new Date(referredUser.last_earning_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
                         : 'No activity'}
                     </td>
                   </tr>
@@ -282,7 +282,7 @@ const ReferralTab: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-slate-500 text-xs">
-                      {new Date(earning.created_at).toLocaleString()}
+                      {new Date(earning.created_at).toLocaleString('en-GB')}
                     </div>
                   </div>
                 ))}

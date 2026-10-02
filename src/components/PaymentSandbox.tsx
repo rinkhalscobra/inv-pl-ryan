@@ -580,7 +580,7 @@ export default function PaymentSandbox() {
                         <p className="text-xs text-red-400 mt-2">{tx.error_message}</p>
                       )}
                       <p className="text-xs text-slate-500 mt-2">
-                        {new Date(tx.created_at).toLocaleString()}
+                        {new Date(tx.created_at).toLocaleString('en-GB')}
                       </p>
                     </div>
                   ))}
@@ -615,7 +615,7 @@ export default function PaymentSandbox() {
                       <p className="text-xs text-slate-400 mb-1">URL: {log.webhook_url}</p>
                       <p className="text-xs text-slate-400 mb-1">Signature: {log.signature.substring(0, 32)}...</p>
                       <p className="text-xs text-slate-500 mt-2">
-                        {new Date(log.created_at).toLocaleString()}
+                        {new Date(log.created_at).toLocaleString('en-GB')}
                       </p>
                     </div>
                   ))}

@@ -532,6 +532,7 @@ export default function AdminLeadsPage({
     total: number;
   } | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [confirmBulkUnassign, setConfirmBulkUnassign] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const bulkRunningRef = useRef(false);
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
@@ -575,6 +576,7 @@ export default function AdminLeadsPage({
   useEffect(() => {
     setSelectedLeadIds(new Set());
     setConfirmBulkDelete(false);
+    setConfirmBulkUnassign(false);
   }, [
     companyId,
     page,
@@ -828,7 +830,7 @@ export default function AdminLeadsPage({
       return `${nameOf(lead)} marked as ${dispositionLabels[nextDisposition]}.`;
     });
 
-  const applyBulkAction = async (deleteConfirmed = false) => {
+  const applyBulkAction = async (actionConfirmed = false) => {
     if (
       !bulkAction ||
       selectedLeadIds.size === 0 ||
@@ -836,12 +838,20 @@ export default function AdminLeadsPage({
       bulkRunningRef.current
     )
       return;
-    if (bulkAction === "delete" && !deleteConfirmed) {
+    if (bulkAction === "delete" && !actionConfirmed) {
       setConfirmBulkDelete(true);
       return;
     }
+    if (bulkAction === "unassign" && !actionConfirmed) {
+      setConfirmBulkUnassign(true);
+      return;
+    }
     if (bulkAction === "assign" && !bulkOwner) {
-      setError("Choose an Agent or Retention user for the assignment.");
+      setError(
+        dashboard.actor_role === "desk_manager"
+          ? "Choose an Agent from your team for the assignment."
+          : "Choose an Agent or Retention user for the assignment.",
+      );
       return;
     }
 
@@ -857,6 +867,7 @@ export default function AdminLeadsPage({
     setError(null);
     setNotice(null);
     setConfirmBulkDelete(false);
+    setConfirmBulkUnassign(false);
     setBulkProgress({ completed: 0, total: leads.length });
     const succeeded = new Set<string>();
     const failures: BulkFailure[] = [];
@@ -921,6 +932,8 @@ export default function AdminLeadsPage({
           ? `changed to ${dispositionLabels[bulkDisposition]}`
           : bulkAction === "assign"
             ? "assigned"
+            : bulkAction === "unassign"
+              ? "unassigned"
             : bulkAction === "delete"
               ? "deleted"
               : bulkAction === "promote"
@@ -1017,14 +1030,9 @@ export default function AdminLeadsPage({
         return user?.office_id === selectedLead.office_id;
       })
     : [];
-  const availableDeskManagers = dashboard.desk_managers
-    .filter((manager) => {
-      if (dashboard.actor_role !== "desk_manager") return true;
-      const user = Array.isArray(manager.users)
-        ? manager.users[0]
-        : manager.users;
-      return dashboard.offices.some((office) => office.id === user?.office_id);
-    })
+  const availableDeskManagers = (
+    dashboard.actor_role === "desk_manager" ? [] : [...dashboard.desk_managers]
+  )
     .sort((left, right) =>
       deskManagerName(left).localeCompare(deskManagerName(right)),
     );
@@ -1080,7 +1088,7 @@ export default function AdminLeadsPage({
               <p className="text-sm text-slate-400">
                 {staffMode
                   ? dashboard.actor_role === "desk_manager"
-                    ? "Phone-routed leads for your Office."
+                    ? "Leads in your Desk Manager team."
                     : "All Sales Offices. Use the Office selector as a filter."
                   : "Validate, route, and automatically register incoming affiliate leads."}
               </p>
@@ -1264,7 +1272,11 @@ export default function AdminLeadsPage({
                 className={`${input} w-52`}
                 aria-label="Filter by assignee"
               >
-                <option value="all">All / Any Assignee</option>
+                <option value="all">
+                  {dashboard.actor_role === "desk_manager"
+                    ? "All Agents"
+                    : "All / Any Assignee"}
+                </option>
                 {availableDeskManagers.length > 0 && (
                   <optgroup label="Desk Managers">
                     {availableDeskManagers.map((manager) => (
@@ -1372,8 +1384,11 @@ export default function AdminLeadsPage({
                 >
                   <option value="">Mass actions</option>
                   <option value="status">Change status</option>
-                  {dashboard.actor_role === "admin" && (
+                  {["admin", "desk_manager"].includes(dashboard.actor_role) && (
                     <option value="assign">Assign</option>
+                  )}
+                  {["admin", "desk_manager"].includes(dashboard.actor_role) && (
+                    <option value="unassign">Unassign</option>
                   )}
                   {dashboard.actor_role !== "desk_manager" && (
                     <option value="promote">Promote</option>
@@ -3054,6 +3069,62 @@ for (;;) {
                     <Trash2 size={16} />
                   )}
                   Delete {selectedLeadIds.size} lead
+                  {selectedLeadIds.size === 1 ? "" : "s"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {confirmBulkUnassign && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+            <section
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="bulk-unassign-title"
+              aria-describedby="bulk-unassign-description"
+              className="w-full max-w-md rounded-2xl border border-amber-400/25 bg-[#171e2b] p-6 shadow-2xl"
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-amber-500/15 p-2 text-amber-300">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h2 id="bulk-unassign-title" className="text-lg font-semibold">
+                    Unassign {selectedLeadIds.size} selected lead
+                    {selectedLeadIds.size === 1 ? "" : "s"}?
+                  </h2>
+                  <p
+                    id="bulk-unassign-description"
+                    className="mt-2 text-sm leading-6 text-slate-400"
+                  >
+                    This removes the current Agent assignment from every
+                    selected lead. The leads remain available in your permitted
+                    Desk Manager scope.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmBulkUnassign(false)}
+                  disabled={busy === "bulk"}
+                  className={`${button} border border-white/10 text-slate-300 hover:text-white`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void applyBulkAction(true)}
+                  disabled={busy === "bulk"}
+                  className={`${button} bg-amber-600 text-white hover:bg-amber-500`}
+                >
+                  {busy === "bulk" ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Users size={16} />
+                  )}
+                  Unassign {selectedLeadIds.size} lead
                   {selectedLeadIds.size === 1 ? "" : "s"}
                 </button>
               </div>

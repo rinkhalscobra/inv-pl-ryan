@@ -388,7 +388,7 @@ Deno.serve(async request => {
     }
     const staffActions = actorRole === "workflow_manager"
       ? ["dashboard", "set_lead_office", "set_lead_disposition", "register_lead"]
-      : ["dashboard", "set_lead_disposition", "register_lead"];
+      : ["dashboard", "set_lead_disposition", "set_lead_owner", "register_lead"];
     if (!isAdmin && !staffActions.includes(action)) {
       return json({ error: "Only Admin can manage lead sources and imports" }, 403);
     }
@@ -408,19 +408,24 @@ Deno.serve(async request => {
       const phoneFilter = ["all", "valid", "incorrect", "routing_review"].includes(String(body.phone_filter))
         ? String(body.phone_filter) : "all";
       const assigneeId = String(body.assignee_id || "all");
+      // A Desk Manager's unfiltered view is still scoped to that manager's
+      // team. Admin/Workflow users retain the genuinely company-wide option.
+      const effectiveAssigneeId = actorRole === "desk_manager" && assigneeId === "all"
+        ? actorId
+        : assigneeId;
       const disposition = ["new", "no_answer", "call_back", "low_potential", "no_money", "wrong_number", "ftd"].includes(String(body.disposition))
         ? String(body.disposition) : null;
       if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
       if (assigneeId !== "all" && !uuid(assigneeId)) return json({ error: "Select a valid assignee filter" }, 400);
       let assigneePageIds: string[] | null = null;
       let assigneeTotal: number | null = null;
-      if (assigneeId !== "all") {
+      if (effectiveAssigneeId !== "all") {
         const { data: assigneePage, error: assigneeError } = await admin.rpc(
           "crm_service_filter_lead_ids_by_assignee",
           {
             p_actor_id: actorId,
             p_company_id: companyId,
-            p_assignee_id: assigneeId,
+            p_assignee_id: effectiveAssigneeId,
             p_page: page,
             p_status: status,
             p_disposition: disposition,
@@ -487,6 +492,33 @@ Deno.serve(async request => {
       if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error || deskManagerResult.error || incorrectCountResult.error || routingCountResult.error) {
         throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message || deskManagerResult.error?.message || incorrectCountResult.error?.message || routingCountResult.error?.message);
       }
+      let incorrectPhoneCount = incorrectCountResult.count || 0;
+      let routingReviewCount = routingCountResult.count || 0;
+      if (actorRole === "desk_manager") {
+        const scopedCount = (phone: "incorrect" | "routing_review") => admin.rpc(
+          "crm_service_filter_lead_ids_by_assignee",
+          {
+            p_actor_id: actorId,
+            p_company_id: companyId,
+            p_assignee_id: actorId,
+            p_page: 0,
+            p_status: null,
+            p_disposition: null,
+            p_search: "",
+            p_office_filter: "all",
+            p_phone_filter: phone,
+          },
+        );
+        const [incorrectScoped, routingScoped] = await Promise.all([
+          scopedCount("incorrect"),
+          scopedCount("routing_review"),
+        ]);
+        if (incorrectScoped.error || routingScoped.error) {
+          throw new Error(incorrectScoped.error?.message || routingScoped.error?.message || "Lead counters could not be scoped");
+        }
+        incorrectPhoneCount = Math.max(0, Number((incorrectScoped.data as { total?: unknown } | null)?.total) || 0);
+        routingReviewCount = Math.max(0, Number((routingScoped.data as { total?: unknown } | null)?.total) || 0);
+      }
       const leadRows = (leadResult.data || []) as Array<Record<string, unknown> & { registered_user_id?: string | null }>;
       const registeredIds = Array.from(new Set(leadRows.map(lead => lead.registered_user_id).filter((id): id is string => Boolean(id))));
       const promotionByUserId = new Map<string, boolean>();
@@ -504,8 +536,8 @@ Deno.serve(async request => {
             : null,
         })), total: assigneeTotal ?? leadResult.count ?? 0,
         sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [],
-        desk_managers: deskManagerResult.data || [], incorrect_phone_count: incorrectCountResult.count || 0,
-        routing_review_count: routingCountResult.count || 0, actor_role: actorRole, can_manage_sources: isAdmin,
+        desk_managers: deskManagerResult.data || [], incorrect_phone_count: incorrectPhoneCount,
+        routing_review_count: routingReviewCount, actor_role: actorRole, can_manage_sources: isAdmin,
       });
     }
 
@@ -521,7 +553,7 @@ Deno.serve(async request => {
       const { data: selected, error: selectedError } = await admin.from("crm_leads")
         .select("id,status").eq("company_id", companyId).in("id", leadIds);
       if (selectedError) throw selectedError;
-      const available = new Map((selected || []).map(lead => [String(lead.id), String(lead.status)]));
+      const available = new Map((selected || []).map((lead: { id: unknown; status: unknown }) => [String(lead.id), String(lead.status)]));
       const failures: Array<{ lead_id: string; error: string }> = [];
       const deletableIds: string[] = [];
       for (const leadId of leadIds) {
@@ -535,7 +567,7 @@ Deno.serve(async request => {
         const { data: deleted, error: deleteError } = await admin.from("crm_leads").delete()
           .eq("company_id", companyId).in("id", deletableIds).select("id");
         if (deleteError) throw deleteError;
-        deletedIds = (deleted || []).map(lead => String(lead.id));
+        deletedIds = (deleted || []).map((lead: { id: unknown }) => String(lead.id));
         const deletedSet = new Set(deletedIds);
         for (const leadId of deletableIds) {
           if (!deletedSet.has(leadId)) failures.push({ lead_id: leadId, error: "Lead could not be deleted" });
@@ -579,6 +611,27 @@ Deno.serve(async request => {
         p_actor_id: actorId, p_lead_id: String(body.lead_id), p_status: disposition,
       });
       if (error) return json({ error: error.message || "Lead status could not be updated" }, 400);
+      return json({ success: true });
+    }
+
+    if (action === "set_lead_owner") {
+      if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
+      const ownerRole = String(body.owner_role || "");
+      const ownerId = body.owner_id == null ? null : String(body.owner_id);
+      if (!["agent", "retention", "unassigned"].includes(ownerRole)) {
+        return json({ error: "Select a valid assignment type" }, 400);
+      }
+      if ((ownerRole === "unassigned" && ownerId !== null) || (ownerRole !== "unassigned" && !uuid(ownerId))) {
+        return json({ error: "Select a valid assignment owner" }, 400);
+      }
+      const { error } = await admin.rpc("crm_service_set_lead_owner_for_actor", {
+        p_actor_id: actorId,
+        p_company_id: companyId,
+        p_lead_id: String(body.lead_id),
+        p_owner_role: ownerRole,
+        p_owner_id: ownerId,
+      });
+      if (error) return json({ error: error.message || "Lead assignment could not be updated" }, 400);
       return json({ success: true });
     }
 

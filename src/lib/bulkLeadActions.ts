@@ -1,6 +1,7 @@
 export type LeadBulkAction =
   | "status"
   | "assign"
+  | "unassign"
   | "delete"
   | "promote"
   | "demote";
@@ -53,12 +54,22 @@ export async function performLeadBulkAction(
     const [ownerRole, ownerId, extra] = (options.owner || "").split(":");
     if (!ownerId || extra || !["agent", "retention"].includes(ownerRole))
       throw new Error("Choose a valid Agent or Retention user");
-    const { error } = await dependencies.rpc("crm_admin_set_client_owner", {
-      p_client_id: clientId,
-      p_owner_role: ownerRole,
-      p_owner_id: ownerId,
+    await dependencies.invokeLeadAction({
+      action: "set_lead_owner",
+      lead_id: lead.id,
+      owner_role: ownerRole,
+      owner_id: ownerId,
     });
-    if (error) throw error;
+    return;
+  }
+
+  if (action === "unassign") {
+    await dependencies.invokeLeadAction({
+      action: "set_lead_owner",
+      lead_id: lead.id,
+      owner_role: "unassigned",
+      owner_id: null,
+    });
     return;
   }
 

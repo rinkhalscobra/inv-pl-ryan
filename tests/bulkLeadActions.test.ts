@@ -54,7 +54,7 @@ test("Change Status uses the existing lead-disposition action", async () => {
   ]);
 });
 
-test("Assign uses the existing client-owner RPC", async () => {
+test("Assign uses the shared, permission-checked lead-owner action", async () => {
   const { calls, dependencies } = recorder();
   await performLeadBulkAction(
     "assign",
@@ -63,11 +63,26 @@ test("Assign uses the existing client-owner RPC", async () => {
     dependencies,
   );
   assert.deepEqual(calls[0], {
-    name: "crm_admin_set_client_owner",
+    name: "edge",
     payload: {
-      p_client_id: "client-1",
-      p_owner_role: "agent",
-      p_owner_id: "agent-1",
+      action: "set_lead_owner",
+      lead_id: "lead-1",
+      owner_role: "agent",
+      owner_id: "agent-1",
+    },
+  });
+});
+
+test("Unassign uses the same permission-checked lead-owner action", async () => {
+  const { calls, dependencies } = recorder();
+  await performLeadBulkAction("unassign", salesLead, {}, dependencies);
+  assert.deepEqual(calls[0], {
+    name: "edge",
+    payload: {
+      action: "set_lead_owner",
+      lead_id: "lead-1",
+      owner_role: "unassigned",
+      owner_id: null,
     },
   });
 });

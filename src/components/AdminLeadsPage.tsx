@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -26,6 +33,11 @@ import {
 import AppSelect from "./AppSelect";
 import { supabase } from "../lib/supabaseClient";
 import { parseCsv, rowsToLeads, type LeadInput } from "../lib/leadImport";
+import {
+  performLeadBulkAction,
+  performLeadBulkDelete,
+  type LeadBulkAction,
+} from "../lib/bulkLeadActions";
 import {
   getSelectedCrmCompanyId,
   setSelectedCrmCompanyId,
@@ -55,6 +67,7 @@ interface Lead {
   source_name: string;
   status: LeadStatus;
   registered_user_id: string | null;
+  registered_is_promoted: boolean | null;
   disposition_status: LeadDisposition;
   disposition_changed_at: string;
   disposition_changed_by: string | null;
@@ -91,7 +104,7 @@ interface Source {
 }
 interface Owner {
   user_id: string;
-  role: "agent";
+  role: "agent" | "retention";
   users: {
     email: string;
     first_name: string | null;
@@ -136,6 +149,13 @@ interface ImportResult {
     failed: number;
     skipped: number;
   };
+}
+
+type BulkAction = "" | LeadBulkAction;
+interface BulkFailure {
+  leadId: string;
+  label: string;
+  error: string;
 }
 
 const automaticRegistrationSummary = (result: ImportResult) => {
@@ -459,6 +479,12 @@ const deskManagerName = (manager: DeskManager) => {
     manager.user_id
   );
 };
+const operationError = (cause: unknown) => {
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === "object" && "message" in cause)
+    return String((cause as { message?: unknown }).message || "The action failed");
+  return "The action failed";
+};
 
 export default function AdminLeadsPage({
   staffMode = false,
@@ -493,6 +519,20 @@ export default function AdminLeadsPage({
   const [deleteAffiliate, setDeleteAffiliate] = useState<Source | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [owner, setOwner] = useState("");
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [bulkAction, setBulkAction] = useState<BulkAction>("");
+  const [bulkDisposition, setBulkDisposition] =
+    useState<LeadDisposition>("new");
+  const [bulkOwner, setBulkOwner] = useState("");
+  const [bulkProgress, setBulkProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const bulkRunningRef = useRef(false);
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
   const [companyId, setCompanyId] = useState(getSelectedCrmCompanyId() || "");
   const [isPlatformNetwork, setIsPlatformNetwork] = useState(false);
@@ -530,6 +570,11 @@ export default function AdminLeadsPage({
     setEditingAffiliateName("");
     setConfirmRotate(null);
   }, [companyId]);
+
+  useEffect(() => {
+    setSelectedLeadIds(new Set());
+    setConfirmBulkDelete(false);
+  }, [companyId, page, status, disposition, officeFilter, phoneFilter, search]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -770,6 +815,143 @@ export default function AdminLeadsPage({
       });
       return `${nameOf(lead)} marked as ${dispositionLabels[nextDisposition]}.`;
     });
+
+  const applyBulkAction = async (deleteConfirmed = false) => {
+    if (
+      !bulkAction ||
+      selectedLeadIds.size === 0 ||
+      busy ||
+      bulkRunningRef.current
+    )
+      return;
+    if (bulkAction === "delete" && !deleteConfirmed) {
+      setConfirmBulkDelete(true);
+      return;
+    }
+    if (bulkAction === "assign" && !bulkOwner) {
+      setError("Choose an Agent or Retention user for the assignment.");
+      return;
+    }
+
+    const leads = dashboard.leads.filter((lead) => selectedLeadIds.has(lead.id));
+    if (!leads.length) {
+      setSelectedLeadIds(new Set());
+      setError("The selected leads are no longer on this page. Select them again.");
+      return;
+    }
+
+    bulkRunningRef.current = true;
+    setBusy("bulk");
+    setError(null);
+    setNotice(null);
+    setConfirmBulkDelete(false);
+    setBulkProgress({ completed: 0, total: leads.length });
+    const succeeded = new Set<string>();
+    const failures: BulkFailure[] = [];
+
+    try {
+      if (bulkAction === "delete") {
+        const data = await performLeadBulkDelete(
+          leads.map((lead) => lead.id),
+          invokeLeadAction,
+        );
+        const deletedIds = Array.isArray(data.deleted_ids)
+          ? data.deleted_ids.map(String)
+          : [];
+        deletedIds.forEach((id) => succeeded.add(id));
+        const returnedFailures = Array.isArray(data.failures)
+          ? (data.failures as Array<{ lead_id?: unknown; error?: unknown }>)
+          : [];
+        returnedFailures.forEach((failure) => {
+          const leadId = String(failure.lead_id || "");
+          const lead = leads.find((item) => item.id === leadId);
+          failures.push({
+            leadId,
+            label: lead ? nameOf(lead) : "Unavailable lead",
+            error: String(failure.error || "Delete failed"),
+          });
+        });
+        setBulkProgress({ completed: leads.length, total: leads.length });
+      } else {
+        for (let index = 0; index < leads.length; index++) {
+          const lead = leads[index];
+          try {
+            await performLeadBulkAction(
+              bulkAction,
+              lead,
+              { disposition: bulkDisposition, owner: bulkOwner },
+              {
+                invokeLeadAction,
+                rpc: async (name, parameters) => {
+                  const { error: rpcError } = await supabase.rpc(
+                    name,
+                    parameters,
+                  );
+                  return { error: rpcError };
+                },
+              },
+            );
+            succeeded.add(lead.id);
+          } catch (cause) {
+            failures.push({
+              leadId: lead.id,
+              label: nameOf(lead),
+              error: operationError(cause),
+            });
+          }
+          setBulkProgress({ completed: index + 1, total: leads.length });
+        }
+      }
+
+      await refresh();
+      const actionLabel =
+        bulkAction === "status"
+          ? `changed to ${dispositionLabels[bulkDisposition]}`
+          : bulkAction === "assign"
+            ? "assigned"
+            : bulkAction === "delete"
+              ? "deleted"
+              : bulkAction === "promote"
+                ? "promoted"
+                : "demoted";
+      if (failures.length) {
+        setSelectedLeadIds(new Set(failures.map((failure) => failure.leadId)));
+        setNotice(
+          succeeded.size
+            ? `${succeeded.size} lead${succeeded.size === 1 ? "" : "s"} ${actionLabel}.`
+            : null,
+        );
+        const details = failures
+          .slice(0, 4)
+          .map((failure) => `${failure.label}: ${failure.error}`)
+          .join("; ");
+        setError(
+          `${failures.length} of ${leads.length} failed. ${details}${failures.length > 4 ? `; and ${failures.length - 4} more` : ""}`,
+        );
+      } else {
+        setSelectedLeadIds(new Set());
+        setBulkAction("");
+        setBulkOwner("");
+        setNotice(
+          `${succeeded.size} lead${succeeded.size === 1 ? "" : "s"} ${actionLabel} successfully.${bulkAction === "delete" ? " Linked client accounts were preserved." : ""}`,
+        );
+        if (
+          bulkAction === "delete" &&
+          page > 0 &&
+          succeeded.size === dashboard.leads.length
+        )
+          setPage((value) => Math.max(0, value - 1));
+      }
+    } catch (cause) {
+      await refresh();
+      setError(operationError(cause));
+    } finally {
+      bulkRunningRef.current = false;
+      setBusy(null);
+      setBulkProgress(null);
+    }
+  };
+
   const reprocessPhoneRouting = () =>
     void run("phone-routing", async () => {
       const data = await invokeLeadAction({
@@ -823,9 +1005,33 @@ export default function AdminLeadsPage({
         return user?.office_id === selectedLead.office_id;
       })
     : [];
+  const currentPageLeadIds = dashboard.leads.map((lead) => lead.id);
+  const selectedOnPage = currentPageLeadIds.filter((id) =>
+    selectedLeadIds.has(id),
+  ).length;
+  const allCurrentPageSelected =
+    currentPageLeadIds.length > 0 &&
+    selectedOnPage === currentPageLeadIds.length;
+  useEffect(() => {
+    if (selectAllRef.current)
+      selectAllRef.current.indeterminate =
+        selectedOnPage > 0 && !allCurrentPageSelected;
+  }, [allCurrentPageSelected, selectedOnPage]);
+
+  const toggleCurrentPage = () => {
+    setSelectedLeadIds((current) => {
+      const next = new Set(current);
+      if (allCurrentPageSelected)
+        currentPageLeadIds.forEach((id) => next.delete(id));
+      else currentPageLeadIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
 
   return (
-    <main className="min-h-screen bg-[#0d1118] px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
+    <main
+      className={`min-h-screen bg-[#0d1118] px-4 pt-5 text-slate-100 sm:px-6 lg:px-8 ${selectedLeadIds.size > 0 ? "pb-72 sm:pb-32" : "pb-5"}`}
+    >
       <div className="mx-auto max-w-[1800px]">
         <header className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
           <div className="flex items-center gap-3">
@@ -1056,10 +1262,147 @@ export default function AdminLeadsPage({
                 <option value="existing">Existing client</option>
               </AppSelect>
             </div>
+            {selectedLeadIds.size > 0 &&
+              createPortal(
+              <div
+                role="region"
+                aria-label="Bulk actions"
+                className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-h-[calc(100vh-1.5rem)] max-w-5xl flex-wrap items-center gap-2 overflow-y-auto rounded-xl border border-violet-400/30 bg-[#171d29]/95 p-3 shadow-[0_18px_60px_rgba(0,0,0,0.65)] backdrop-blur sm:inset-x-6 sm:bottom-5 sm:p-4"
+              >
+                <div className="mr-auto min-w-32 px-1">
+                  <div className="text-sm font-semibold text-violet-100">
+                    {selectedLeadIds.size} lead
+                    {selectedLeadIds.size === 1 ? "" : "s"} selected
+                  </div>
+                  {bulkProgress && (
+                    <div
+                      aria-live="polite"
+                      className="mt-0.5 text-xs text-violet-300"
+                    >
+                      Processing {bulkProgress.completed} of {bulkProgress.total}
+                    </div>
+                  )}
+                </div>
+                <AppSelect
+                  value={bulkAction}
+                  onChange={(event) => {
+                    setBulkAction(event.target.value as BulkAction);
+                    setBulkOwner("");
+                  }}
+                  disabled={busy === "bulk"}
+                  className={`${input} w-full py-2 sm:w-44`}
+                  aria-label="Choose bulk action"
+                >
+                  <option value="">Mass actions</option>
+                  <option value="status">Change status</option>
+                  {dashboard.actor_role === "admin" && (
+                    <option value="assign">Assign</option>
+                  )}
+                  {dashboard.actor_role !== "desk_manager" && (
+                    <option value="promote">Promote</option>
+                  )}
+                  {dashboard.actor_role === "admin" && (
+                    <option value="demote">Demote</option>
+                  )}
+                  {dashboard.actor_role === "admin" && (
+                    <option value="delete">Delete</option>
+                  )}
+                </AppSelect>
+                {bulkAction === "status" && (
+                  <AppSelect
+                    value={bulkDisposition}
+                    onChange={(event) =>
+                      setBulkDisposition(
+                        event.target.value as LeadDisposition,
+                      )
+                    }
+                    disabled={busy === "bulk"}
+                    className={`${input} w-full py-2 sm:w-44`}
+                    aria-label="Choose new lead status"
+                  >
+                    {(
+                      Object.entries(dispositionLabels) as [
+                        LeadDisposition,
+                        string,
+                      ][]
+                    ).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </AppSelect>
+                )}
+                {bulkAction === "assign" && (
+                  <AppSelect
+                    value={bulkOwner}
+                    onChange={(event) => setBulkOwner(event.target.value)}
+                    disabled={busy === "bulk"}
+                    className={`${input} w-full py-2 sm:w-56`}
+                    aria-label="Choose assignment owner"
+                  >
+                    <option value="">Choose owner</option>
+                    {dashboard.owners.map((item) => {
+                      const user = Array.isArray(item.users)
+                        ? item.users[0]
+                        : item.users;
+                      const office = dashboard.offices.find(
+                        (entry) => entry.id === user?.office_id,
+                      );
+                      return (
+                        <option
+                          key={`${item.role}:${item.user_id}`}
+                          value={`${item.role}:${item.user_id}`}
+                        >
+                          {ownerName(item)} · {item.role === "agent" ? "Agent" : "Retention"}
+                          {office ? ` · ${office.code}` : ""}
+                        </option>
+                      );
+                    })}
+                  </AppSelect>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void applyBulkAction()}
+                  disabled={
+                    !!busy ||
+                    !bulkAction ||
+                    (bulkAction === "assign" && !bulkOwner)
+                  }
+                  className={`${button} ${bulkAction === "delete" ? "bg-red-600 text-white hover:bg-red-500" : "bg-violet-600 text-white hover:bg-violet-500"}`}
+                >
+                  {busy === "bulk" && (
+                    <Loader2 size={15} className="animate-spin" />
+                  )}
+                  {busy === "bulk" ? "Processing" : "Apply"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLeadIds(new Set())}
+                  disabled={busy === "bulk"}
+                  className={`${button} border border-white/10 text-slate-300 hover:text-white`}
+                >
+                  Clear
+                </button>
+              </div>,
+              document.body,
+            )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px] text-left text-sm">
+              <table className="w-full min-w-[1100px] text-left text-sm">
                 <thead className="border-b border-white/10 bg-[#111723] text-xs text-slate-400">
                   <tr>
+                    <th className="w-12 px-4 py-3">
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={allCurrentPageSelected}
+                        onChange={toggleCurrentPage}
+                        disabled={
+                          loading || !!busy || dashboard.leads.length === 0
+                        }
+                        aria-label="Select all leads on this page"
+                        className="h-4 w-4 rounded border-white/20 bg-[#0e1420] accent-violet-500"
+                      />
+                    </th>
                     <th className="px-4 py-3">Lead</th>
                     <th className="px-4 py-3">Contact</th>
                     <th className="px-4 py-3">Office</th>
@@ -1072,6 +1415,24 @@ export default function AdminLeadsPage({
                 <tbody className="divide-y divide-white/[0.07]">
                   {dashboard.leads.map((lead) => (
                     <tr key={lead.id} className="hover:bg-white/[0.025]">
+                      <td className="px-4 py-3 align-top">
+                        <input
+                          type="checkbox"
+                          checked={selectedLeadIds.has(lead.id)}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setSelectedLeadIds((current) => {
+                              const next = new Set(current);
+                              if (checked) next.add(lead.id);
+                              else next.delete(lead.id);
+                              return next;
+                            });
+                          }}
+                          disabled={!!busy}
+                          aria-label={`Select ${nameOf(lead)}`}
+                          className="mt-1 h-4 w-4 rounded border-white/20 bg-[#0e1420] accent-violet-500"
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-semibold text-white">
                           {nameOf(lead)}
@@ -1227,6 +1588,14 @@ export default function AdminLeadsPage({
                                 ? "Existing client"
                                 : "Registered"}
                         </div>
+                        {lead.registered_user_id &&
+                          lead.registered_is_promoted !== null && (
+                            <div
+                              className={`mt-1 text-[10px] font-medium ${lead.registered_is_promoted ? "text-amber-300" : "text-cyan-300"}`}
+                            >
+                              Workspace: {lead.registered_is_promoted ? "Retention" : "Sales"}
+                            </div>
+                          )}
                         {lead.registration_error && (
                           <div className="mt-2 max-w-64 text-[11px] leading-4 text-red-300">
                             Last attempt: {lead.registration_error}
@@ -2517,8 +2886,9 @@ for (;;) {
                         ? item.users[0]
                         : item.users;
                       return (
+                        item.role === "agent" &&
                         (user?.office_id || "") ===
-                        (selectedLead.office_id || "")
+                          (selectedLead.office_id || "")
                       );
                     })
                     .map((item) => (
@@ -2552,6 +2922,62 @@ for (;;) {
                     <Send size={16} />
                   )}
                   Retry creation
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {confirmBulkDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+            <section
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="bulk-delete-title"
+              aria-describedby="bulk-delete-description"
+              className="w-full max-w-md rounded-2xl border border-red-400/25 bg-[#171e2b] p-6 shadow-2xl"
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-red-500/15 p-2 text-red-300">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h2 id="bulk-delete-title" className="text-lg font-semibold">
+                    Delete {selectedLeadIds.size} selected lead
+                    {selectedLeadIds.size === 1 ? "" : "s"}?
+                  </h2>
+                  <p
+                    id="bulk-delete-description"
+                    className="mt-2 text-sm leading-6 text-slate-400"
+                  >
+                    This permanently removes the selected Lead Inbox records.
+                    Linked client accounts are preserved. Leads with account
+                    creation currently in progress will not be deleted.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmBulkDelete(false)}
+                  disabled={busy === "bulk"}
+                  className={`${button} border border-white/10 text-slate-300 hover:text-white`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void applyBulkAction(true)}
+                  disabled={busy === "bulk"}
+                  className={`${button} bg-red-600 text-white hover:bg-red-500`}
+                >
+                  {busy === "bulk" ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                  Delete {selectedLeadIds.size} lead
+                  {selectedLeadIds.size === 1 ? "" : "s"}
                 </button>
               </div>
             </section>

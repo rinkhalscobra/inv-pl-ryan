@@ -434,7 +434,7 @@ Deno.serve(async request => {
       let officeQuery = admin.from("crm_offices").select("id,name,code,status").eq("company_id", companyId).order("name");
       if (deskOfficeId) officeQuery = officeQuery.eq("id", deskOfficeId);
       let ownerQuery = admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)")
-        .eq("role", "agent").eq("users.company_id", companyId);
+        .in("role", isAdmin ? ["agent", "retention"] : ["agent"]).eq("users.company_id", companyId);
       if (deskOfficeId) {
         const { data: assignments, error: assignmentError } = await admin.from("crm_agent_desk_assignments")
           .select("agent_id").eq("desk_manager_id", actorId);
@@ -458,12 +458,69 @@ Deno.serve(async request => {
       if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error || deskManagerResult.error || incorrectCountResult.error || routingCountResult.error) {
         throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message || deskManagerResult.error?.message || incorrectCountResult.error?.message || routingCountResult.error?.message);
       }
+      const leadRows = (leadResult.data || []) as Array<Record<string, unknown> & { registered_user_id?: string | null }>;
+      const registeredIds = Array.from(new Set(leadRows.map(lead => lead.registered_user_id).filter((id): id is string => Boolean(id))));
+      const promotionByUserId = new Map<string, boolean>();
+      if (registeredIds.length) {
+        const { data: registeredUsers, error: registeredUserError } = await admin.from("users")
+          .select("id,is_promoted").eq("company_id", companyId).in("id", registeredIds);
+        if (registeredUserError) throw new Error(`Could not load lead workspaces: ${registeredUserError.message}`);
+        for (const user of registeredUsers || []) promotionByUserId.set(String(user.id), user.is_promoted === true);
+      }
       return json({
-        leads: leadResult.data || [], total: leadResult.count || 0,
+        leads: leadRows.map(lead => ({
+          ...lead,
+          registered_is_promoted: lead.registered_user_id
+            ? promotionByUserId.get(lead.registered_user_id) ?? null
+            : null,
+        })), total: leadResult.count || 0,
         sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [],
         desk_managers: deskManagerResult.data || [], incorrect_phone_count: incorrectCountResult.count || 0,
         routing_review_count: routingCountResult.count || 0, actor_role: actorRole, can_manage_sources: isAdmin,
       });
+    }
+
+    if (action === "bulk_delete_leads") {
+      if (!isAdmin) return json({ error: "Only Admin can delete Lead Inbox records" }, 403);
+      if (!Array.isArray(body.lead_ids) || body.lead_ids.length < 1 || body.lead_ids.length > 50) {
+        return json({ error: "Select between 1 and 50 leads from the current page" }, 400);
+      }
+      const leadIds = Array.from(new Set(body.lead_ids.map(value => String(value))));
+      if (leadIds.length !== body.lead_ids.length || leadIds.some(id => !uuid(id))) {
+        return json({ error: "The selected leads are invalid or duplicated" }, 400);
+      }
+      const { data: selected, error: selectedError } = await admin.from("crm_leads")
+        .select("id,status").eq("company_id", companyId).in("id", leadIds);
+      if (selectedError) throw selectedError;
+      const available = new Map((selected || []).map(lead => [String(lead.id), String(lead.status)]));
+      const failures: Array<{ lead_id: string; error: string }> = [];
+      const deletableIds: string[] = [];
+      for (const leadId of leadIds) {
+        const leadStatus = available.get(leadId);
+        if (!leadStatus) failures.push({ lead_id: leadId, error: "Lead no longer exists or is outside this company" });
+        else if (leadStatus === "inviting") failures.push({ lead_id: leadId, error: "Account creation is currently in progress" });
+        else deletableIds.push(leadId);
+      }
+      let deletedIds: string[] = [];
+      if (deletableIds.length) {
+        const { data: deleted, error: deleteError } = await admin.from("crm_leads").delete()
+          .eq("company_id", companyId).in("id", deletableIds).select("id");
+        if (deleteError) throw deleteError;
+        deletedIds = (deleted || []).map(lead => String(lead.id));
+        const deletedSet = new Set(deletedIds);
+        for (const leadId of deletableIds) {
+          if (!deletedSet.has(leadId)) failures.push({ lead_id: leadId, error: "Lead could not be deleted" });
+        }
+        await admin.from("admin_action_logs").insert({
+          admin_user_id: actorId,
+          company_id: companyId,
+          action: "crm_leads_bulk_deleted",
+          before_data: { lead_ids: deletedIds },
+          after_data: { deleted_leads: deletedIds.length, client_accounts_preserved: true },
+          reason: "Bulk deleted Lead Inbox records",
+        });
+      }
+      return json({ deleted_ids: deletedIds, failures });
     }
 
     if (action === "set_lead_office") {

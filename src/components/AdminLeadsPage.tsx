@@ -1173,7 +1173,22 @@ export default function AdminLeadsPage({
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-400">
-                        {new Date(lead.created_at).toLocaleDateString()}
+                        <time
+                          dateTime={lead.created_at}
+                          title={new Date(lead.created_at).toISOString()}
+                        >
+                          <span className="block">
+                            {new Date(lead.created_at).toLocaleDateString()}
+                          </span>
+                          <span className="mt-0.5 block font-mono text-[11px] text-slate-500">
+                            {new Date(lead.created_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                              hour12: false,
+                            })}
+                          </span>
+                        </time>
                       </td>
                       <td className="px-4 py-3">
                         <AppSelect

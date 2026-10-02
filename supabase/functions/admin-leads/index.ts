@@ -407,11 +407,40 @@ Deno.serve(async request => {
       const officeId = String(body.office_id || "all");
       const phoneFilter = ["all", "valid", "incorrect", "routing_review"].includes(String(body.phone_filter))
         ? String(body.phone_filter) : "all";
+      const assigneeId = String(body.assignee_id || "all");
       const disposition = ["new", "no_answer", "call_back", "low_potential", "no_money", "wrong_number", "ftd"].includes(String(body.disposition))
         ? String(body.disposition) : null;
       if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
+      if (assigneeId !== "all" && !uuid(assigneeId)) return json({ error: "Select a valid assignee filter" }, 400);
+      let assigneePageIds: string[] | null = null;
+      let assigneeTotal: number | null = null;
+      if (assigneeId !== "all") {
+        const { data: assigneePage, error: assigneeError } = await admin.rpc(
+          "crm_service_filter_lead_ids_by_assignee",
+          {
+            p_actor_id: actorId,
+            p_company_id: companyId,
+            p_assignee_id: assigneeId,
+            p_page: page,
+            p_status: status,
+            p_disposition: disposition,
+            p_search: search,
+            p_office_filter: officeId,
+            p_phone_filter: phoneFilter,
+          },
+        );
+        if (assigneeError) return json({ error: assigneeError.message || "Assignee filter could not be applied" }, 400);
+        const filteredPage = (assigneePage || {}) as { lead_ids?: unknown; total?: unknown };
+        assigneePageIds = Array.isArray(filteredPage.lead_ids)
+          ? filteredPage.lead_ids.map(String).filter(uuid)
+          : [];
+        assigneeTotal = Math.max(0, Number(filteredPage.total) || 0);
+      }
       let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,disposition_status,disposition_changed_at,disposition_changed_by,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata,phone_e164,phone_country_code,phone_calling_code,phone_validation_status,phone_validation_reason,phone_routing_status,phone_routed_at", { count: "exact" })
-        .eq("company_id", companyId).order("created_at", { ascending: false }).range(page * 50, page * 50 + 49);
+        .eq("company_id", companyId).order("created_at", { ascending: false }).order("id", { ascending: false });
+      query = assigneePageIds === null
+        ? query.range(page * 50, page * 50 + 49)
+        : query.in("id", assigneePageIds.length ? assigneePageIds : ["00000000-0000-0000-0000-000000000000"]);
       const deskOfficeId = actorRole === "desk_manager" ? String(profile.office_id || "00000000-0000-0000-0000-000000000000") : null;
       if (deskOfficeId) query = query.eq("office_id", deskOfficeId);
       else if (officeId === "unassigned") query = query.is("office_id", null);
@@ -473,7 +502,7 @@ Deno.serve(async request => {
           registered_is_promoted: lead.registered_user_id
             ? promotionByUserId.get(lead.registered_user_id) ?? null
             : null,
-        })), total: leadResult.count || 0,
+        })), total: assigneeTotal ?? leadResult.count ?? 0,
         sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [],
         desk_managers: deskManagerResult.data || [], incorrect_phone_count: incorrectCountResult.count || 0,
         routing_review_count: routingCountResult.count || 0, actor_role: actorRole, can_manage_sources: isAdmin,

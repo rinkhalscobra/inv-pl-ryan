@@ -501,6 +501,7 @@ export default function AdminLeadsPage({
   const [status, setStatus] = useState("all");
   const [disposition, setDisposition] = useState("all");
   const [officeFilter, setOfficeFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [phoneFilter, setPhoneFilter] = useState("all");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -574,7 +575,16 @@ export default function AdminLeadsPage({
   useEffect(() => {
     setSelectedLeadIds(new Set());
     setConfirmBulkDelete(false);
-  }, [companyId, page, status, disposition, officeFilter, phoneFilter, search]);
+  }, [
+    companyId,
+    page,
+    status,
+    disposition,
+    officeFilter,
+    assigneeFilter,
+    phoneFilter,
+    search,
+  ]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -586,6 +596,7 @@ export default function AdminLeadsPage({
         disposition,
         search,
         office_id: officeFilter,
+        assignee_id: assigneeFilter,
         phone_filter: phoneFilter,
       });
       setDashboard(data as unknown as Dashboard);
@@ -602,6 +613,7 @@ export default function AdminLeadsPage({
     disposition,
     search,
     officeFilter,
+    assigneeFilter,
     phoneFilter,
   ]);
   useEffect(() => {
@@ -1005,6 +1017,23 @@ export default function AdminLeadsPage({
         return user?.office_id === selectedLead.office_id;
       })
     : [];
+  const availableDeskManagers = dashboard.desk_managers
+    .filter((manager) => {
+      if (dashboard.actor_role !== "desk_manager") return true;
+      const user = Array.isArray(manager.users)
+        ? manager.users[0]
+        : manager.users;
+      return dashboard.offices.some((office) => office.id === user?.office_id);
+    })
+    .sort((left, right) =>
+      deskManagerName(left).localeCompare(deskManagerName(right)),
+    );
+  const availableAgents = dashboard.owners
+    .filter((candidate) => candidate.role === "agent")
+    .sort((left, right) => ownerName(left).localeCompare(ownerName(right)));
+  const availableRetentionUsers = dashboard.owners
+    .filter((candidate) => candidate.role === "retention")
+    .sort((left, right) => ownerName(left).localeCompare(ownerName(right)));
   const currentPageLeadIds = dashboard.leads.map((lead) => lead.id);
   const selectedOnPage = currentPageLeadIds.filter((id) =>
     selectedLeadIds.has(id),
@@ -1065,6 +1094,7 @@ export default function AdminLeadsPage({
                   setCompanyId(event.target.value);
                   setSelectedCrmCompanyId(event.target.value);
                   setPage(0);
+                  setAssigneeFilter("all");
                 }}
                 className="min-w-[220px] rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-violet-100"
               >
@@ -1225,6 +1255,53 @@ export default function AdminLeadsPage({
                   ))}
                 </AppSelect>
               )}
+              <AppSelect
+                value={assigneeFilter}
+                onChange={(event) => {
+                  setPage(0);
+                  setAssigneeFilter(event.target.value);
+                }}
+                className={`${input} w-52`}
+                aria-label="Filter by assignee"
+              >
+                <option value="all">All / Any Assignee</option>
+                {availableDeskManagers.length > 0 && (
+                  <optgroup label="Desk Managers">
+                    {availableDeskManagers.map((manager) => (
+                      <option
+                        key={`desk_manager:${manager.user_id}`}
+                        value={manager.user_id}
+                      >
+                        {deskManagerName(manager)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {availableAgents.length > 0 && (
+                  <optgroup label="Agents">
+                    {availableAgents.map((agent) => (
+                      <option
+                        key={`agent:${agent.user_id}`}
+                        value={agent.user_id}
+                      >
+                        {ownerName(agent)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {availableRetentionUsers.length > 0 && (
+                  <optgroup label="Retention">
+                    {availableRetentionUsers.map((retentionUser) => (
+                      <option
+                        key={`retention:${retentionUser.user_id}`}
+                        value={retentionUser.user_id}
+                      >
+                        {ownerName(retentionUser)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </AppSelect>
               <AppSelect
                 value={disposition}
                 onChange={(event) => {

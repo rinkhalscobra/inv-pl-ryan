@@ -14,6 +14,12 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 });
 const message = (error: unknown) => error instanceof Error ? error.message : "Lead operation failed";
 const uuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const isoDate = (value: string | null) => {
+  if (value === null) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+};
 
 async function keyHash(key: string) {
   const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)));
@@ -407,6 +413,8 @@ Deno.serve(async request => {
       const officeId = String(body.office_id || "all");
       const phoneFilter = ["all", "valid", "incorrect", "routing_review"].includes(String(body.phone_filter))
         ? String(body.phone_filter) : "all";
+      const dateFrom = body.date_from == null || body.date_from === "" ? null : String(body.date_from);
+      const dateTo = body.date_to == null || body.date_to === "" ? null : String(body.date_to);
       const assigneeId = String(body.assignee_id || "all");
       // A Desk Manager's unfiltered view is still scoped to that manager's
       // team. Admin/Workflow users retain the genuinely company-wide option.
@@ -417,6 +425,13 @@ Deno.serve(async request => {
         ? String(body.disposition) : null;
       if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
       if (assigneeId !== "all" && !uuid(assigneeId)) return json({ error: "Select a valid assignee filter" }, 400);
+      if (!isoDate(dateFrom) || !isoDate(dateTo)) {
+        return json({ error: "Select a valid received date range" }, 400);
+      }
+      if (dateFrom && dateTo && dateFrom > dateTo) return json({ error: "Received from date must be before received to date" }, 400);
+      const dateToExclusive = dateTo
+        ? new Date(Date.parse(`${dateTo}T00:00:00.000Z`) + 86_400_000).toISOString()
+        : null;
       let assigneePageIds: string[] | null = null;
       let assigneeTotal: number | null = null;
       if (effectiveAssigneeId !== "all") {
@@ -432,6 +447,8 @@ Deno.serve(async request => {
             p_search: search,
             p_office_filter: officeId,
             p_phone_filter: phoneFilter,
+            p_date_from: dateFrom,
+            p_date_to: dateTo,
           },
         );
         if (assigneeError) return json({ error: assigneeError.message || "Assignee filter could not be applied" }, 400);
@@ -453,6 +470,8 @@ Deno.serve(async request => {
       if (status) query = query.eq("status", status);
       if (disposition) query = query.eq("disposition_status", disposition);
       if (search) query = query.ilike("email", `%${search}%`);
+      if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
+      if (dateToExclusive) query = query.lt("created_at", dateToExclusive);
       if (phoneFilter === "valid") query = query.eq("phone_validation_status", "valid");
       else if (phoneFilter === "incorrect") query = query.in("phone_validation_status", ["invalid", "unsupported", "missing"]);
       else if (phoneFilter === "routing_review") query = query.in("phone_routing_status", ["no_office", "no_desk_manager"]);
@@ -507,6 +526,8 @@ Deno.serve(async request => {
             p_search: "",
             p_office_filter: "all",
             p_phone_filter: phone,
+            p_date_from: null,
+            p_date_to: null,
           },
         );
         const [incorrectScoped, routingScoped] = await Promise.all([

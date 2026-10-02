@@ -503,6 +503,8 @@ export default function AdminLeadsPage({
   const [officeFilter, setOfficeFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [phoneFilter, setPhoneFilter] = useState("all");
+  const [receivedFrom, setReceivedFrom] = useState("");
+  const [receivedTo, setReceivedTo] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [affiliateName, setAffiliateName] = useState("");
@@ -585,6 +587,8 @@ export default function AdminLeadsPage({
     officeFilter,
     assigneeFilter,
     phoneFilter,
+    receivedFrom,
+    receivedTo,
     search,
   ]);
 
@@ -600,6 +604,8 @@ export default function AdminLeadsPage({
         office_id: officeFilter,
         assignee_id: assigneeFilter,
         phone_filter: phoneFilter,
+        date_from: receivedFrom || null,
+        date_to: receivedTo || null,
       });
       setDashboard(data as unknown as Dashboard);
       setError(null);
@@ -617,6 +623,8 @@ export default function AdminLeadsPage({
     officeFilter,
     assigneeFilter,
     phoneFilter,
+    receivedFrom,
+    receivedTo,
   ]);
   useEffect(() => {
     void refresh();
@@ -1350,6 +1358,34 @@ export default function AdminLeadsPage({
                 <option value="registered">Registered</option>
                 <option value="existing">Existing client</option>
               </AppSelect>
+              <label className="min-w-40 text-[11px] text-slate-400">
+                Received from
+                <input
+                  type="date"
+                  value={receivedFrom}
+                  max={receivedTo || undefined}
+                  onChange={(event) => {
+                    setPage(0);
+                    setReceivedFrom(event.target.value);
+                  }}
+                  className={`${input} mt-1 min-w-40 [color-scheme:dark]`}
+                  aria-label="Filter leads received from date"
+                />
+              </label>
+              <label className="min-w-40 text-[11px] text-slate-400">
+                Received to
+                <input
+                  type="date"
+                  value={receivedTo}
+                  min={receivedFrom || undefined}
+                  onChange={(event) => {
+                    setPage(0);
+                    setReceivedTo(event.target.value);
+                  }}
+                  className={`${input} mt-1 min-w-40 [color-scheme:dark]`}
+                  aria-label="Filter leads received through date"
+                />
+              </label>
             </div>
             {selectedLeadIds.size > 0 &&
               createPortal(

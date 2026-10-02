@@ -33,22 +33,33 @@ Deno.test("rejects missing, national-only, and impossible numbers", () => {
 
 Deno.test("routes only valid numbers to the configured country Office", () => {
   const germanPhone = classifyInternationalPhone("+49 456 2353");
-  const offices = new Map([["DE", "office-de"]]);
+  const frenchPhone = classifyInternationalPhone("+33 6 12 34 56 78");
+  const italianPhone = classifyInternationalPhone("+39 02 1234 5678");
+  const offices = new Map([
+    ["DE", "office-de"],
+    ["FR", "office-fr"],
+    ["IT", "office-it"],
+  ]);
+  const staffedOffices = new Set(["office-de", "office-fr", "office-it"]);
 
   assertEquals(
-    routePhoneToOffice(germanPhone, offices, new Set(["office-de"])),
+    routePhoneToOffice(germanPhone, offices, staffedOffices),
     { office_id: "office-de", phone_routing_status: "routed" },
+  );
+  assertEquals(
+    routePhoneToOffice(frenchPhone, offices, staffedOffices),
+    { office_id: "office-fr", phone_routing_status: "routed" },
+  );
+  assertEquals(
+    routePhoneToOffice(italianPhone, offices, staffedOffices),
+    { office_id: "office-it", phone_routing_status: "routed" },
   );
   assertEquals(routePhoneToOffice(germanPhone, offices, new Set()), {
     office_id: "office-de",
     phone_routing_status: "no_desk_manager",
   });
   assertEquals(
-    routePhoneToOffice(
-      classifyInternationalPhone("+33 6 12 34 56 78"),
-      offices,
-      new Set(),
-    ),
+    routePhoneToOffice(frenchPhone, new Map([["DE", "office-de"]]), new Set()),
     { office_id: null, phone_routing_status: "no_office" },
   );
   assertEquals(

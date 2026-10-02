@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.39.0";
 import { normalizeLead, parseCsv, rowsToLeads, type LeadInput } from "../../../src/lib/leadImport.ts";
 import { classifyInternationalPhone, routePhoneToOffice } from "../_shared/leadPhoneRouting.ts";
+import { automaticallyRegisterRoutedLeads } from "../_shared/automaticLeadRegistration.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -59,12 +60,19 @@ async function loadPhoneRouting(admin: SupabaseClient, companyId: string) {
     if (/^[A-Z]{2}$/.test(countryCode)) officesByCountry.set(countryCode, String(office.id));
   }
   const deskManagerOfficeIds = new Set<string>();
+  const deskManagersByOffice = new Map<string, string>();
   for (const row of managers || []) {
     const users = Array.isArray(row.users) ? row.users[0] : row.users;
     const officeId = (users as { office_id?: string | null } | null)?.office_id;
-    if (officeId) deskManagerOfficeIds.add(String(officeId));
+    if (officeId) {
+      const normalizedOfficeId = String(officeId);
+      deskManagerOfficeIds.add(normalizedOfficeId);
+      if (!deskManagersByOffice.has(normalizedOfficeId)) {
+        deskManagersByOffice.set(normalizedOfficeId, String(row.user_id));
+      }
+    }
   }
-  return { offices: offices || [], officesByCountry, deskManagerOfficeIds };
+  return { offices: offices || [], officesByCountry, deskManagerOfficeIds, deskManagersByOffice };
 }
 
 function phoneRoutingRecord(phone: string, officesByCountry: Map<string, string>, deskManagerOfficeIds: Set<string>) {
@@ -76,6 +84,7 @@ function phoneRoutingRecord(phone: string, officesByCountry: Map<string, string>
 async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
   const routing = await loadPhoneRouting(admin, companyId);
   let updated = 0;
+  const registrationIds = new Set<string>();
   let cursor = "";
   for (;;) {
     let query = admin.from("crm_leads").select("id,phone")
@@ -96,13 +105,20 @@ async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
         const result = await admin.from("crm_leads").update(record).eq("id", lead.id).eq("company_id", companyId)
           .neq("phone_routing_status", "manual");
         if (result.error) throw result.error;
+        if (record.phone_routing_status === "routed") registrationIds.add(String(lead.id));
         updated++;
       }));
     }
     cursor = String(page[page.length - 1].id);
     if (page.length < 500) break;
   }
-  return { updated };
+  const automaticRegistration = await automaticallyRegisterRoutedLeads(
+    admin,
+    companyId,
+    registrationIds,
+    routing.deskManagersByOffice,
+  );
+  return { updated, automatic_registration: automaticRegistration };
 }
 
 async function insertLeads(
@@ -120,6 +136,7 @@ async function insertLeads(
     else invalid++;
   }
   let added = 0;
+  const automaticRegistration = { registered: 0, existing: 0, failed: 0, skipped: 0 };
   for (const batch of Array.from(leads.values()).reduce<LeadInput[][]>((all, lead, index) => {
     if (index % 200 === 0) all.push([]);
     all[all.length - 1].push(lead);
@@ -133,6 +150,7 @@ async function insertLeads(
     }), { onConflict: "company_id,email", ignoreDuplicates: true }).select("id");
     if (error) throw new Error(`Could not save leads: ${error.message}`);
     added += data?.length || 0;
+    const registrationIds = new Set(((data || []) as Array<{ id: string }>).map(row => String(row.id)));
     if (source.id) {
       const insertedIds = new Set(((data || []) as Array<{ id: string }>).map(row => String(row.id)));
       const { data: existing, error: existingError } = await admin.from("crm_leads")
@@ -149,10 +167,26 @@ async function insertLeads(
           .eq("id", row.id).eq("source_id", source.id).eq("status", "new")
           .neq("phone_routing_status", "manual");
         if (result.error) throw result.error;
+        if (record.phone_routing_status === "routed") registrationIds.add(String(row.id));
       }));
     }
+    const batchRegistration = await automaticallyRegisterRoutedLeads(
+      admin,
+      source.companyId,
+      registrationIds,
+      routing.deskManagersByOffice,
+    );
+    automaticRegistration.registered += batchRegistration.registered;
+    automaticRegistration.existing += batchRegistration.existing;
+    automaticRegistration.failed += batchRegistration.failed;
+    automaticRegistration.skipped += batchRegistration.skipped;
   }
-  return { added, duplicates: inputs.length - invalid - added, invalid };
+  return {
+    added,
+    duplicates: inputs.length - invalid - added,
+    invalid,
+    automatic_registration: automaticRegistration,
+  };
 }
 
 async function syncSheet(admin: SupabaseClient, source: { id: string; name: string; sheet_url: string; company_id: string }) {
@@ -187,7 +221,8 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
   let step = "claim lead";
   let { data: lead, error: claimError } = await admin.from("crm_leads")
     .update({ status: "inviting", registration_started_at: startedAt, last_registration_attempt_at: startedAt, registration_error: null })
-    .eq("id", leadId).eq("company_id", companyId).eq("status", "new").select("*").maybeSingle();
+    .eq("id", leadId).eq("company_id", companyId).eq("status", "new")
+    .eq("phone_routing_status", "routed").select("*").maybeSingle();
   if (claimError) throw claimError;
   if (!lead) {
     const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
@@ -400,7 +435,16 @@ Deno.serve(async request => {
       if (deskOfficeId) officeQuery = officeQuery.eq("id", deskOfficeId);
       let ownerQuery = admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)")
         .eq("role", "agent").eq("users.company_id", companyId);
-      if (deskOfficeId) ownerQuery = ownerQuery.eq("users.office_id", deskOfficeId);
+      if (deskOfficeId) {
+        const { data: assignments, error: assignmentError } = await admin.from("crm_agent_desk_assignments")
+          .select("agent_id").eq("desk_manager_id", actorId);
+        if (assignmentError) throw new Error(`Could not load desk Agents: ${assignmentError.message}`);
+        const deskAgentIds = ((assignments || []) as Array<{ agent_id: string }>).map(row => String(row.agent_id));
+        ownerQuery = ownerQuery.eq("users.office_id", deskOfficeId).in(
+          "user_id",
+          deskAgentIds.length ? deskAgentIds : ["00000000-0000-0000-0000-000000000000"],
+        );
+      }
       const [leadResult, sourceResult, ownerResult, officeResult, deskManagerResult, incorrectCountResult, routingCountResult] = await Promise.all([
         query,
         admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),

@@ -8,6 +8,7 @@ import {
   classifyInternationalPhone,
   routePhoneToOffice,
 } from "../_shared/leadPhoneRouting.ts";
+import { automaticallyRegisterRoutedLeads } from "../_shared/automaticLeadRegistration.ts";
 import {
   affiliateEndpoint,
   parseAffiliateEventQuery,
@@ -255,7 +256,8 @@ async function submitLeads(
       .from("crm_staff_roles")
       .select("user_id,users!inner(office_id,company_id)")
       .eq("role", "desk_manager")
-      .eq("users.company_id", source.company_id),
+      .eq("users.company_id", source.company_id)
+      .order("user_id", { ascending: true }),
   ]);
   if (officeError || managerError) throw officeError || managerError;
 
@@ -268,10 +270,17 @@ async function submitLeads(
       officesByCountry.set(countryCode, String(office.id));
   }
   const deskManagerOfficeIds = new Set<string>();
+  const deskManagersByOffice = new Map<string, string>();
   for (const row of managers || []) {
     const users = Array.isArray(row.users) ? row.users[0] : row.users;
     const officeId = (users as { office_id?: string | null } | null)?.office_id;
-    if (officeId) deskManagerOfficeIds.add(String(officeId));
+    if (officeId) {
+      const normalizedOfficeId = String(officeId);
+      deskManagerOfficeIds.add(normalizedOfficeId);
+      if (!deskManagersByOffice.has(normalizedOfficeId)) {
+        deskManagersByOffice.set(normalizedOfficeId, String(row.user_id));
+      }
+    }
   }
 
   const raw = await request.text();
@@ -334,6 +343,7 @@ async function submitLeads(
     for (const row of data || []) insertedIds.add(String(row.id));
     added = insertedIds.size;
   }
+  const registrationIds = new Set(insertedIds);
 
   // A source may resend its own unregistered lead after correcting the phone.
   // Refresh only that lead's phone-derived fields; never mutate another
@@ -384,9 +394,19 @@ async function submitLeads(
           .eq("status", "new")
           .neq("phone_routing_status", "manual");
         if (result.error) throw result.error;
+        if (route.phone_routing_status === "routed") {
+          registrationIds.add(String(row.id));
+        }
       }),
     );
   }
+
+  const automaticRegistration = await automaticallyRegisterRoutedLeads(
+    admin,
+    source.company_id,
+    registrationIds,
+    deskManagersByOffice,
+  );
 
   let results: Array<Record<string, unknown>> = [];
   if (leads.size > 0) {
@@ -410,6 +430,7 @@ async function submitLeads(
     accepted: added,
     duplicates: inputs.length - invalid - added,
     invalid,
+    automatic_registration: automaticRegistration,
     results,
   });
 }

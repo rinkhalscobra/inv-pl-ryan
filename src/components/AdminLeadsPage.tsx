@@ -130,7 +130,20 @@ interface ImportResult {
   added: number;
   duplicates: number;
   invalid: number;
+  automatic_registration?: {
+    registered: number;
+    existing: number;
+    failed: number;
+    skipped: number;
+  };
 }
+
+const automaticRegistrationSummary = (result: ImportResult) => {
+  const automatic = result.automatic_registration;
+  if (!automatic) return "";
+  const completed = automatic.registered + automatic.existing;
+  return ` ${completed} account${completed === 1 ? "" : "s"} registered automatically${automatic.failed ? `; ${automatic.failed} failed and remain available for retry` : ""}.`;
+};
 
 const panel = "rounded-xl border border-white/10 bg-[#151b26]";
 const input =
@@ -172,7 +185,7 @@ const affiliateDocumentation = (
 ) => `AFFILIATE LEAD API - INTEGRATION GUIDE
 
 Purpose
-This is a server-to-server API for sending prospective client details into the company's CRM Lead inbox and following their partner-facing statuses. It does not give the affiliate CRM access and it does not create a client account, deposit, or trade. CRM staff review the lead and register it separately.
+This is a server-to-server API for sending prospective client details and following their partner-facing statuses. It never gives the affiliate CRM access and never creates a deposit or trade. A valid international phone number automatically creates or links the client account when its detected country has an active Office and Desk Manager. Otherwise the lead remains in the appropriate review queue.
 
 Lead submission endpoint
 POST ${apiUrl}
@@ -243,14 +256,20 @@ HTTP 200
   "accepted": 1,
   "duplicates": 0,
   "invalid": 0,
+  "automatic_registration": {
+    "registered": 1,
+    "existing": 0,
+    "failed": 0,
+    "skipped": 0
+  },
   "results": [
     {
       "outcome": "accepted",
       "tracking_id": "8a3f63f4-87f5-4dad-b16f-91af0c8d8c14",
       "external_id": "partner-123",
-      "status": "received",
+      "status": "registered",
       "reason_code": null,
-      "account_status": "new",
+      "account_status": "registered",
       "ftd_status": false,
       "ftd_date": null,
       "ftd_source": null,
@@ -264,9 +283,10 @@ Response counters
 - accepted: new leads saved to the CRM
 - duplicates: valid leads already present for this company, or repeated emails in the request
 - invalid: records missing a valid email address
+- automatic_registration: accounts registered, linked, failed, or skipped because routing is incomplete
 - results: trackable records belonging to this affiliate connection
 
-If this affiliate resends its own unregistered lead with a corrected, non-empty phone number, the phone is revalidated and automatic Office routing is refreshed. Another source's duplicate and a manually classified Office are never overwritten.
+If this affiliate resends its own unregistered lead with a corrected, non-empty phone number, the phone is revalidated, Office routing is refreshed, and a newly staffed route is registered automatically. Another source's duplicate and a manually classified Office are never overwritten.
 
 REAL-TIME LEAD STATUS
 
@@ -588,7 +608,7 @@ export default function AdminLeadsPage({
         source_id: source.id,
       });
       const result = synced.result as ImportResult;
-      return `Sheet connected. ${result.added} new leads, ${result.duplicates} duplicates, ${result.invalid} invalid rows.`;
+      return `Sheet connected. ${result.added} new leads, ${result.duplicates} duplicates, ${result.invalid} invalid rows.${automaticRegistrationSummary(result)}`;
     });
   };
 
@@ -599,7 +619,7 @@ export default function AdminLeadsPage({
         source_id: source.id,
       });
       const result = data.result as ImportResult;
-      return `${source.name}: ${result.added} new leads, ${result.duplicates} duplicates, ${result.invalid} invalid rows.`;
+      return `${source.name}: ${result.added} new leads, ${result.duplicates} duplicates, ${result.invalid} invalid rows.${automaticRegistrationSummary(result)}`;
     });
 
   const toggleSource = (source: Source) =>
@@ -683,6 +703,12 @@ export default function AdminLeadsPage({
         added: 0,
         duplicates: 0,
         invalid: parsed.invalid,
+        automatic_registration: {
+          registered: 0,
+          existing: 0,
+          failed: 0,
+          skipped: 0,
+        },
       };
       for (let index = 0; index < parsed.leads.length; index += 200) {
         const data = await invokeLeadAction({
@@ -694,8 +720,18 @@ export default function AdminLeadsPage({
         totals.added += result.added;
         totals.duplicates += result.duplicates;
         totals.invalid += result.invalid;
+        if (result.automatic_registration && totals.automatic_registration) {
+          totals.automatic_registration.registered +=
+            result.automatic_registration.registered;
+          totals.automatic_registration.existing +=
+            result.automatic_registration.existing;
+          totals.automatic_registration.failed +=
+            result.automatic_registration.failed;
+          totals.automatic_registration.skipped +=
+            result.automatic_registration.skipped;
+        }
       }
-      return `Import complete: ${totals.added} new leads, ${totals.duplicates} duplicates, ${totals.invalid} invalid rows.`;
+      return `Import complete: ${totals.added} new leads, ${totals.duplicates} duplicates, ${totals.invalid} invalid rows.${automaticRegistrationSummary(totals)}`;
     });
 
   const registerLead = () => {
@@ -739,8 +775,14 @@ export default function AdminLeadsPage({
       const data = await invokeLeadAction({
         action: "reprocess_phone_routing",
       });
-      const result = data.result as { updated?: number } | undefined;
-      return `${result?.updated || 0} lead phone number${result?.updated === 1 ? "" : "s"} revalidated and routed.`;
+      const result = data.result as
+        | ({ updated?: number } & Pick<ImportResult, "automatic_registration">)
+        | undefined;
+      const automatic = result?.automatic_registration;
+      const completed = automatic
+        ? automatic.registered + automatic.existing
+        : 0;
+      return `${result?.updated || 0} lead phone number${result?.updated === 1 ? "" : "s"} revalidated and routed. ${completed} account${completed === 1 ? "" : "s"} registered automatically.`;
     });
 
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/affiliate-leads`;
@@ -773,6 +815,14 @@ export default function AdminLeadsPage({
   const newCount = dashboard.leads.filter(
     (lead) => lead.disposition_status === "new",
   ).length;
+  const selectedLeadDeskManagers = selectedLead
+    ? dashboard.desk_managers.filter((manager) => {
+        const user = Array.isArray(manager.users)
+          ? manager.users[0]
+          : manager.users;
+        return user?.office_id === selectedLead.office_id;
+      })
+    : [];
 
   return (
     <main className="min-h-screen bg-[#0d1118] px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
@@ -797,7 +847,7 @@ export default function AdminLeadsPage({
                   ? dashboard.actor_role === "desk_manager"
                     ? "Phone-routed leads for your Office."
                     : "All Sales Offices. Use the Office selector as a filter."
-                  : "Validate, route, and register incoming affiliate leads."}
+                  : "Validate, route, and automatically register incoming affiliate leads."}
               </p>
             </div>
           </div>
@@ -911,8 +961,8 @@ export default function AdminLeadsPage({
               <div className="mr-auto">
                 <h2 className="font-semibold">Leads</h2>
                 <p className="text-xs text-slate-400">
-                  Register a lead to create and initialize the complete client
-                  account.
+                  Valid phone-routed leads create and initialize their client
+                  accounts automatically.
                 </p>
               </div>
               <form
@@ -1151,7 +1201,11 @@ export default function AdminLeadsPage({
                         <div className="mt-1 text-[10px] text-slate-500">
                           Account:{" "}
                           {lead.status === "new"
-                            ? "Not registered"
+                            ? lead.phone_routing_status === "routed"
+                              ? lead.registration_error
+                                ? "Automatic registration failed"
+                                : "Awaiting automatic registration"
+                              : "Waiting for valid phone routing"
                             : lead.status === "inviting"
                               ? "Processing"
                               : lead.status === "existing"
@@ -1165,7 +1219,9 @@ export default function AdminLeadsPage({
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {lead.status === "new" ? (
+                        {lead.status === "new" &&
+                        lead.phone_routing_status === "routed" &&
+                        lead.registration_error ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -1176,8 +1232,12 @@ export default function AdminLeadsPage({
                             className={`${button} bg-violet-600 text-white hover:bg-violet-500`}
                           >
                             <Send size={14} />
-                            Register
+                            Retry
                           </button>
+                        ) : lead.status === "new" ? (
+                          <span className="text-xs text-slate-500">
+                            Automatic
+                          </span>
                         ) : lead.status === "inviting" ? (
                           <span className="text-xs text-slate-400">
                             Account creation in progress
@@ -1863,7 +1923,9 @@ export default function AdminLeadsPage({
                   <p className="mt-2 text-xs leading-5 text-slate-400">
                     The validated phone country controls Office routing: +49 →
                     DE, +33 → FR, +34 → ES and +39 → IT when those active Office
-                    codes exist. Invalid or missing numbers go to{" "}
+                    mappings and Desk Managers exist. Routed leads create or
+                    link their client accounts automatically. Invalid or
+                    missing numbers go to{" "}
                     <b>Incorrect numbers</b>. Valid countries without an Office
                     or Desk Manager go to <b>Routing review</b>. Submitted
                     country or office text cannot override the detected number.
@@ -2385,7 +2447,7 @@ for (;;) {
                     id="register-lead-title"
                     className="text-lg font-semibold"
                   >
-                    Create client account
+                    Retry automatic registration
                   </h2>
                   <p className="mt-1 text-sm text-slate-400">
                     {nameOf(selectedLead)} · {selectedLead.email}
@@ -2407,7 +2469,15 @@ for (;;) {
                 {dashboard.offices.find(
                   (item) => item.id === selectedLead.office_id,
                 )?.code || "No office"}
-                . Retention assignment becomes available only after promotion.
+                {selectedLead.phone_routing_status === "routed" &&
+                  selectedLead.phone_calling_code
+                  ? `, automatically routed from +${selectedLead.phone_calling_code}`
+                  : ""}
+                .{" "}
+                {selectedLeadDeskManagers.length > 0
+                  ? `The client will be available to ${selectedLeadDeskManagers.map(deskManagerName).join(", ")}. `
+                  : ""}
+                Retention assignment becomes available only after promotion.
               </div>
               {error && (
                 <div
@@ -2466,7 +2536,7 @@ for (;;) {
                   ) : (
                     <Send size={16} />
                   )}
-                  Create client
+                  Retry creation
                 </button>
               </div>
             </section>

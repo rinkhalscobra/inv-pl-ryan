@@ -21,8 +21,8 @@ are accepted:
       "email": "jane@example.com",
       "first_name": "Jane",
       "last_name": "Doe",
-      "phone": "+1 555 0100",
-      "country": "US",
+      "phone": "+49 30 901820",
+      "country": "DE",
       "campaign": "Spring campaign",
       "external_id": "partner-123"
     }
@@ -30,10 +30,11 @@ are accepted:
 }
 ```
 
-The response reports `accepted`, `duplicates`, and `invalid`, plus a `results`
-array. Every visible result includes an opaque `tracking_id`, the affiliate's
-`external_id`, the current partner-facing status, and timestamps. Store either
-`tracking_id` or a unique `external_id` with the affiliate's record.
+The response reports `accepted`, `duplicates`, `invalid`, and an
+`automatic_registration` summary, plus a `results` array. Every visible result
+includes an opaque `tracking_id`, the affiliate's `external_id`, the current
+partner-facing status, and timestamps. Store either `tracking_id` or a unique
+`external_id` with the affiliate's record.
 
 Lead email is the deduplication key across all sources. A rotated or paused key
 stops working immediately. The endpoint does not allow browser CORS requests;
@@ -41,8 +42,9 @@ keep the key on the affiliate's server.
 
 When the same affiliate resends its own unregistered lead with a corrected,
 non-empty phone number, the server revalidates the number and refreshes the
-automatic Office routing. It never updates another source's duplicate or a
-lead whose Office was manually classified.
+automatic Office routing. If the corrected number reaches a staffed Office,
+the server also registers the account immediately. It never updates another
+source's duplicate or a lead whose Office was manually classified.
 
 ### Current lead status
 
@@ -150,9 +152,15 @@ in the browser and submitted to the protected admin function in batches.
 
 ## Register a lead
 
-Use **Register** on a new lead. An administrator may assign the client to an
-agent or retention manager. The server sends a Supabase invitation, creates
-the client profile using the existing CRM account setup, and links the lead to
-the account. Existing emails are linked without creating a duplicate user.
+Registration is automatic for every new lead whose international phone number
+is valid and maps to an active Office with a Desk Manager. The detected Office
+is carried onto the client account: `+49` goes to the DE desk, `+33` to FR,
+`+39` to IT when an IT Office and Desk Manager exist, and the same rule applies
+to any future ISO country mapping. The server creates the client profile,
+trading account, and document folder, then links the lead to the account.
+Existing emails are linked without creating a duplicate user. Invalid numbers,
+countries without an Office, and Offices without a Desk Manager remain in the
+review queues and do not create accounts. **Register** remains only as a retry
+control if automatic account creation fails.
 Invitation delivery requires Supabase Auth email sending and a production
 redirect URL configured for `https://atlasmarketstrade.com/reset-password`.

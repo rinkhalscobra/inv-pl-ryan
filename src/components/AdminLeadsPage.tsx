@@ -173,9 +173,9 @@ const automaticRegistrationSummary = (result: ImportResult) => {
 
 const panel = "rounded-xl border border-white/10 bg-[#151b26]";
 const input =
-  "w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400";
+  "w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2 text-[13px] text-white outline-none focus:border-violet-400";
 const button =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition disabled:opacity-50";
 const emptyDashboard: Dashboard = {
   leads: [],
   total: 0,
@@ -1087,10 +1087,10 @@ export default function AdminLeadsPage({
 
   return (
     <main
-      className={`min-h-screen bg-[#0d1118] px-4 pt-5 text-slate-100 sm:px-6 lg:px-8 ${selectedLeadIds.size > 0 ? "pb-72 sm:pb-32" : "pb-5"}`}
+      className={`min-h-screen overflow-x-hidden bg-[#0d1118] px-4 pt-4 text-slate-100 sm:px-5 lg:px-6 ${selectedLeadIds.size > 0 ? "pb-72 sm:pb-32" : "pb-5"}`}
     >
-      <div className="mx-auto max-w-[1800px]">
-        <header className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
+      <div className="mx-auto w-full max-w-[1800px]">
+        <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -1100,12 +1100,12 @@ export default function AdminLeadsPage({
             >
               <ArrowLeft size={18} />
             </button>
-            <div className="rounded-lg bg-violet-500/15 p-2.5 text-violet-300">
-              <Users size={21} />
+            <div className="rounded-lg bg-violet-500/15 p-2 text-violet-300">
+              <Users size={20} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Lead inbox</h1>
-              <p className="text-sm text-slate-400">
+              <h1 className="text-xl font-bold">Lead inbox</h1>
+              <p className="text-xs text-slate-400">
                 {staffMode
                   ? dashboard.actor_role === "desk_manager"
                     ? "Leads in your Desk Manager team."
@@ -1124,7 +1124,7 @@ export default function AdminLeadsPage({
                   setPage(0);
                   setAssigneeFilter("all");
                 }}
-                className="min-w-[220px] rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-2 text-sm text-violet-100"
+                className="min-w-[200px] rounded-lg border border-violet-400/30 bg-[#0e1420] px-3 py-1.5 text-[13px] text-violet-100"
               >
                 {companies.map((company) => (
                   <option key={company.id} value={company.id}>
@@ -1176,16 +1176,16 @@ export default function AdminLeadsPage({
           </div>
         )}
 
-        <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className={`${panel} px-5 py-4`}>
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className={`${panel} px-4 py-3`}>
             <div className="text-xs text-slate-400">Matching leads</div>
-            <div className="mt-1 text-2xl font-bold">
+            <div className="mt-1 text-xl font-bold">
               {dashboard.total.toLocaleString()}
             </div>
           </div>
-          <div className={`${panel} px-5 py-4`}>
+          <div className={`${panel} px-4 py-3`}>
             <div className="text-xs text-slate-400">New on this page</div>
-            <div className="mt-1 text-2xl font-bold text-violet-300">
+            <div className="mt-1 text-xl font-bold text-violet-300">
               {newCount}
             </div>
           </div>
@@ -1195,10 +1195,10 @@ export default function AdminLeadsPage({
               setPage(0);
               setPhoneFilter("incorrect");
             }}
-            className={`${panel} px-5 py-4 text-left transition hover:border-red-400/30 ${phoneFilter === "incorrect" ? "border-red-400/40 bg-red-500/[0.06]" : ""}`}
+            className={`${panel} px-4 py-3 text-left transition hover:border-red-400/30 ${phoneFilter === "incorrect" ? "border-red-400/40 bg-red-500/[0.06]" : ""}`}
           >
             <div className="text-xs text-slate-400">Incorrect numbers</div>
-            <div className="mt-1 text-2xl font-bold text-red-300">
+            <div className="mt-1 text-xl font-bold text-red-300">
               {dashboard.incorrect_phone_count.toLocaleString()}
             </div>
           </button>
@@ -1208,20 +1208,20 @@ export default function AdminLeadsPage({
               setPage(0);
               setPhoneFilter("routing_review");
             }}
-            className={`${panel} px-5 py-4 text-left transition hover:border-amber-400/30 ${phoneFilter === "routing_review" ? "border-amber-400/40 bg-amber-500/[0.06]" : ""}`}
+            className={`${panel} px-4 py-3 text-left transition hover:border-amber-400/30 ${phoneFilter === "routing_review" ? "border-amber-400/40 bg-amber-500/[0.06]" : ""}`}
           >
             <div className="text-xs text-slate-400">Routing review</div>
-            <div className="mt-1 text-2xl font-bold text-amber-300">
+            <div className="mt-1 text-xl font-bold text-amber-300">
               {dashboard.routing_review_count.toLocaleString()}
             </div>
           </button>
         </div>
 
         <div
-          className={`grid items-start gap-5 ${staffMode ? "" : "xl:grid-cols-[minmax(0,1fr)_390px]"}`}
+          className={`grid items-start gap-4 ${staffMode ? "" : "min-[1480px]:grid-cols-[minmax(0,1fr)_300px]"}`}
         >
           <section className={`${panel} min-w-0 overflow-hidden`}>
-            <div className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
+            <div className="flex flex-wrap items-center gap-2.5 border-b border-white/10 p-3">
               <div className="mr-auto">
                 <h2 className="font-semibold">Leads</h2>
                 <p className="text-xs text-slate-400">
@@ -1524,11 +1524,22 @@ export default function AdminLeadsPage({
               </div>,
               document.body,
             )}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1240px] text-left text-sm">
+            <div className="max-w-full overflow-x-auto">
+              <table className="w-full min-w-[1100px] table-fixed text-left text-[13px]">
+                <colgroup>
+                  <col className="w-10" />
+                  <col className="w-[170px]" />
+                  <col className="w-[150px]" />
+                  <col className="w-[175px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[90px]" />
+                  <col className="w-[100px]" />
+                  <col className="w-[150px]" />
+                  <col className="w-[95px]" />
+                </colgroup>
                 <thead className="border-b border-white/10 bg-[#111723] text-xs text-slate-400">
                   <tr>
-                    <th className="w-12 px-4 py-3">
+                    <th className="w-10 px-3 py-2.5">
                       <input
                         ref={selectAllRef}
                         type="checkbox"
@@ -1541,20 +1552,20 @@ export default function AdminLeadsPage({
                         className="h-4 w-4 rounded border-white/20 bg-[#0e1420] accent-violet-500"
                       />
                     </th>
-                    <th className="px-4 py-3">Lead</th>
-                    <th className="px-4 py-3">Contact</th>
-                    <th className="px-4 py-3">Office</th>
-                    <th className="px-4 py-3">Assign To</th>
-                    <th className="px-4 py-3">Source</th>
-                    <th className="px-4 py-3">Received</th>
-                    <th className="px-4 py-3">Lead status</th>
-                    <th className="px-4 py-3 text-right">Action</th>
+                    <th className="px-3 py-2.5">Lead</th>
+                    <th className="px-3 py-2.5">Contact</th>
+                    <th className="px-3 py-2.5">Office</th>
+                    <th className="px-3 py-2.5">Assign To</th>
+                    <th className="px-3 py-2.5">Source</th>
+                    <th className="px-3 py-2.5">Received</th>
+                    <th className="px-3 py-2.5">Lead status</th>
+                    <th className="px-3 py-2.5 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]">
                   {dashboard.leads.map((lead) => (
                     <tr key={lead.id} className="hover:bg-white/[0.025]">
-                      <td className="px-4 py-3 align-top">
+                      <td className="px-3 py-2.5 align-top">
                         <input
                           type="checkbox"
                           checked={selectedLeadIds.has(lead.id)}
@@ -1572,20 +1583,20 @@ export default function AdminLeadsPage({
                           className="mt-1 h-4 w-4 rounded border-white/20 bg-[#0e1420] accent-violet-500"
                         />
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-white">
+                      <td className="min-w-0 px-3 py-2.5">
+                        <div className="truncate font-semibold text-white" title={nameOf(lead)}>
                           {nameOf(lead)}
                         </div>
-                        <div className="text-xs text-slate-400">
+                        <div className="truncate text-xs text-slate-400" title={lead.email}>
                           {lead.email}
                         </div>
                         {lead.campaign && (
-                          <div className="mt-1 text-[11px] text-violet-300">
+                          <div className="mt-1 truncate text-[11px] text-violet-300" title={lead.campaign}>
                             {lead.campaign}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-300">
+                      <td className="px-3 py-2.5 text-xs text-slate-300">
                         <div>{lead.phone_e164 || lead.phone || "—"}</div>
                         {lead.phone_validation_status === "valid" ? (
                           <div className="mt-1 text-[11px] font-medium text-emerald-300">
@@ -1606,7 +1617,7 @@ export default function AdminLeadsPage({
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <AppSelect
                           value={lead.office_id || ""}
                           onChange={(event) =>
@@ -1617,7 +1628,7 @@ export default function AdminLeadsPage({
                             lead.status !== "new" ||
                             dashboard.actor_role === "desk_manager"
                           }
-                          className={`${input} min-w-36 py-2 text-xs`}
+                          className={`${input} min-w-0 py-2 text-xs`}
                         >
                           <option value="" disabled={staffMode}>
                             No office
@@ -1666,10 +1677,10 @@ export default function AdminLeadsPage({
                             </div>
                           )}
                       </td>
-                      <td className="px-4 py-3 text-xs">
+                      <td className="px-3 py-2.5 text-xs">
                         {lead.assignee ? (
                           <>
-                            <div className="max-w-44 font-medium text-slate-200">
+                            <div className="truncate font-medium text-slate-200" title={lead.assignee.name}>
                               {lead.assignee.name}
                             </div>
                             <div className="mt-1 text-[10px] text-slate-500">
@@ -1680,13 +1691,13 @@ export default function AdminLeadsPage({
                           <span className="text-slate-500">Unassigned</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-300">
-                        <div>{lead.source_name || "Import"}</div>
-                        <div className="text-slate-500">
+                      <td className="px-3 py-2.5 text-xs text-slate-300">
+                        <div className="truncate" title={lead.source_name || "Import"}>{lead.source_name || "Import"}</div>
+                        <div className="truncate text-slate-500" title={lead.source_kind.replaceAll("_", " ")}>
                           {lead.source_kind.replaceAll("_", " ")}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-400">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-xs text-slate-400">
                         <time
                           dateTime={lead.created_at}
                           title={new Date(lead.created_at).toLocaleString('en-GB')}
@@ -1708,7 +1719,7 @@ export default function AdminLeadsPage({
                           </span>
                         </time>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <AppSelect
                           value={lead.disposition_status}
                           onChange={(event) =>
@@ -1718,7 +1729,7 @@ export default function AdminLeadsPage({
                             )
                           }
                           disabled={!!busy}
-                          className={`${input} min-w-40 border ${dispositionStyles[lead.disposition_status]} py-2 text-xs font-semibold`}
+                          className={`${input} min-w-0 border ${dispositionStyles[lead.disposition_status]} py-2 text-xs font-semibold`}
                         >
                           {(
                             Object.entries(dispositionLabels) as [
@@ -1731,7 +1742,7 @@ export default function AdminLeadsPage({
                             </option>
                           ))}
                         </AppSelect>
-                        <div className="mt-1 text-[10px] text-slate-500">
+                        <div className="mt-1 break-words text-[10px] text-slate-500">
                           Account:{" "}
                           {lead.status === "new"
                             ? lead.phone_routing_status === "routed"
@@ -1759,7 +1770,7 @@ export default function AdminLeadsPage({
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="break-words px-3 py-2.5 text-right">
                         {lead.status === "new" &&
                         lead.phone_routing_status === "routed" &&
                         lead.registration_error ? (
@@ -1803,7 +1814,7 @@ export default function AdminLeadsPage({
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 text-xs text-slate-400">
+            <div className="flex items-center justify-between border-t border-white/10 px-3 py-2.5 text-xs text-slate-400">
               <span>
                 {dashboard.total
                   ? `${page * 50 + 1}–${Math.min((page + 1) * 50, dashboard.total)} of ${dashboard.total}`
@@ -1831,8 +1842,8 @@ export default function AdminLeadsPage({
           </section>
 
           {!staffMode && (
-            <aside className="space-y-4">
-              <section className={`${panel} p-5`}>
+            <aside className="min-w-0 space-y-4">
+              <section className={`${panel} p-4`}>
                 <div className="mb-3 flex items-center gap-2">
                   <KeyRound size={18} className="text-violet-300" />
                   <h2 className="font-semibold">Affiliate API</h2>
@@ -1883,7 +1894,7 @@ export default function AdminLeadsPage({
                   each affiliate.
                 </p>
               </section>
-              <section className={`${panel} p-5`}>
+              <section className={`${panel} p-4`}>
                 <div className="mb-4 flex items-center gap-2">
                   <Link2 size={18} className="text-violet-300" />
                   <h2 className="font-semibold">Google Sheet</h2>
@@ -1919,7 +1930,7 @@ export default function AdminLeadsPage({
                   </button>
                 </form>
               </section>
-              <section className={`${panel} p-5`}>
+              <section className={`${panel} p-4`}>
                 <div className="mb-4 flex items-center gap-2">
                   <FileSpreadsheet size={18} className="text-violet-300" />
                   <h2 className="font-semibold">Import a file</h2>

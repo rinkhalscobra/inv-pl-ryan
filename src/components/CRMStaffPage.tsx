@@ -15,6 +15,7 @@ import {
   Wallet,
 } from "lucide-react";
 import AppSelect from "./AppSelect";
+import AppDateInput from "./AppDateInput";
 import { supabase } from "../lib/supabaseClient";
 import { useFiatCurrency } from "../hooks/useFiatCurrency";
 import { openClientDashboard } from "../lib/clientAccess";
@@ -36,12 +37,22 @@ interface StaffClient {
   kyc_status: string;
   created_at: string;
   is_promoted: boolean;
+  promoted_at: string | null;
+  phone_number: string | null;
   office_id: string | null;
   office_name: string | null;
   office_code: string | null;
   owner_id: string | null;
   owner_role: "agent" | "retention";
   owner_name: string | null;
+  retention_assigned_at: string | null;
+  lead_id: string | null;
+  lead_status: string | null;
+  lead_status_changed_at: string | null;
+  lead_source_id: string | null;
+  lead_source_name: string | null;
+  lead_source_kind: string | null;
+  lead_created_at: string | null;
   usdt_balance: number;
   usd_balance: number;
   btc_balance: number;
@@ -104,6 +115,25 @@ const roleLabels: Record<StaffRole, string> = {
   retention_manager: "Retention Manager",
   retention: "Retention",
 };
+const leadStatusLabels: Record<string, string> = {
+  new: "NEW",
+  no_answer: "No Answer",
+  call_back: "Call Back",
+  low_potential: "Low Potential",
+  no_money: "No Money",
+  wrong_number: "Wrong Number",
+  ftd: "FTD",
+};
+const localIsoDate = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+const localIsoMonth = (value: string) => localIsoDate(value).slice(0, 7);
+const sourceFilterValue = (client: StaffClient) =>
+  client.lead_source_id
+    ? `source:${client.lead_source_id}`
+    : `kind:${client.lead_source_kind || "unknown"}:${client.lead_source_name || "Unknown source"}`;
 const emptyScope = (role: StaffRole): StaffScope => ({
   role,
   office: null,
@@ -173,6 +203,10 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
   const [workspace, setWorkspace] = useState<ClientWorkspace | null>(null);
   const [search, setSearch] = useState("");
   const [officeFilter, setOfficeFilter] = useState("all");
+  const [promotionDateFilter, setPromotionDateFilter] = useState("");
+  const [promotionMonthFilter, setPromotionMonthFilter] = useState("all");
+  const [retentionSourceFilter, setRetentionSourceFilter] = useState("all");
+  const [retentionStatusFilter, setRetentionStatusFilter] = useState("all");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [loadingScope, setLoadingScope] = useState(true);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
@@ -215,6 +249,8 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
 
   const isWorkspaceManager =
     role === "workflow_manager" || role === "retention_manager";
+  const isRetentionWorkspace =
+    role === "retention_manager" || role === "retention";
   const filteredTeamMembers = useMemo(
     () =>
       officeFilter === "all"
@@ -224,15 +260,83 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
           ),
     [officeFilter, scope.team_members],
   );
-  const filteredClients = useMemo(
-    () =>
+  const retentionSourceOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const client of scope.clients) {
+      if (!client.lead_source_name && !client.lead_source_kind) continue;
+      options.set(
+        sourceFilterValue(client),
+        client.lead_source_name ||
+          client.lead_source_kind?.replaceAll("_", " ") ||
+          "Unknown source",
+      );
+    }
+    return Array.from(options, ([value, label]) => ({ value, label })).sort(
+      (left, right) => left.label.localeCompare(right.label),
+    );
+  }, [scope.clients]);
+  const retentionMonthOptions = useMemo(() => {
+    const months = new Set(
+      scope.clients
+        .map((client) =>
+          client.promoted_at ? localIsoMonth(client.promoted_at) : "",
+        )
+        .filter(Boolean),
+    );
+    return Array.from(months)
+      .sort((left, right) => right.localeCompare(left))
+      .map((value) => ({
+        value,
+        label: new Date(`${value}-01T12:00:00`).toLocaleDateString("en-GB", {
+          month: "long",
+          year: "numeric",
+        }),
+      }));
+  }, [scope.clients]);
+  const filteredClients = useMemo(() => {
+    let clients =
       officeFilter === "all"
         ? scope.clients
         : scope.clients.filter(
             (client) => (client.office_id || "unassigned") === officeFilter,
-          ),
-    [officeFilter, scope.clients],
-  );
+          );
+    if (!isRetentionWorkspace) return clients;
+    if (promotionDateFilter) {
+      clients = clients.filter(
+        (client) =>
+          !!client.promoted_at &&
+          localIsoDate(client.promoted_at) === promotionDateFilter,
+      );
+    }
+    if (promotionMonthFilter !== "all") {
+      clients = clients.filter(
+        (client) =>
+          !!client.promoted_at &&
+          localIsoMonth(client.promoted_at) === promotionMonthFilter,
+      );
+    }
+    if (retentionSourceFilter !== "all") {
+      clients = clients.filter(
+        (client) => sourceFilterValue(client) === retentionSourceFilter,
+      );
+    }
+    if (retentionStatusFilter !== "all") {
+      clients = clients.filter(
+        (client) =>
+          (retentionStatusFilter === "none" && !client.lead_status) ||
+          client.lead_status === retentionStatusFilter,
+      );
+    }
+    return clients;
+  }, [
+    isRetentionWorkspace,
+    officeFilter,
+    promotionDateFilter,
+    promotionMonthFilter,
+    retentionSourceFilter,
+    retentionStatusFilter,
+    scope.clients,
+  ]);
   useEffect(() => {
     const timer = window.setTimeout(() => void loadScope(search), 250);
     return () => window.clearTimeout(timer);
@@ -487,6 +591,10 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                 </h2>
                 <span className="text-xs text-slate-400">
                   {filteredClients.length}
+                  {isRetentionWorkspace &&
+                  filteredClients.length !== scope.clients.length
+                    ? ` / ${scope.clients.length}`
+                    : ""}
                 </span>
               </div>
               <div className="relative mt-3">
@@ -501,6 +609,98 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                   className="w-full rounded-lg border border-white/[0.12] bg-[#0f1520] py-2 pl-9 pr-3 text-sm text-white outline-none focus:border-violet-400"
                 />
               </div>
+              {isRetentionWorkspace && (
+                <div className="mt-4 space-y-2 border-t border-white/[0.08] pt-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      Retention filters
+                    </h3>
+                    {(promotionDateFilter ||
+                      promotionMonthFilter !== "all" ||
+                      retentionSourceFilter !== "all" ||
+                      retentionStatusFilter !== "all") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPromotionDateFilter("");
+                          setPromotionMonthFilter("all");
+                          setRetentionSourceFilter("all");
+                          setRetentionStatusFilter("all");
+                        }}
+                        className="text-[11px] font-medium text-violet-300 hover:text-violet-200"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <label className="block text-[11px] text-slate-400">
+                    Promotion date
+                    <AppDateInput
+                      value={promotionDateFilter}
+                      onChange={setPromotionDateFilter}
+                      className={`${input} mt-1 [color-scheme:dark]`}
+                      aria-label="Filter retention clients by promotion date"
+                    />
+                  </label>
+                  <label className="block text-[11px] text-slate-400">
+                    Promotion month
+                    <AppSelect
+                      value={promotionMonthFilter}
+                      onChange={(event) =>
+                        setPromotionMonthFilter(event.target.value)
+                      }
+                      className={`${input} mt-1`}
+                      aria-label="Filter retention clients by promotion month"
+                    >
+                      <option value="all">All months</option>
+                      {retentionMonthOptions.map((month) => (
+                        <option key={month.value} value={month.value}>
+                          {month.label}
+                        </option>
+                      ))}
+                    </AppSelect>
+                  </label>
+                  <label className="block text-[11px] text-slate-400">
+                    Affiliate / source
+                    <AppSelect
+                      value={retentionSourceFilter}
+                      onChange={(event) =>
+                        setRetentionSourceFilter(event.target.value)
+                      }
+                      className={`${input} mt-1`}
+                      aria-label="Filter retention clients by affiliate or source"
+                    >
+                      <option value="all">All affiliates and sources</option>
+                      {retentionSourceOptions.map((source) => (
+                        <option key={source.value} value={source.value}>
+                          {source.label}
+                        </option>
+                      ))}
+                    </AppSelect>
+                  </label>
+                  <label className="block text-[11px] text-slate-400">
+                    Lead status
+                    <AppSelect
+                      value={retentionStatusFilter}
+                      onChange={(event) =>
+                        setRetentionStatusFilter(event.target.value)
+                      }
+                      className={`${input} mt-1`}
+                      aria-label="Filter retention clients by lead status"
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="none">No lead status</option>
+                      {Object.entries(leadStatusLabels).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </AppSelect>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="max-h-[70vh] overflow-y-auto p-2">
               {loadingScope ? (
@@ -509,7 +709,7 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                 </div>
               ) : filteredClients.length === 0 ? (
                 <div className="p-6 text-center text-sm text-slate-400">
-                  No clients match this Office filter.
+                  No clients match the selected filters.
                 </div>
               ) : (
                 filteredClients.map((client) => (
@@ -525,9 +725,34 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                     <div className="truncate text-xs text-slate-400">
                       {client.email}
                     </div>
-                    <div className="mt-1 truncate text-xs text-violet-300">
-                      {client.is_promoted ? "Promoted" : "Sales lead"} ·{" "}
-                      {client.office_code || "No Office"} ·{" "}
+                    {client.phone_number && (
+                      <div className="mt-1 flex items-center gap-1.5 truncate text-xs font-medium text-slate-200">
+                        <Phone size={12} className="shrink-0" />
+                        {client.phone_number}
+                      </div>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <span className="rounded bg-violet-500/10 px-1.5 py-0.5 font-medium text-violet-200">
+                        {client.lead_status
+                          ? leadStatusLabels[client.lead_status] ||
+                            client.lead_status.replaceAll("_", " ")
+                          : "No lead status"}
+                      </span>
+                      {client.lead_source_name && (
+                        <span
+                          className="max-w-full truncate text-slate-400"
+                          title={client.lead_source_name}
+                        >
+                          {client.lead_source_name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-violet-300">
+                      {client.is_promoted ? "Promoted" : "Sales lead"}
+                      {client.promoted_at
+                        ? ` ${new Date(client.promoted_at).toLocaleDateString("en-GB")}`
+                        : ""}{" "}
+                      · {client.office_code || "No Office"} ·{" "}
                       {client.owner_name || "Unassigned"}
                     </div>
                   </button>
@@ -565,20 +790,48 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                       <p className="mt-1 text-sm text-slate-400">
                         {workspace.profile.email}
                       </p>
-                      {workspace.profile.phone_number && (
+                      {(workspace.profile.phone_number ||
+                        selectedClient?.phone_number) && (
                         <a
-                          href={`tel:${workspace.profile.phone_number}`}
+                          href={`tel:${workspace.profile.phone_number || selectedClient?.phone_number}`}
                           className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-slate-200 hover:text-violet-300"
                         >
                           <Phone size={14} />
-                          {workspace.profile.phone_number}
+                          {workspace.profile.phone_number ||
+                            selectedClient?.phone_number}
                         </a>
                       )}
                       <p className="mt-1 font-mono text-xs text-slate-500">
                         {workspace.profile.id}
                       </p>
+                      {selectedClient?.lead_source_name && (
+                        <p className="mt-2 text-xs text-slate-400">
+                          Source: {selectedClient.lead_source_name}
+                        </p>
+                      )}
+                      {selectedClient?.promoted_at && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Promoted:{" "}
+                          {new Date(selectedClient.promoted_at).toLocaleString(
+                            "en-GB",
+                          )}
+                          {selectedClient.retention_assigned_at
+                            ? ` · Assigned: ${new Date(
+                                selectedClient.retention_assigned_at,
+                              ).toLocaleString("en-GB")}`
+                            : ""}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      {isRetentionWorkspace && selectedClient && (
+                        <span className="rounded-lg border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200">
+                          {selectedClient.lead_status
+                            ? leadStatusLabels[selectedClient.lead_status] ||
+                              selectedClient.lead_status.replaceAll("_", " ")
+                            : "No lead status"}
+                        </span>
+                      )}
                       <span
                         className={`rounded-lg border px-3 py-2 text-xs ${workspace.profile.is_promoted ? "border-amber-400/30 text-amber-200" : "border-cyan-400/30 text-cyan-200"}`}
                       >

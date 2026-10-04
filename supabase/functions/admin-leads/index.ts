@@ -1,49 +1,93 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.39.0";
-import { normalizeLead, parseCsv, rowsToLeads, type LeadInput } from "../../../src/lib/leadImport.ts";
-import { classifyInternationalPhone, routePhoneToOffice } from "../_shared/leadPhoneRouting.ts";
+import {
+  createClient,
+  type SupabaseClient,
+} from "npm:@supabase/supabase-js@2.39.0";
+import {
+  normalizeLead,
+  parseCsv,
+  rowsToLeads,
+  type LeadInput,
+} from "../../../src/lib/leadImport.ts";
+import {
+  classifyInternationalPhone,
+  routePhoneToOffice,
+} from "../_shared/leadPhoneRouting.ts";
 import { automaticallyRegisterRoutedLeads } from "../_shared/automaticLeadRegistration.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+  "Access-Control-Allow-Headers":
+    "authorization, apikey, content-type, x-client-info",
 };
-const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
-  status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
-});
-const message = (error: unknown) => error instanceof Error ? error.message : "Lead operation failed";
-const uuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const json = (value: unknown, status = 200) =>
+  new Response(JSON.stringify(value), {
+    status,
+    headers: {
+      ...cors,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
+  });
+const message = (error: unknown) =>
+  error instanceof Error ? error.message : "Lead operation failed";
+const uuid = (value: unknown) =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const isoDate = (value: string | null) => {
   if (value === null) return true;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const timestamp = Date.parse(`${value}T00:00:00.000Z`);
-  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value
+  );
 };
 
 async function keyHash(key: string) {
-  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)));
-  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  const bytes = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)),
+  );
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 function newAffiliateKey() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return `aff_live_${Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("")}`;
+  return `aff_live_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function sheetCsvUrl(input: string) {
   if (input.length > 2048) throw new Error("The Google Sheet URL is too long");
   let url: URL;
-  try { url = new URL(input); } catch { throw new Error("Enter a valid Google Sheet URL"); }
-  if (url.protocol !== "https:" || url.hostname !== "docs.google.com" || url.username || url.password || url.port) {
+  try {
+    url = new URL(input);
+  } catch {
+    throw new Error("Enter a valid Google Sheet URL");
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "docs.google.com" ||
+    url.username ||
+    url.password ||
+    url.port
+  ) {
     throw new Error("Use an HTTPS Google Sheets URL from docs.google.com");
   }
-  const published = /^\/spreadsheets\/d\/e\/[A-Za-z0-9_-]+\/pub$/.test(url.pathname);
-  const sheet = url.pathname.match(/^\/spreadsheets\/d\/([A-Za-z0-9_-]+)(?:\/.*)?$/);
+  const published = /^\/spreadsheets\/d\/e\/[A-Za-z0-9_-]+\/pub$/.test(
+    url.pathname,
+  );
+  const sheet = url.pathname.match(
+    /^\/spreadsheets\/d\/([A-Za-z0-9_-]+)(?:\/.*)?$/,
+  );
   if (published) {
     url.searchParams.set("output", "csv");
   } else if (sheet) {
-    const gid = url.searchParams.get("gid") || new URLSearchParams(url.hash.slice(1)).get("gid");
+    const gid =
+      url.searchParams.get("gid") ||
+      new URLSearchParams(url.hash.slice(1)).get("gid");
     url.pathname = `/spreadsheets/d/${sheet[1]}/export`;
     url.search = "?format=csv";
     if (gid && /^\d+$/.test(gid)) url.searchParams.set("gid", gid);
@@ -53,17 +97,32 @@ function sheetCsvUrl(input: string) {
 }
 
 async function loadPhoneRouting(admin: SupabaseClient, companyId: string) {
-  const [{ data: offices, error: officeError }, { data: managers, error: managerError }] = await Promise.all([
-    admin.from("crm_offices").select("id,name,code,routing_country_code").eq("status", "active").eq("company_id", companyId),
-    admin.from("crm_staff_roles").select("user_id,users!inner(office_id,company_id)")
-      .eq("role", "desk_manager").eq("users.company_id", companyId),
+  const [
+    { data: offices, error: officeError },
+    { data: managers, error: managerError },
+  ] = await Promise.all([
+    admin
+      .from("crm_offices")
+      .select("id,name,code,routing_country_code")
+      .eq("status", "active")
+      .eq("company_id", companyId),
+    admin
+      .from("crm_staff_roles")
+      .select("user_id,users!inner(office_id,company_id)")
+      .eq("role", "desk_manager")
+      .eq("users.company_id", companyId),
   ]);
-  if (officeError) throw new Error(`Could not load Offices: ${officeError.message}`);
-  if (managerError) throw new Error(`Could not load Desk Managers: ${managerError.message}`);
+  if (officeError)
+    throw new Error(`Could not load Offices: ${officeError.message}`);
+  if (managerError)
+    throw new Error(`Could not load Desk Managers: ${managerError.message}`);
   const officesByCountry = new Map<string, string>();
   for (const office of offices || []) {
-    const countryCode = String(office.routing_country_code || "").trim().toUpperCase();
-    if (/^[A-Z]{2}$/.test(countryCode)) officesByCountry.set(countryCode, String(office.id));
+    const countryCode = String(office.routing_country_code || "")
+      .trim()
+      .toUpperCase();
+    if (/^[A-Z]{2}$/.test(countryCode))
+      officesByCountry.set(countryCode, String(office.id));
   }
   const deskManagerOfficeIds = new Set<string>();
   const deskManagersByOffice = new Map<string, string>();
@@ -78,13 +137,30 @@ async function loadPhoneRouting(admin: SupabaseClient, companyId: string) {
       }
     }
   }
-  return { offices: offices || [], officesByCountry, deskManagerOfficeIds, deskManagersByOffice };
+  return {
+    offices: offices || [],
+    officesByCountry,
+    deskManagerOfficeIds,
+    deskManagersByOffice,
+  };
 }
 
-function phoneRoutingRecord(phone: string, officesByCountry: Map<string, string>, deskManagerOfficeIds: Set<string>) {
+function phoneRoutingRecord(
+  phone: string,
+  officesByCountry: Map<string, string>,
+  deskManagerOfficeIds: Set<string>,
+) {
   const classification = classifyInternationalPhone(phone);
-  const route = routePhoneToOffice(classification, officesByCountry, deskManagerOfficeIds);
-  return { ...classification, ...route, phone_routed_at: new Date().toISOString() };
+  const route = routePhoneToOffice(
+    classification,
+    officesByCountry,
+    deskManagerOfficeIds,
+  );
+  return {
+    ...classification,
+    ...route,
+    phone_routed_at: new Date().toISOString(),
+  };
 }
 
 async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
@@ -93,7 +169,9 @@ async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
   const registrationIds = new Set<string>();
   let cursor = "";
   for (;;) {
-    let query = admin.from("crm_leads").select("id,phone")
+    let query = admin
+      .from("crm_leads")
+      .select("id,phone")
       .eq("company_id", companyId)
       .eq("status", "new")
       .neq("phone_routing_status", "manual")
@@ -106,14 +184,25 @@ async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
     if (!page.length) break;
     for (let index = 0; index < page.length; index += 25) {
       const batch = page.slice(index, index + 25);
-      await Promise.all(batch.map(async lead => {
-        const record = phoneRoutingRecord(String(lead.phone || ""), routing.officesByCountry, routing.deskManagerOfficeIds);
-        const result = await admin.from("crm_leads").update(record).eq("id", lead.id).eq("company_id", companyId)
-          .neq("phone_routing_status", "manual");
-        if (result.error) throw result.error;
-        if (record.phone_routing_status === "routed") registrationIds.add(String(lead.id));
-        updated++;
-      }));
+      await Promise.all(
+        batch.map(async (lead) => {
+          const record = phoneRoutingRecord(
+            String(lead.phone || ""),
+            routing.officesByCountry,
+            routing.deskManagerOfficeIds,
+          );
+          const result = await admin
+            .from("crm_leads")
+            .update(record)
+            .eq("id", lead.id)
+            .eq("company_id", companyId)
+            .neq("phone_routing_status", "manual");
+          if (result.error) throw result.error;
+          if (record.phone_routing_status === "routed")
+            registrationIds.add(String(lead.id));
+          updated++;
+        }),
+      );
     }
     cursor = String(page[page.length - 1].id);
     if (page.length < 500) break;
@@ -130,51 +219,119 @@ async function reprocessPhoneRouting(admin: SupabaseClient, companyId: string) {
 async function insertLeads(
   admin: SupabaseClient,
   inputs: unknown[],
-  source: { id: string | null; kind: "affiliate_api" | "google_sheet" | "file"; name: string; companyId: string },
+  source: {
+    id: string | null;
+    kind: "affiliate_api" | "google_sheet" | "file";
+    name: string;
+    companyId: string;
+  },
 ) {
   const routing = await loadPhoneRouting(admin, source.companyId);
   const leads = new Map<string, LeadInput>();
   let invalid = 0;
   for (const input of inputs) {
-    const lead = input && typeof input === "object" && !Array.isArray(input)
-      ? normalizeLead(input as Record<string, unknown>) : null;
+    const lead =
+      input && typeof input === "object" && !Array.isArray(input)
+        ? normalizeLead(input as Record<string, unknown>)
+        : null;
     if (lead) leads.set(lead.email, lead);
     else invalid++;
   }
   let added = 0;
-  const automaticRegistration = { registered: 0, existing: 0, failed: 0, skipped: 0 };
-  for (const batch of Array.from(leads.values()).reduce<LeadInput[][]>((all, lead, index) => {
-    if (index % 200 === 0) all.push([]);
-    all[all.length - 1].push(lead);
-    return all;
-  }, [])) {
-    const { data, error } = await admin.from("crm_leads").upsert(batch.map(lead => {
-      const { office, ...record } = lead;
-      const incomingOffice = office || lead.country;
-      return { ...record, ...phoneRoutingRecord(lead.phone, routing.officesByCountry, routing.deskManagerOfficeIds), company_id: source.companyId,
-        source_metadata: { incoming_office: incomingOffice || null }, source_id: source.id, source_kind: source.kind, source_name: source.name };
-    }), { onConflict: "company_id,email", ignoreDuplicates: true }).select("id");
+  const automaticRegistration = {
+    registered: 0,
+    existing: 0,
+    failed: 0,
+    skipped: 0,
+  };
+  for (const batch of Array.from(leads.values()).reduce<LeadInput[][]>(
+    (all, lead, index) => {
+      if (index % 200 === 0) all.push([]);
+      all[all.length - 1].push(lead);
+      return all;
+    },
+    [],
+  )) {
+    const { data, error } = await admin
+      .from("crm_leads")
+      .upsert(
+        batch.map((lead) => {
+          const { office, ...record } = lead;
+          const incomingOffice = office || lead.country;
+          return {
+            ...record,
+            ...phoneRoutingRecord(
+              lead.phone,
+              routing.officesByCountry,
+              routing.deskManagerOfficeIds,
+            ),
+            company_id: source.companyId,
+            source_metadata: { incoming_office: incomingOffice || null },
+            source_id: source.id,
+            source_kind: source.kind,
+            source_name: source.name,
+          };
+        }),
+        { onConflict: "company_id,email", ignoreDuplicates: true },
+      )
+      .select("id");
     if (error) throw new Error(`Could not save leads: ${error.message}`);
     added += data?.length || 0;
-    const registrationIds = new Set(((data || []) as Array<{ id: string }>).map(row => String(row.id)));
+    const registrationIds = new Set(
+      ((data || []) as Array<{ id: string }>).map((row) => String(row.id)),
+    );
     if (source.id) {
-      const insertedIds = new Set(((data || []) as Array<{ id: string }>).map(row => String(row.id)));
-      const { data: existing, error: existingError } = await admin.from("crm_leads")
+      const insertedIds = new Set(
+        ((data || []) as Array<{ id: string }>).map((row) => String(row.id)),
+      );
+      const { data: existing, error: existingError } = await admin
+        .from("crm_leads")
         .select("id,email,phone,status,phone_routing_status")
-        .eq("source_id", source.id).eq("status", "new").in("email", batch.map(lead => lead.email));
-      if (existingError) throw new Error(`Could not refresh lead phones: ${existingError.message}`);
-      await Promise.all(((existing || []) as Array<{ id: string; email: string; phone: string | null; phone_routing_status: string }>).map(async row => {
-        if (insertedIds.has(String(row.id)) || row.phone_routing_status === "manual") return;
-        const incoming = batch.find(lead => lead.email === row.email);
-        const correctedPhone = incoming?.phone.trim() || "";
-        if (!correctedPhone || correctedPhone === String(row.phone || "")) return;
-        const record = phoneRoutingRecord(correctedPhone, routing.officesByCountry, routing.deskManagerOfficeIds);
-        const result = await admin.from("crm_leads").update({ phone: correctedPhone, ...record })
-          .eq("id", row.id).eq("source_id", source.id).eq("status", "new")
-          .neq("phone_routing_status", "manual");
-        if (result.error) throw result.error;
-        if (record.phone_routing_status === "routed") registrationIds.add(String(row.id));
-      }));
+        .eq("source_id", source.id)
+        .eq("status", "new")
+        .in(
+          "email",
+          batch.map((lead) => lead.email),
+        );
+      if (existingError)
+        throw new Error(
+          `Could not refresh lead phones: ${existingError.message}`,
+        );
+      await Promise.all(
+        (
+          (existing || []) as Array<{
+            id: string;
+            email: string;
+            phone: string | null;
+            phone_routing_status: string;
+          }>
+        ).map(async (row) => {
+          if (
+            insertedIds.has(String(row.id)) ||
+            row.phone_routing_status === "manual"
+          )
+            return;
+          const incoming = batch.find((lead) => lead.email === row.email);
+          const correctedPhone = incoming?.phone.trim() || "";
+          if (!correctedPhone || correctedPhone === String(row.phone || ""))
+            return;
+          const record = phoneRoutingRecord(
+            correctedPhone,
+            routing.officesByCountry,
+            routing.deskManagerOfficeIds,
+          );
+          const result = await admin
+            .from("crm_leads")
+            .update({ phone: correctedPhone, ...record })
+            .eq("id", row.id)
+            .eq("source_id", source.id)
+            .eq("status", "new")
+            .neq("phone_routing_status", "manual");
+          if (result.error) throw result.error;
+          if (record.phone_routing_status === "routed")
+            registrationIds.add(String(row.id));
+        }),
+      );
     }
     const batchRegistration = await automaticallyRegisterRoutedLeads(
       admin,
@@ -195,125 +352,259 @@ async function insertLeads(
   };
 }
 
-async function syncSheet(admin: SupabaseClient, source: { id: string; name: string; sheet_url: string; company_id: string }) {
+async function syncSheet(
+  admin: SupabaseClient,
+  source: { id: string; name: string; sheet_url: string; company_id: string },
+) {
   try {
     const response = await fetch(sheetCsvUrl(source.sheet_url), {
-      headers: { Accept: "text/csv,text/plain" }, signal: AbortSignal.timeout(12000), cache: "no-store",
+      headers: { Accept: "text/csv,text/plain" },
+      signal: AbortSignal.timeout(12000),
+      cache: "no-store",
     });
-    if (!response.ok) throw new Error(`Google Sheets returned HTTP ${response.status}`);
-    if (Number(response.headers.get("content-length") || 0) > 3_000_000) throw new Error("The sheet is larger than 3 MB");
+    if (!response.ok)
+      throw new Error(`Google Sheets returned HTTP ${response.status}`);
+    if (Number(response.headers.get("content-length") || 0) > 3_000_000)
+      throw new Error("The sheet is larger than 3 MB");
     const csv = await response.text();
-    if (csv.length > 3_000_000 || /^\s*</.test(csv)) throw new Error("Publish or share the sheet as CSV so the server can read it");
+    if (csv.length > 3_000_000 || /^\s*</.test(csv))
+      throw new Error(
+        "Publish or share the sheet as CSV so the server can read it",
+      );
     const rows = parseCsv(csv);
-    if (rows.length > 5001) throw new Error("The sheet exceeds 5,000 lead rows");
+    if (rows.length > 5001)
+      throw new Error("The sheet exceeds 5,000 lead rows");
     const parsed = rowsToLeads(rows);
-    const result = await insertLeads(admin, parsed.leads, { id: source.id, kind: "google_sheet", name: source.name, companyId: source.company_id });
+    const result = await insertLeads(admin, parsed.leads, {
+      id: source.id,
+      kind: "google_sheet",
+      name: source.name,
+      companyId: source.company_id,
+    });
     result.invalid += parsed.invalid;
-    const { error } = await admin.from("crm_lead_sources").update({ last_synced_at: new Date().toISOString(), last_sync_error: null }).eq("id", source.id);
+    const { error } = await admin
+      .from("crm_lead_sources")
+      .update({
+        last_synced_at: new Date().toISOString(),
+        last_sync_error: null,
+      })
+      .eq("id", source.id);
     if (error) throw error;
     return result;
   } catch (error) {
     const detail = message(error).slice(0, 500);
-    await admin.from("crm_lead_sources").update({ last_sync_error: detail }).eq("id", source.id);
+    await admin
+      .from("crm_lead_sources")
+      .update({ last_sync_error: detail })
+      .eq("id", source.id);
     throw new Error(detail);
   }
 }
 
-async function registerLead(admin: SupabaseClient, leadId: string, actorId: string, companyId: string, ownerRole: string | null, ownerId: string | null) {
-  if ((ownerRole === null) !== (ownerId === null) || (ownerRole !== null && ownerRole !== "agent") || (ownerId !== null && !uuid(ownerId))) {
+async function registerLead(
+  admin: SupabaseClient,
+  leadId: string,
+  actorId: string,
+  companyId: string,
+  ownerRole: string | null,
+  ownerId: string | null,
+) {
+  if (
+    (ownerRole === null) !== (ownerId === null) ||
+    (ownerRole !== null && ownerRole !== "agent") ||
+    (ownerId !== null && !uuid(ownerId))
+  ) {
     throw new Error("Select a valid sales agent");
   }
   const startedAt = new Date().toISOString();
   let step = "claim lead";
-  let { data: lead, error: claimError } = await admin.from("crm_leads")
-    .update({ status: "inviting", registration_started_at: startedAt, last_registration_attempt_at: startedAt, registration_error: null })
-    .eq("id", leadId).eq("company_id", companyId).eq("status", "new")
-    .eq("phone_routing_status", "routed").select("*").maybeSingle();
+  let { data: lead, error: claimError } = await admin
+    .from("crm_leads")
+    .update({
+      status: "inviting",
+      registration_started_at: startedAt,
+      last_registration_attempt_at: startedAt,
+      registration_error: null,
+    })
+    .eq("id", leadId)
+    .eq("company_id", companyId)
+    .eq("status", "new")
+    .eq("phone_routing_status", "routed")
+    .select("*")
+    .maybeSingle();
   if (claimError) throw claimError;
   if (!lead) {
     const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
-    const result = await admin.from("crm_leads")
+    const result = await admin
+      .from("crm_leads")
       .update({ status: "inviting", registration_started_at: startedAt })
-      .eq("id", leadId).eq("company_id", companyId).eq("status", "inviting").lt("registration_started_at", staleBefore).select("*").maybeSingle();
+      .eq("id", leadId)
+      .eq("company_id", companyId)
+      .eq("status", "inviting")
+      .lt("registration_started_at", staleBefore)
+      .select("*")
+      .maybeSingle();
     lead = result.data;
     claimError = result.error;
     if (claimError) throw claimError;
   }
-  if (!lead) throw new Error("This lead is already registered or is being processed. Refresh the inbox.");
+  if (!lead)
+    throw new Error(
+      "This lead is already registered or is being processed. Refresh the inbox.",
+    );
   if (ownerId) {
-    const { data: owner, error: ownerError } = await admin.from("users").select("office_id").eq("id", ownerId).eq("company_id", companyId).maybeSingle();
-    if (ownerError || !owner || owner.office_id !== lead.office_id) throw new Error("The Sales Agent must belong to the same Office as the lead");
+    const { data: owner, error: ownerError } = await admin
+      .from("users")
+      .select("office_id")
+      .eq("id", ownerId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (ownerError || !owner || owner.office_id !== lead.office_id)
+      throw new Error(
+        "The Sales Agent must belong to the same Office as the lead",
+      );
   }
 
   let createdUserId: string | null = null;
   try {
     step = "duplicate account check";
-    const { data: existing, error: existingError } = await admin.from("users").select("id").eq("email", lead.email).eq("company_id", companyId).maybeSingle();
+    const { data: existing, error: existingError } = await admin
+      .from("users")
+      .select("id")
+      .eq("email", lead.email)
+      .eq("company_id", companyId)
+      .maybeSingle();
     if (existingError) throw existingError;
     if (existing) {
       step = "existing client onboarding";
-      const { data: onboarding, error: onboardingError } = await admin.rpc("crm_ensure_client_onboarding", { p_user_id: existing.id });
-      if (onboardingError || onboarding?.success !== true) throw new Error(onboardingError?.message || onboarding?.error || "Existing client setup is incomplete");
-      const { error: officeSetError } = await admin.rpc("crm_service_set_user_office", { p_user_id: existing.id, p_office_id: lead.office_id });
+      const { data: onboarding, error: onboardingError } = await admin.rpc(
+        "crm_ensure_client_onboarding",
+        { p_user_id: existing.id },
+      );
+      if (onboardingError || onboarding?.success !== true)
+        throw new Error(
+          onboardingError?.message ||
+            onboarding?.error ||
+            "Existing client setup is incomplete",
+        );
+      const { error: officeSetError } = await admin.rpc(
+        "crm_service_set_user_office",
+        { p_user_id: existing.id, p_office_id: lead.office_id },
+      );
       if (officeSetError) throw new Error(officeSetError.message);
-      const { data: authUser } = await admin.auth.admin.getUserById(existing.id);
-      const wasInvitedFromThisLead = authUser.user?.user_metadata?.crm_lead_id === leadId;
+      const { data: authUser } = await admin.auth.admin.getUserById(
+        existing.id,
+      );
+      const wasInvitedFromThisLead =
+        authUser.user?.user_metadata?.crm_lead_id === leadId;
       const outcome = wasInvitedFromThisLead ? "registered" : "existing";
-      const { error } = await admin.from("crm_leads").update({
-        status: outcome, registered_user_id: existing.id, registration_started_at: null,
-        invited_at: wasInvitedFromThisLead ? new Date().toISOString() : null, registration_error: null,
-      }).eq("id", leadId);
+      const { error } = await admin
+        .from("crm_leads")
+        .update({
+          status: outcome,
+          registered_user_id: existing.id,
+          registration_started_at: null,
+          invited_at: wasInvitedFromThisLead ? new Date().toISOString() : null,
+          registration_error: null,
+        })
+        .eq("id", leadId);
       if (error) throw error;
       return { outcome, user_id: existing.id };
     }
 
     step = "authentication account";
-    const initialPassword = Deno.env.get("CRM_DEFAULT_CLIENT_PASSWORD") || "12345678";
-    const { data: company, error: companyError } = await admin.from("crm_companies").select("registration_key").eq("id", companyId).single();
-    if (companyError || !company) throw new Error("Lead company is unavailable");
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email: lead.email,
-      password: initialPassword,
-      email_confirm: true,
-      user_metadata: {
-        first_name: lead.first_name,
-        last_name: lead.last_name,
-        phone_number: lead.phone,
-        country: lead.country,
-        crm_lead_id: leadId,
-        onboarding_source: "lead_inbox",
-        crm_company_key: company.registration_key,
-      },
-    });
-    if (createError || !created.user) throw new Error(createError?.message || "Could not create the authentication account");
+    const initialPassword =
+      Deno.env.get("CRM_DEFAULT_CLIENT_PASSWORD") || "12345678";
+    const { data: company, error: companyError } = await admin
+      .from("crm_companies")
+      .select("registration_key")
+      .eq("id", companyId)
+      .single();
+    if (companyError || !company)
+      throw new Error("Lead company is unavailable");
+    const { data: created, error: createError } =
+      await admin.auth.admin.createUser({
+        email: lead.email,
+        password: initialPassword,
+        email_confirm: true,
+        user_metadata: {
+          first_name: lead.first_name,
+          last_name: lead.last_name,
+          phone_number: lead.phone,
+          country: lead.country,
+          crm_lead_id: leadId,
+          onboarding_source: "lead_inbox",
+          crm_company_key: company.registration_key,
+        },
+      });
+    if (createError || !created.user)
+      throw new Error(
+        createError?.message || "Could not create the authentication account",
+      );
     createdUserId = created.user.id;
 
     step = "client profile, trade account and document folder";
-    const { data: onboarding, error: onboardingError } = await admin.rpc("crm_ensure_client_onboarding", { p_user_id: createdUserId });
+    const { data: onboarding, error: onboardingError } = await admin.rpc(
+      "crm_ensure_client_onboarding",
+      { p_user_id: createdUserId },
+    );
     if (onboardingError || onboarding?.success !== true) {
-      throw new Error(onboardingError?.message || onboarding?.error || "Client onboarding did not complete");
+      throw new Error(
+        onboardingError?.message ||
+          onboarding?.error ||
+          "Client onboarding did not complete",
+      );
     }
-    const { error: companyAssignmentError } = await admin.rpc("crm_service_set_user_company", { p_user_id: createdUserId, p_company_id: companyId });
+    const { error: companyAssignmentError } = await admin.rpc(
+      "crm_service_set_user_company",
+      { p_user_id: createdUserId, p_company_id: companyId },
+    );
     if (companyAssignmentError) throw new Error(companyAssignmentError.message);
-    const { error: officeSetError } = await admin.rpc("crm_service_set_user_office", { p_user_id: createdUserId, p_office_id: lead.office_id });
+    const { error: officeSetError } = await admin.rpc(
+      "crm_service_set_user_office",
+      { p_user_id: createdUserId, p_office_id: lead.office_id },
+    );
     if (officeSetError) throw new Error(officeSetError.message);
 
     step = "CRM client role and ownership";
-    const { error: finalizeError } = await admin.rpc("crm_finalize_created_user", {
-      p_user_id: createdUserId, p_actor_id: actorId, p_role: "client", p_owner_role: ownerRole, p_owner_id: ownerId,
-    });
+    const { error: finalizeError } = await admin.rpc(
+      "crm_finalize_created_user",
+      {
+        p_user_id: createdUserId,
+        p_actor_id: actorId,
+        p_role: "client",
+        p_owner_role: ownerRole,
+        p_owner_id: ownerId,
+      },
+    );
     if (finalizeError) {
       throw new Error(finalizeError.message);
     }
     step = "lead linkage";
-    const { error: markError } = await admin.from("crm_leads").update({
-      status: "registered", registered_user_id: createdUserId,
-      registration_started_at: null, invited_at: new Date().toISOString(), registration_error: null,
-    }).eq("id", leadId);
-    if (markError) throw new Error(`Account created, but lead status needs review: ${markError.message}`);
+    const { error: markError } = await admin
+      .from("crm_leads")
+      .update({
+        status: "registered",
+        registered_user_id: createdUserId,
+        registration_started_at: null,
+        invited_at: new Date().toISOString(),
+        registration_error: null,
+      })
+      .eq("id", leadId);
+    if (markError)
+      throw new Error(
+        `Account created, but lead status needs review: ${markError.message}`,
+      );
     await admin.from("admin_action_logs").insert({
-      admin_user_id: actorId, target_user_id: createdUserId,
-      action: "crm_lead_registered", after_data: { lead_id: leadId, source: lead.source_name, owner_role: ownerRole, owner_id: ownerId },
+      admin_user_id: actorId,
+      target_user_id: createdUserId,
+      action: "crm_lead_registered",
+      after_data: {
+        lead_id: leadId,
+        source: lead.source_name,
+        owner_role: ownerRole,
+        owner_id: ownerId,
+      },
       reason: "Administrator registered imported lead",
     });
     return { outcome: "registered", user_id: createdUserId };
@@ -328,109 +619,250 @@ async function registerLead(admin: SupabaseClient, leadId: string, actorId: stri
       message: detail,
     });
     if (createdUserId) {
-      const { error: rollbackError } = await admin.auth.admin.deleteUser(createdUserId, false);
+      const { error: rollbackError } = await admin.auth.admin.deleteUser(
+        createdUserId,
+        false,
+      );
       if (rollbackError) {
-        await admin.from("crm_leads").update({ registration_error: `${detail}. Cleanup requires review for user ${createdUserId}` }).eq("id", leadId);
-        throw new Error(`${detail}. Account cleanup requires administrator review.`);
+        await admin
+          .from("crm_leads")
+          .update({
+            registration_error: `${detail}. Cleanup requires review for user ${createdUserId}`,
+          })
+          .eq("id", leadId);
+        throw new Error(
+          `${detail}. Account cleanup requires administrator review.`,
+        );
       }
       await admin.from("users").delete().eq("id", createdUserId);
     }
-    await admin.from("crm_leads").update({
-      status: "new", registration_started_at: null, registration_error: detail,
-    }).eq("id", leadId).eq("status", "inviting");
+    await admin
+      .from("crm_leads")
+      .update({
+        status: "new",
+        registration_started_at: null,
+        registration_error: detail,
+      })
+      .eq("id", leadId)
+      .eq("status", "inviting");
     throw new Error(detail);
   }
 }
 
-Deno.serve(async request => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: cors });
-  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+Deno.serve(async (request) => {
+  if (request.method === "OPTIONS")
+    return new Response("ok", { headers: cors });
+  if (request.method !== "POST")
+    return json({ error: "Method not allowed" }, 405);
   try {
     const raw = await request.text();
-    if (raw.length > 1_000_000) return json({ error: "Request is too large" }, 413);
+    if (raw.length > 1_000_000)
+      return json({ error: "Request is too large" }, 413);
     let body: Record<string, unknown>;
-    try { body = JSON.parse(raw) as Record<string, unknown>; }
-    catch { return json({ error: "Send a valid JSON request" }, 400); }
+    try {
+      body = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return json({ error: "Send a valid JSON request" }, 400);
+    }
     const action = String(body.action || "");
-    const url = Deno.env.get("SUPABASE_URL"), key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!url || !key) return json({ error: "Server configuration is incomplete" }, 500);
-    const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    const url = Deno.env.get("SUPABASE_URL"),
+      key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!url || !key)
+      return json({ error: "Server configuration is incomplete" }, 500);
+    const admin = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     const cronToken = request.headers.get("x-lead-sync-token");
-    if (action === "sync_all_sheets" && cronToken && cronToken === Deno.env.get("LEADS_SYNC_TOKEN")) {
-      const { data: sources, error } = await admin.from("crm_lead_sources")
-        .select("id,name,sheet_url,company_id").eq("kind", "google_sheet").eq("active", true).limit(10);
+    if (
+      action === "sync_all_sheets" &&
+      cronToken &&
+      cronToken === Deno.env.get("LEADS_SYNC_TOKEN")
+    ) {
+      const { data: sources, error } = await admin
+        .from("crm_lead_sources")
+        .select("id,name,sheet_url,company_id")
+        .eq("kind", "google_sheet")
+        .eq("active", true)
+        .limit(10);
       if (error) throw error;
       let index = 0;
       const results: unknown[] = [];
-      await Promise.all(Array.from({ length: Math.min(3, sources?.length || 0) }, async () => {
-        while (index < (sources?.length || 0)) {
-          const source = sources![index++];
-          try { results.push({ id: source.id, ...(await syncSheet(admin, source)) }); }
-          catch (cause) { results.push({ id: source.id, error: message(cause) }); }
-        }
-      }));
+      await Promise.all(
+        Array.from({ length: Math.min(3, sources?.length || 0) }, async () => {
+          while (index < (sources?.length || 0)) {
+            const source = sources![index++];
+            try {
+              results.push({
+                id: source.id,
+                ...(await syncSheet(admin, source)),
+              });
+            } catch (cause) {
+              results.push({ id: source.id, error: message(cause) });
+            }
+          }
+        }),
+      );
       return json({ sources: results });
     }
 
-    const token = request.headers.get("Authorization")?.replace(/^Bearer /i, "");
+    const token = request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /i, "");
     if (!token) return json({ error: "Authentication required" }, 401);
     const { data: actor, error: authError } = await admin.auth.getUser(token);
-    if (authError || !actor.user) return json({ error: "Invalid CRM session" }, 401);
+    if (authError || !actor.user)
+      return json({ error: "Invalid CRM session" }, 401);
     const actorId = actor.user.id;
-    const [{ data: profile, error: profileError }, { data: staffRole, error: roleError }] = await Promise.all([
-      admin.from("users").select("is_admin,office_id,company_id").eq("id", actorId).single(),
-      admin.from("crm_staff_roles").select("role").eq("user_id", actorId).maybeSingle(),
+    const [
+      { data: profile, error: profileError },
+      { data: staffRole, error: roleError },
+    ] = await Promise.all([
+      admin
+        .from("users")
+        .select("is_admin,office_id,company_id")
+        .eq("id", actorId)
+        .single(),
+      admin
+        .from("crm_staff_roles")
+        .select("role")
+        .eq("user_id", actorId)
+        .maybeSingle(),
     ]);
-    if (profileError || roleError || !profile) return json({ error: "CRM access could not be verified" }, 403);
+    if (profileError || roleError || !profile)
+      return json({ error: "CRM access could not be verified" }, 403);
     const isAdmin = profile.is_admin === true;
     const actorRole = isAdmin ? "admin" : String(staffRole?.role || "client");
-    if (!isAdmin && !["workflow_manager", "desk_manager"].includes(actorRole)) return json({ error: "Lead management access required" }, 403);
-    const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    if (!isAdmin && !["workflow_manager", "desk_manager"].includes(actorRole))
+      return json({ error: "Lead management access required" }, 403);
+    const clientIp =
+      request.headers.get("cf-connecting-ip") ||
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      "";
     if (isAdmin) {
-      if (!clientIp) return json({ error: "Administrator network access required" }, 403);
-      const { data: ipAllowed, error: ipError } = await admin.rpc("crm_is_ip_allowlisted", { p_ip: clientIp });
-      if (ipError || ipAllowed !== true) return json({ error: "Administrator network access required" }, 403);
+      if (!clientIp)
+        return json({ error: "Administrator network access required" }, 403);
+      const { data: ipAllowed, error: ipError } = await admin.rpc(
+        "crm_is_ip_allowlisted",
+        { p_ip: clientIp },
+      );
+      if (ipError || ipAllowed !== true)
+        return json({ error: "Administrator network access required" }, 403);
     }
-    const staffActions = actorRole === "workflow_manager"
-      ? ["dashboard", "set_lead_office", "set_lead_disposition", "register_lead"]
-      : ["dashboard", "set_lead_disposition", "set_lead_owner", "register_lead"];
+    const staffActions =
+      actorRole === "workflow_manager"
+        ? [
+            "dashboard",
+            "assignment_history",
+            "set_lead_office",
+            "set_lead_disposition",
+            "register_lead",
+          ]
+        : [
+            "dashboard",
+            "assignment_history",
+            "set_lead_disposition",
+            "set_lead_owner",
+            "register_lead",
+          ];
     if (!isAdmin && !staffActions.includes(action)) {
-      return json({ error: "Only Admin can manage lead sources and imports" }, 403);
+      return json(
+        { error: "Only Admin can manage lead sources and imports" },
+        403,
+      );
     }
     if (!clientIp) return json({ error: "CRM network access required" }, 403);
-    const requestedCompanyId = typeof body.company_id === "string" ? body.company_id : null;
-    const { data: actorContext, error: contextError } = await admin.rpc("crm_service_actor_context", {
-      p_actor_id: actorId, p_ip: clientIp, p_requested_company_id: requestedCompanyId,
-    });
+    const requestedCompanyId =
+      typeof body.company_id === "string" ? body.company_id : null;
+    const { data: actorContext, error: contextError } = await admin.rpc(
+      "crm_service_actor_context",
+      {
+        p_actor_id: actorId,
+        p_ip: clientIp,
+        p_requested_company_id: requestedCompanyId,
+      },
+    );
     const companyId = String(actorContext?.company_id || "");
-    if (contextError || !companyId) return json({ error: contextError?.message || "CRM company access could not be resolved" }, 403);
+    if (contextError || !companyId)
+      return json(
+        {
+          error:
+            contextError?.message || "CRM company access could not be resolved",
+        },
+        403,
+      );
 
     if (action === "dashboard") {
       const page = Math.max(0, Math.min(1000, Number(body.page) || 0));
-      const status = ["new", "inviting", "registered", "existing"].includes(String(body.status)) ? String(body.status) : null;
-      const search = String(body.search || "").trim().slice(0, 100);
+      const status = ["new", "inviting", "registered", "existing"].includes(
+        String(body.status),
+      )
+        ? String(body.status)
+        : null;
+      const search = String(body.search || "")
+        .trim()
+        .slice(0, 100);
       const officeId = String(body.office_id || "all");
-      const phoneFilter = ["all", "valid", "incorrect", "routing_review"].includes(String(body.phone_filter))
-        ? String(body.phone_filter) : "all";
-      const dateFrom = body.date_from == null || body.date_from === "" ? null : String(body.date_from);
-      const dateTo = body.date_to == null || body.date_to === "" ? null : String(body.date_to);
+      const phoneFilter = [
+        "all",
+        "valid",
+        "incorrect",
+        "routing_review",
+      ].includes(String(body.phone_filter))
+        ? String(body.phone_filter)
+        : "all";
+      const dateFrom =
+        body.date_from == null || body.date_from === ""
+          ? null
+          : String(body.date_from);
+      const dateTo =
+        body.date_to == null || body.date_to === ""
+          ? null
+          : String(body.date_to);
+      const sourceFilter = String(body.source_filter || "all");
       const assigneeId = String(body.assignee_id || "all");
       // A Desk Manager's unfiltered view is still scoped to that manager's
       // team. Admin/Workflow users retain the genuinely company-wide option.
-      const effectiveAssigneeId = actorRole === "desk_manager" && assigneeId === "all"
-        ? actorId
-        : assigneeId;
-      const disposition = ["new", "no_answer", "call_back", "low_potential", "no_money", "wrong_number", "ftd"].includes(String(body.disposition))
-        ? String(body.disposition) : null;
-      if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId)) return json({ error: "Select a valid Office filter" }, 400);
-      if (assigneeId !== "all" && !uuid(assigneeId)) return json({ error: "Select a valid assignee filter" }, 400);
-      if (!isoDate(dateFrom) || !isoDate(dateTo)) {
-        return json({ error: "Select a valid received date range" }, 400);
+      const effectiveAssigneeId =
+        actorRole === "desk_manager" && assigneeId === "all"
+          ? actorId
+          : assigneeId;
+      const disposition = [
+        "new",
+        "no_answer",
+        "call_back",
+        "low_potential",
+        "no_money",
+        "wrong_number",
+        "ftd",
+      ].includes(String(body.disposition))
+        ? String(body.disposition)
+        : null;
+      if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId))
+        return json({ error: "Select a valid Office filter" }, 400);
+      if (assigneeId !== "all" && !uuid(assigneeId))
+        return json({ error: "Select a valid assignee filter" }, 400);
+      if (
+        sourceFilter !== "all" &&
+        !["kind:affiliate_api", "kind:google_sheet", "kind:file"].includes(
+          sourceFilter,
+        ) &&
+        !(sourceFilter.startsWith("source:") && uuid(sourceFilter.slice(7)))
+      ) {
+        return json({ error: "Select a valid lead source" }, 400);
       }
-      if (dateFrom && dateTo && dateFrom > dateTo) return json({ error: "Received from date must be before received to date" }, 400);
+      if (!isoDate(dateFrom) || !isoDate(dateTo)) {
+        return json({ error: "Select a valid lead creation date range" }, 400);
+      }
+      if (dateFrom && dateTo && dateFrom > dateTo)
+        return json(
+          { error: "Created from date must be before created to date" },
+          400,
+        );
       const dateToExclusive = dateTo
-        ? new Date(Date.parse(`${dateTo}T00:00:00.000Z`) + 86_400_000).toISOString()
+        ? new Date(
+            Date.parse(`${dateTo}T00:00:00.000Z`) + 86_400_000,
+          ).toISOString()
         : null;
       let assigneePageIds: string[] | null = null;
       let assigneeTotal: number | null = null;
@@ -449,74 +881,187 @@ Deno.serve(async request => {
             p_phone_filter: phoneFilter,
             p_date_from: dateFrom,
             p_date_to: dateTo,
+            p_source_filter: sourceFilter,
           },
         );
-        if (assigneeError) return json({ error: assigneeError.message || "Assignee filter could not be applied" }, 400);
-        const filteredPage = (assigneePage || {}) as { lead_ids?: unknown; total?: unknown };
+        if (assigneeError)
+          return json(
+            {
+              error:
+                assigneeError.message || "Assignee filter could not be applied",
+            },
+            400,
+          );
+        const filteredPage = (assigneePage || {}) as {
+          lead_ids?: unknown;
+          total?: unknown;
+        };
         assigneePageIds = Array.isArray(filteredPage.lead_ids)
           ? filteredPage.lead_ids.map(String).filter(uuid)
           : [];
         assigneeTotal = Math.max(0, Number(filteredPage.total) || 0);
       }
-      let query = admin.from("crm_leads").select("id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,disposition_status,disposition_changed_at,disposition_changed_by,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata,phone_e164,phone_country_code,phone_calling_code,phone_validation_status,phone_validation_reason,phone_routing_status,phone_routed_at", { count: "exact" })
-        .eq("company_id", companyId).order("created_at", { ascending: false }).order("id", { ascending: false });
-      query = assigneePageIds === null
-        ? query.range(page * 50, page * 50 + 49)
-        : query.in("id", assigneePageIds.length ? assigneePageIds : ["00000000-0000-0000-0000-000000000000"]);
-      const deskOfficeId = actorRole === "desk_manager" ? String(profile.office_id || "00000000-0000-0000-0000-000000000000") : null;
+      let query = admin
+        .from("crm_leads")
+        .select(
+          "id,email,first_name,last_name,phone,country,campaign,notes,source_id,source_kind,source_name,status,disposition_status,disposition_changed_at,disposition_changed_by,registered_user_id,registration_error,last_registration_attempt_at,created_at,invited_at,office_id,source_metadata,phone_e164,phone_country_code,phone_calling_code,phone_validation_status,phone_validation_reason,phone_routing_status,phone_routed_at",
+          { count: "exact" },
+        )
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
+      query =
+        assigneePageIds === null
+          ? query.range(page * 50, page * 50 + 49)
+          : query.in(
+              "id",
+              assigneePageIds.length
+                ? assigneePageIds
+                : ["00000000-0000-0000-0000-000000000000"],
+            );
+      const deskOfficeId =
+        actorRole === "desk_manager"
+          ? String(profile.office_id || "00000000-0000-0000-0000-000000000000")
+          : null;
       if (deskOfficeId) query = query.eq("office_id", deskOfficeId);
       else if (officeId === "unassigned") query = query.is("office_id", null);
       else if (officeId !== "all") query = query.eq("office_id", officeId);
       if (status) query = query.eq("status", status);
       if (disposition) query = query.eq("disposition_status", disposition);
       if (search) query = query.ilike("email", `%${search}%`);
-      if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
+      if (dateFrom)
+        query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
       if (dateToExclusive) query = query.lt("created_at", dateToExclusive);
-      if (phoneFilter === "valid") query = query.eq("phone_validation_status", "valid");
-      else if (phoneFilter === "incorrect") query = query.in("phone_validation_status", ["invalid", "unsupported", "missing"]);
-      else if (phoneFilter === "routing_review") query = query.in("phone_routing_status", ["no_office", "no_desk_manager"]);
+      if (sourceFilter.startsWith("source:"))
+        query = query.eq("source_id", sourceFilter.slice(7));
+      else if (sourceFilter.startsWith("kind:"))
+        query = query.eq("source_kind", sourceFilter.slice(5));
+      if (phoneFilter === "valid")
+        query = query.eq("phone_validation_status", "valid");
+      else if (phoneFilter === "incorrect")
+        query = query.in("phone_validation_status", [
+          "invalid",
+          "unsupported",
+          "missing",
+        ]);
+      else if (phoneFilter === "routing_review")
+        query = query.in("phone_routing_status", [
+          "no_office",
+          "no_desk_manager",
+        ]);
 
-      let incorrectCountQuery = admin.from("crm_leads").select("id", { count: "exact", head: true })
-        .eq("company_id", companyId).in("phone_validation_status", ["invalid", "unsupported", "missing"]);
-      let routingCountQuery = admin.from("crm_leads").select("id", { count: "exact", head: true })
-        .eq("company_id", companyId).in("phone_routing_status", ["no_office", "no_desk_manager"]);
+      let incorrectCountQuery = admin
+        .from("crm_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId)
+        .in("phone_validation_status", ["invalid", "unsupported", "missing"]);
+      let routingCountQuery = admin
+        .from("crm_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId)
+        .in("phone_routing_status", ["no_office", "no_desk_manager"]);
       if (deskOfficeId) {
         incorrectCountQuery = incorrectCountQuery.eq("office_id", deskOfficeId);
         routingCountQuery = routingCountQuery.eq("office_id", deskOfficeId);
       }
-      let officeQuery = admin.from("crm_offices").select("id,name,code,status").eq("company_id", companyId).order("name");
+      let officeQuery = admin
+        .from("crm_offices")
+        .select("id,name,code,status")
+        .eq("company_id", companyId)
+        .order("name");
       if (deskOfficeId) officeQuery = officeQuery.eq("id", deskOfficeId);
-      let ownerQuery = admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)")
-        .in("role", isAdmin ? ["agent", "retention"] : ["agent"]).eq("users.company_id", companyId);
+      let ownerQuery = admin
+        .from("crm_staff_roles")
+        .select(
+          "user_id,role,users!inner(email,first_name,last_name,office_id,company_id)",
+        )
+        .in("role", isAdmin ? ["agent", "retention"] : ["agent"])
+        .eq("users.company_id", companyId);
       if (deskOfficeId) {
-        const { data: assignments, error: assignmentError } = await admin.from("crm_agent_desk_assignments")
-          .select("agent_id").eq("desk_manager_id", actorId);
-        if (assignmentError) throw new Error(`Could not load desk Agents: ${assignmentError.message}`);
-        const deskAgentIds = ((assignments || []) as Array<{ agent_id: string }>).map(row => String(row.agent_id));
-        ownerQuery = ownerQuery.eq("users.office_id", deskOfficeId).in(
-          "user_id",
-          deskAgentIds.length ? deskAgentIds : ["00000000-0000-0000-0000-000000000000"],
-        );
+        const { data: assignments, error: assignmentError } = await admin
+          .from("crm_agent_desk_assignments")
+          .select("agent_id")
+          .eq("desk_manager_id", actorId);
+        if (assignmentError)
+          throw new Error(
+            `Could not load desk Agents: ${assignmentError.message}`,
+          );
+        const deskAgentIds = (
+          (assignments || []) as Array<{ agent_id: string }>
+        ).map((row) => String(row.agent_id));
+        ownerQuery = ownerQuery
+          .eq("users.office_id", deskOfficeId)
+          .in(
+            "user_id",
+            deskAgentIds.length
+              ? deskAgentIds
+              : ["00000000-0000-0000-0000-000000000000"],
+          );
       }
-      const [leadResult, sourceResult, ownerResult, officeResult, deskManagerResult, incorrectCountResult, routingCountResult] = await Promise.all([
+      const [
+        leadResult,
+        sourceResult,
+        sourceOptionResult,
+        ownerResult,
+        officeResult,
+        deskManagerResult,
+        incorrectCountResult,
+        routingCountResult,
+      ] = await Promise.all([
         query,
-        admin.from("crm_lead_sources").select("id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
+        admin
+          .from("crm_lead_sources")
+          .select(
+            "id,name,kind,sheet_url,active,last_synced_at,last_sync_error,created_at",
+          )
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        admin
+          .from("crm_lead_sources")
+          .select("id,name,kind")
+          .eq("company_id", companyId)
+          .order("name")
+          .limit(200),
         ownerQuery,
         officeQuery,
-        admin.from("crm_staff_roles").select("user_id,role,users!inner(email,first_name,last_name,office_id,company_id)")
-          .eq("role", "desk_manager").eq("users.company_id", companyId).order("user_id", { ascending: true }),
+        admin
+          .from("crm_staff_roles")
+          .select(
+            "user_id,role,users!inner(email,first_name,last_name,office_id,company_id)",
+          )
+          .eq("role", "desk_manager")
+          .eq("users.company_id", companyId)
+          .order("user_id", { ascending: true }),
         incorrectCountQuery,
         routingCountQuery,
       ]);
-      if (leadResult.error || sourceResult.error || ownerResult.error || officeResult.error || deskManagerResult.error || incorrectCountResult.error || routingCountResult.error) {
-        throw new Error(leadResult.error?.message || sourceResult.error?.message || ownerResult.error?.message || officeResult.error?.message || deskManagerResult.error?.message || incorrectCountResult.error?.message || routingCountResult.error?.message);
+      if (
+        leadResult.error ||
+        sourceResult.error ||
+        sourceOptionResult.error ||
+        ownerResult.error ||
+        officeResult.error ||
+        deskManagerResult.error ||
+        incorrectCountResult.error ||
+        routingCountResult.error
+      ) {
+        throw new Error(
+          leadResult.error?.message ||
+            sourceResult.error?.message ||
+            sourceOptionResult.error?.message ||
+            ownerResult.error?.message ||
+            officeResult.error?.message ||
+            deskManagerResult.error?.message ||
+            incorrectCountResult.error?.message ||
+            routingCountResult.error?.message,
+        );
       }
       let incorrectPhoneCount = incorrectCountResult.count || 0;
       let routingReviewCount = routingCountResult.count || 0;
       if (actorRole === "desk_manager") {
-        const scopedCount = (phone: "incorrect" | "routing_review") => admin.rpc(
-          "crm_service_filter_lead_ids_by_assignee",
-          {
+        const scopedCount = (phone: "incorrect" | "routing_review") =>
+          admin.rpc("crm_service_filter_lead_ids_by_assignee", {
             p_actor_id: actorId,
             p_company_id: companyId,
             p_assignee_id: actorId,
@@ -528,149 +1073,331 @@ Deno.serve(async request => {
             p_phone_filter: phone,
             p_date_from: null,
             p_date_to: null,
-          },
-        );
+            p_source_filter: "all",
+          });
         const [incorrectScoped, routingScoped] = await Promise.all([
           scopedCount("incorrect"),
           scopedCount("routing_review"),
         ]);
         if (incorrectScoped.error || routingScoped.error) {
-          throw new Error(incorrectScoped.error?.message || routingScoped.error?.message || "Lead counters could not be scoped");
-        }
-        incorrectPhoneCount = Math.max(0, Number((incorrectScoped.data as { total?: unknown } | null)?.total) || 0);
-        routingReviewCount = Math.max(0, Number((routingScoped.data as { total?: unknown } | null)?.total) || 0);
-      }
-      const leadRows = (leadResult.data || []) as Array<Record<string, unknown> & { registered_user_id?: string | null }>;
-      const registeredIds = Array.from(new Set(leadRows.map(lead => lead.registered_user_id).filter((id): id is string => Boolean(id))));
-      const promotionByUserId = new Map<string, boolean>();
-      const agentByClientId = new Map<string, string>();
-      const retentionByClientId = new Map<string, string>();
-      const assignedUserById = new Map<string, { id: string; email: string | null; first_name: string | null; last_name: string | null }>();
-      if (registeredIds.length) {
-        const [registeredUserResult, agentAssignmentResult, retentionAssignmentResult] = await Promise.all([
-          admin.from("users").select("id,is_promoted").eq("company_id", companyId).in("id", registeredIds),
-          admin.from("crm_client_agent_assignments").select("client_id,agent_id").in("client_id", registeredIds),
-          admin.from("crm_client_retention_assignments").select("client_id,retention_id").in("client_id", registeredIds),
-        ]);
-        if (registeredUserResult.error || agentAssignmentResult.error || retentionAssignmentResult.error) {
           throw new Error(
-            registeredUserResult.error?.message
-              || agentAssignmentResult.error?.message
-              || retentionAssignmentResult.error?.message
-              || "Could not load lead assignments",
+            incorrectScoped.error?.message ||
+              routingScoped.error?.message ||
+              "Lead counters could not be scoped",
+          );
+        }
+        incorrectPhoneCount = Math.max(
+          0,
+          Number((incorrectScoped.data as { total?: unknown } | null)?.total) ||
+            0,
+        );
+        routingReviewCount = Math.max(
+          0,
+          Number((routingScoped.data as { total?: unknown } | null)?.total) ||
+            0,
+        );
+      }
+      const leadRows = (leadResult.data || []) as Array<
+        Record<string, unknown> & { registered_user_id?: string | null }
+      >;
+      const registeredIds = Array.from(
+        new Set(
+          leadRows
+            .map((lead) => lead.registered_user_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const promotionByUserId = new Map<string, boolean>();
+      const agentByClientId = new Map<
+        string,
+        { user_id: string; assigned_at: string | null }
+      >();
+      const retentionByClientId = new Map<
+        string,
+        { user_id: string; assigned_at: string | null }
+      >();
+      const assignedUserById = new Map<
+        string,
+        {
+          id: string;
+          email: string | null;
+          first_name: string | null;
+          last_name: string | null;
+        }
+      >();
+      if (registeredIds.length) {
+        const [
+          registeredUserResult,
+          agentAssignmentResult,
+          retentionAssignmentResult,
+        ] = await Promise.all([
+          admin
+            .from("users")
+            .select("id,is_promoted")
+            .eq("company_id", companyId)
+            .in("id", registeredIds),
+          admin
+            .from("crm_client_agent_assignments")
+            .select("client_id,agent_id,assigned_at")
+            .in("client_id", registeredIds),
+          admin
+            .from("crm_client_retention_assignments")
+            .select("client_id,retention_id,assigned_at")
+            .in("client_id", registeredIds),
+        ]);
+        if (
+          registeredUserResult.error ||
+          agentAssignmentResult.error ||
+          retentionAssignmentResult.error
+        ) {
+          throw new Error(
+            registeredUserResult.error?.message ||
+              agentAssignmentResult.error?.message ||
+              retentionAssignmentResult.error?.message ||
+              "Could not load lead assignments",
           );
         }
         const registeredUsers = registeredUserResult.data || [];
-        for (const user of registeredUsers || []) promotionByUserId.set(String(user.id), user.is_promoted === true);
+        for (const user of registeredUsers || [])
+          promotionByUserId.set(String(user.id), user.is_promoted === true);
         for (const assignment of agentAssignmentResult.data || []) {
-          agentByClientId.set(String(assignment.client_id), String(assignment.agent_id));
+          agentByClientId.set(String(assignment.client_id), {
+            user_id: String(assignment.agent_id),
+            assigned_at:
+              assignment.assigned_at == null
+                ? null
+                : String(assignment.assigned_at),
+          });
         }
         for (const assignment of retentionAssignmentResult.data || []) {
-          retentionByClientId.set(String(assignment.client_id), String(assignment.retention_id));
+          retentionByClientId.set(String(assignment.client_id), {
+            user_id: String(assignment.retention_id),
+            assigned_at:
+              assignment.assigned_at == null
+                ? null
+                : String(assignment.assigned_at),
+          });
         }
-        const assignedUserIds = Array.from(new Set([
-          ...agentByClientId.values(),
-          ...retentionByClientId.values(),
-        ]));
+        const assignedUserIds = Array.from(
+          new Set([
+            ...Array.from(
+              agentByClientId.values(),
+              (assignment) => assignment.user_id,
+            ),
+            ...Array.from(
+              retentionByClientId.values(),
+              (assignment) => assignment.user_id,
+            ),
+          ]),
+        );
         if (assignedUserIds.length) {
-          const { data: assignedUsers, error: assignedUserError } = await admin.from("users")
-            .select("id,email,first_name,last_name").eq("company_id", companyId).in("id", assignedUserIds);
-          if (assignedUserError) throw new Error(`Could not load assigned users: ${assignedUserError.message}`);
-          for (const user of assignedUsers || []) assignedUserById.set(String(user.id), {
-            id: String(user.id),
-            email: user.email == null ? null : String(user.email),
-            first_name: user.first_name == null ? null : String(user.first_name),
-            last_name: user.last_name == null ? null : String(user.last_name),
-          });
+          const { data: assignedUsers, error: assignedUserError } = await admin
+            .from("users")
+            .select("id,email,first_name,last_name")
+            .eq("company_id", companyId)
+            .in("id", assignedUserIds);
+          if (assignedUserError)
+            throw new Error(
+              `Could not load assigned users: ${assignedUserError.message}`,
+            );
+          for (const user of assignedUsers || [])
+            assignedUserById.set(String(user.id), {
+              id: String(user.id),
+              email: user.email == null ? null : String(user.email),
+              first_name:
+                user.first_name == null ? null : String(user.first_name),
+              last_name: user.last_name == null ? null : String(user.last_name),
+            });
         }
       }
-      const userName = (user: { email?: unknown; first_name?: unknown; last_name?: unknown } | null | undefined) =>
-        `${String(user?.first_name || "")} ${String(user?.last_name || "")}`.trim()
-          || String(user?.email || "").trim()
-          || "Unnamed user";
-      const deskManagerByOfficeId = new Map<string, { user_id: string; name: string }>();
-      for (const manager of (deskManagerResult.data || []) as Array<{ user_id: unknown; users?: unknown }>) {
-        const relatedUsers = Array.isArray(manager.users) ? manager.users[0] : manager.users;
-        const deskUser = relatedUsers && typeof relatedUsers === "object"
-          ? relatedUsers as { email?: unknown; first_name?: unknown; last_name?: unknown; office_id?: unknown }
-          : null;
-        const officeId = String(deskUser?.office_id || "");
-        if (officeId && (
-          !deskManagerByOfficeId.has(officeId)
-          || String(manager.user_id) === effectiveAssigneeId
-        )) {
-          deskManagerByOfficeId.set(officeId, {
-            user_id: String(manager.user_id),
-            name: userName(deskUser),
-          });
-        }
-      }
+      const userName = (
+        user:
+          | { email?: unknown; first_name?: unknown; last_name?: unknown }
+          | null
+          | undefined,
+      ) =>
+        `${String(user?.first_name || "")} ${String(user?.last_name || "")}`.trim() ||
+        String(user?.email || "").trim() ||
+        "Unnamed user";
       return json({
-        leads: leadRows.map(lead => {
-          const clientId = lead.registered_user_id ? String(lead.registered_user_id) : null;
-          const promoted = clientId ? promotionByUserId.get(clientId) ?? null : null;
-          const agentId = clientId ? agentByClientId.get(clientId) || null : null;
-          const retentionId = clientId ? retentionByClientId.get(clientId) || null : null;
-          const directOwnerId = promoted === true
-            ? retentionId
-            : promoted === false
-              ? agentId
-              : retentionId || agentId;
-          const directOwnerRole = directOwnerId === retentionId ? "retention" : directOwnerId ? "agent" : null;
-          const directOwner = directOwnerId ? assignedUserById.get(directOwnerId) : null;
-          const deskManager = !directOwnerId && promoted !== true && lead.office_id
-            ? deskManagerByOfficeId.get(String(lead.office_id))
+        leads: leadRows.map((lead) => {
+          const clientId = lead.registered_user_id
+            ? String(lead.registered_user_id)
             : null;
-          const assignee = directOwnerId && directOwner
-            ? { user_id: directOwnerId, name: userName(directOwner), role: directOwnerRole }
-            : deskManager
-              ? { ...deskManager, role: "desk_manager" }
+          const promoted = clientId
+            ? (promotionByUserId.get(clientId) ?? null)
+            : null;
+          const agentAssignment = clientId
+            ? agentByClientId.get(clientId) || null
+            : null;
+          const retentionAssignment = clientId
+            ? retentionByClientId.get(clientId) || null
+            : null;
+          const agentId = agentAssignment?.user_id || null;
+          const retentionId = retentionAssignment?.user_id || null;
+          const directOwnerId =
+            promoted === true
+              ? retentionId
+              : promoted === false
+                ? agentId
+                : retentionId || agentId;
+          const directOwnerRole =
+            directOwnerId === retentionId
+              ? "retention"
+              : directOwnerId
+                ? "agent"
+                : null;
+          const directOwner = directOwnerId
+            ? assignedUserById.get(directOwnerId)
+            : null;
+          const assignedAt =
+            directOwnerRole === "retention"
+              ? retentionAssignment?.assigned_at || null
+              : agentAssignment?.assigned_at || null;
+          const assignee =
+            directOwnerId && directOwner
+              ? {
+                  user_id: directOwnerId,
+                  name: userName(directOwner),
+                  role: directOwnerRole,
+                  assigned_at: assignedAt,
+                }
               : null;
           return { ...lead, registered_is_promoted: promoted, assignee };
-        }), total: assigneeTotal ?? leadResult.count ?? 0,
-        sources: isAdmin ? sourceResult.data || [] : [], owners: ownerResult.data || [], offices: officeResult.data || [],
-        desk_managers: deskManagerResult.data || [], incorrect_phone_count: incorrectPhoneCount,
-        routing_review_count: routingReviewCount, actor_role: actorRole, can_manage_sources: isAdmin,
+        }),
+        total: assigneeTotal ?? leadResult.count ?? 0,
+        sources: isAdmin ? sourceResult.data || [] : [],
+        owners: ownerResult.data || [],
+        offices: officeResult.data || [],
+        source_options: [
+          {
+            value: "kind:affiliate_api",
+            label: "Affiliate / API",
+            kind: "affiliate_api",
+          },
+          {
+            value: "kind:google_sheet",
+            label: "Google Sheet",
+            kind: "google_sheet",
+          },
+          { value: "kind:file", label: "File import", kind: "file" },
+          ...(sourceOptionResult.data || []).map(
+            (source: { id: unknown; name: unknown; kind: unknown }) => ({
+              value: `source:${String(source.id)}`,
+              label: String(source.name || "Configured source"),
+              kind: String(source.kind || "other"),
+            }),
+          ),
+        ],
+        desk_managers: deskManagerResult.data || [],
+        incorrect_phone_count: incorrectPhoneCount,
+        routing_review_count: routingReviewCount,
+        actor_role: actorRole,
+        can_manage_sources: isAdmin,
       });
     }
 
+    if (action === "assignment_history") {
+      if (!uuid(body.lead_id))
+        return json({ error: "Select a valid lead" }, 400);
+      const { data, error } = await admin.rpc(
+        "crm_service_get_lead_assignment_history",
+        {
+          p_actor_id: actorId,
+          p_company_id: companyId,
+          p_lead_id: String(body.lead_id),
+        },
+      );
+      if (error)
+        return json(
+          { error: error.message || "Assignment history could not be loaded" },
+          403,
+        );
+      return json({ history: Array.isArray(data) ? data : [] });
+    }
+
     if (action === "bulk_delete_leads") {
-      if (!isAdmin) return json({ error: "Only Admin can delete Lead Inbox records" }, 403);
-      if (!Array.isArray(body.lead_ids) || body.lead_ids.length < 1 || body.lead_ids.length > 50) {
-        return json({ error: "Select between 1 and 50 leads from the current page" }, 400);
+      if (!isAdmin)
+        return json({ error: "Only Admin can delete Lead Inbox records" }, 403);
+      if (
+        !Array.isArray(body.lead_ids) ||
+        body.lead_ids.length < 1 ||
+        body.lead_ids.length > 50
+      ) {
+        return json(
+          { error: "Select between 1 and 50 leads from the current page" },
+          400,
+        );
       }
-      const leadIds = Array.from(new Set(body.lead_ids.map(value => String(value))));
-      if (leadIds.length !== body.lead_ids.length || leadIds.some(id => !uuid(id))) {
-        return json({ error: "The selected leads are invalid or duplicated" }, 400);
+      const leadIds = Array.from(
+        new Set(body.lead_ids.map((value) => String(value))),
+      );
+      if (
+        leadIds.length !== body.lead_ids.length ||
+        leadIds.some((id) => !uuid(id))
+      ) {
+        return json(
+          { error: "The selected leads are invalid or duplicated" },
+          400,
+        );
       }
-      const { data: selected, error: selectedError } = await admin.from("crm_leads")
-        .select("id,status").eq("company_id", companyId).in("id", leadIds);
+      const { data: selected, error: selectedError } = await admin
+        .from("crm_leads")
+        .select("id,status")
+        .eq("company_id", companyId)
+        .in("id", leadIds);
       if (selectedError) throw selectedError;
-      const available = new Map((selected || []).map((lead: { id: unknown; status: unknown }) => [String(lead.id), String(lead.status)]));
+      const available = new Map(
+        (selected || []).map((lead: { id: unknown; status: unknown }) => [
+          String(lead.id),
+          String(lead.status),
+        ]),
+      );
       const failures: Array<{ lead_id: string; error: string }> = [];
       const deletableIds: string[] = [];
       for (const leadId of leadIds) {
         const leadStatus = available.get(leadId);
-        if (!leadStatus) failures.push({ lead_id: leadId, error: "Lead no longer exists or is outside this company" });
-        else if (leadStatus === "inviting") failures.push({ lead_id: leadId, error: "Account creation is currently in progress" });
+        if (!leadStatus)
+          failures.push({
+            lead_id: leadId,
+            error: "Lead no longer exists or is outside this company",
+          });
+        else if (leadStatus === "inviting")
+          failures.push({
+            lead_id: leadId,
+            error: "Account creation is currently in progress",
+          });
         else deletableIds.push(leadId);
       }
       let deletedIds: string[] = [];
       if (deletableIds.length) {
-        const { data: deleted, error: deleteError } = await admin.from("crm_leads").delete()
-          .eq("company_id", companyId).in("id", deletableIds).select("id");
+        const { data: deleted, error: deleteError } = await admin
+          .from("crm_leads")
+          .delete()
+          .eq("company_id", companyId)
+          .in("id", deletableIds)
+          .select("id");
         if (deleteError) throw deleteError;
-        deletedIds = (deleted || []).map((lead: { id: unknown }) => String(lead.id));
+        deletedIds = (deleted || []).map((lead: { id: unknown }) =>
+          String(lead.id),
+        );
         const deletedSet = new Set(deletedIds);
         for (const leadId of deletableIds) {
-          if (!deletedSet.has(leadId)) failures.push({ lead_id: leadId, error: "Lead could not be deleted" });
+          if (!deletedSet.has(leadId))
+            failures.push({
+              lead_id: leadId,
+              error: "Lead could not be deleted",
+            });
         }
         await admin.from("admin_action_logs").insert({
           admin_user_id: actorId,
           company_id: companyId,
           action: "crm_leads_bulk_deleted",
           before_data: { lead_ids: deletedIds },
-          after_data: { deleted_leads: deletedIds.length, client_accounts_preserved: true },
+          after_data: {
+            deleted_leads: deletedIds.length,
+            client_accounts_preserved: true,
+          },
           reason: "Bulk deleted Lead Inbox records",
         });
       }
@@ -678,147 +1405,313 @@ Deno.serve(async request => {
     }
 
     if (action === "set_lead_office") {
-      if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
+      if (!uuid(body.lead_id))
+        return json({ error: "Select a valid lead" }, 400);
       const officeId = body.office_id ? String(body.office_id) : null;
-      if (officeId && !uuid(officeId)) return json({ error: "Select a valid Office" }, 400);
+      if (officeId && !uuid(officeId))
+        return json({ error: "Select a valid Office" }, 400);
       const [{ data: scopedLead }, { data: scopedOffice }] = await Promise.all([
-        admin.from("crm_leads").select("id").eq("id", String(body.lead_id)).eq("company_id", companyId).maybeSingle(),
-        officeId ? admin.from("crm_offices").select("id").eq("id", officeId).eq("company_id", companyId).maybeSingle() : Promise.resolve({ data: null }),
+        admin
+          .from("crm_leads")
+          .select("id")
+          .eq("id", String(body.lead_id))
+          .eq("company_id", companyId)
+          .maybeSingle(),
+        officeId
+          ? admin
+              .from("crm_offices")
+              .select("id")
+              .eq("id", officeId)
+              .eq("company_id", companyId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
       ]);
-      if (!scopedLead || (officeId && !scopedOffice)) return json({ error: "Lead or Office belongs to another company" }, 403);
-      const { error } = await admin.rpc("crm_set_lead_office_for_actor", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_office_id: officeId });
+      if (!scopedLead || (officeId && !scopedOffice))
+        return json(
+          { error: "Lead or Office belongs to another company" },
+          403,
+        );
+      const { error } = await admin.rpc("crm_set_lead_office_for_actor", {
+        p_actor_id: actorId,
+        p_lead_id: String(body.lead_id),
+        p_office_id: officeId,
+      });
       if (error) throw error;
       return json({ success: true });
     }
 
     if (action === "set_lead_disposition") {
-      if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
+      if (!uuid(body.lead_id))
+        return json({ error: "Select a valid lead" }, 400);
       const disposition = String(body.disposition || "");
-      if (!["new", "no_answer", "call_back", "low_potential", "no_money", "wrong_number", "ftd"].includes(disposition)) {
+      if (
+        ![
+          "new",
+          "no_answer",
+          "call_back",
+          "low_potential",
+          "no_money",
+          "wrong_number",
+          "ftd",
+        ].includes(disposition)
+      ) {
         return json({ error: "Select a valid lead status" }, 400);
       }
-      const { data: scopedLead } = await admin.from("crm_leads").select("id")
-        .eq("id", String(body.lead_id)).eq("company_id", companyId).maybeSingle();
-      if (!scopedLead) return json({ error: "Lead belongs to another company or no longer exists" }, 403);
+      const { data: scopedLead } = await admin
+        .from("crm_leads")
+        .select("id")
+        .eq("id", String(body.lead_id))
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (!scopedLead)
+        return json(
+          { error: "Lead belongs to another company or no longer exists" },
+          403,
+        );
       const { error } = await admin.rpc("crm_set_lead_disposition_for_actor", {
-        p_actor_id: actorId, p_lead_id: String(body.lead_id), p_status: disposition,
+        p_actor_id: actorId,
+        p_lead_id: String(body.lead_id),
+        p_status: disposition,
       });
-      if (error) return json({ error: error.message || "Lead status could not be updated" }, 400);
+      if (error)
+        return json(
+          { error: error.message || "Lead status could not be updated" },
+          400,
+        );
       return json({ success: true });
     }
 
     if (action === "set_lead_owner") {
-      if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
+      if (!uuid(body.lead_id))
+        return json({ error: "Select a valid lead" }, 400);
       const ownerRole = String(body.owner_role || "");
       const ownerId = body.owner_id == null ? null : String(body.owner_id);
       if (!["agent", "retention", "unassigned"].includes(ownerRole)) {
         return json({ error: "Select a valid assignment type" }, 400);
       }
-      if ((ownerRole === "unassigned" && ownerId !== null) || (ownerRole !== "unassigned" && !uuid(ownerId))) {
+      if (
+        (ownerRole === "unassigned" && ownerId !== null) ||
+        (ownerRole !== "unassigned" && !uuid(ownerId))
+      ) {
         return json({ error: "Select a valid assignment owner" }, 400);
       }
-      const { error } = await admin.rpc("crm_service_set_lead_owner_for_actor", {
-        p_actor_id: actorId,
-        p_company_id: companyId,
-        p_lead_id: String(body.lead_id),
-        p_owner_role: ownerRole,
-        p_owner_id: ownerId,
-      });
-      if (error) return json({ error: error.message || "Lead assignment could not be updated" }, 400);
+      const { error } = await admin.rpc(
+        "crm_service_set_lead_owner_for_actor",
+        {
+          p_actor_id: actorId,
+          p_company_id: companyId,
+          p_lead_id: String(body.lead_id),
+          p_owner_role: ownerRole,
+          p_owner_id: ownerId,
+        },
+      );
+      if (error)
+        return json(
+          { error: error.message || "Lead assignment could not be updated" },
+          400,
+        );
       return json({ success: true });
     }
 
     if (action === "create_affiliate") {
-      const name = String(body.name || "").trim().slice(0, 100);
+      const name = String(body.name || "")
+        .trim()
+        .slice(0, 100);
       if (!name) return json({ error: "Enter an affiliate name" }, 400);
       const apiKey = newAffiliateKey();
-      const { data, error } = await admin.from("crm_lead_sources").insert({ name, company_id: companyId, kind: "affiliate_api", api_key_hash: await keyHash(apiKey), created_by: actorId }).select("id,name").single();
+      const { data, error } = await admin
+        .from("crm_lead_sources")
+        .insert({
+          name,
+          company_id: companyId,
+          kind: "affiliate_api",
+          api_key_hash: await keyHash(apiKey),
+          created_by: actorId,
+        })
+        .select("id,name")
+        .single();
       if (error) throw error;
-      await admin.from("admin_action_logs").insert({ admin_user_id: actorId, action: "crm_affiliate_created", after_data: { source_id: data.id, name }, reason: "Created affiliate lead connection" });
+      await admin.from("admin_action_logs").insert({
+        admin_user_id: actorId,
+        action: "crm_affiliate_created",
+        after_data: { source_id: data.id, name },
+        reason: "Created affiliate lead connection",
+      });
       return json({ source: data, api_key: apiKey });
     }
 
     if (action === "create_sheet") {
-      const name = String(body.name || "").trim().slice(0, 100);
+      const name = String(body.name || "")
+        .trim()
+        .slice(0, 100);
       if (!name) return json({ error: "Enter a sheet name" }, 400);
       const sheetUrl = sheetCsvUrl(String(body.url || "").trim());
-      const { data, error } = await admin.from("crm_lead_sources").insert({ name, company_id: companyId, kind: "google_sheet", sheet_url: sheetUrl, created_by: actorId }).select("id,name,sheet_url").single();
+      const { data, error } = await admin
+        .from("crm_lead_sources")
+        .insert({
+          name,
+          company_id: companyId,
+          kind: "google_sheet",
+          sheet_url: sheetUrl,
+          created_by: actorId,
+        })
+        .select("id,name,sheet_url")
+        .single();
       if (error) throw error;
       return json({ source: data });
     }
 
     if (action === "delete_affiliate_source") {
-      if (!uuid(body.source_id)) return json({ error: "Select a valid affiliate connection" }, 400);
+      if (!uuid(body.source_id))
+        return json({ error: "Select a valid affiliate connection" }, 400);
       const { data, error } = await admin.rpc("crm_delete_affiliate_source", {
         p_actor_id: actorId,
         p_company_id: companyId,
         p_source_id: String(body.source_id),
         p_delete_leads: body.delete_leads === true,
       });
-      if (error) return json({ error: error.message || "Affiliate connection could not be deleted" }, 400);
+      if (error)
+        return json(
+          {
+            error: error.message || "Affiliate connection could not be deleted",
+          },
+          400,
+        );
       return json({ result: data });
     }
 
     if (action === "rename_affiliate_source") {
-      if (!uuid(body.source_id)) return json({ error: "Select a valid affiliate connection" }, 400);
+      if (!uuid(body.source_id))
+        return json({ error: "Select a valid affiliate connection" }, 400);
       const name = String(body.name || "").trim();
-      if (!name || name.length > 100) return json({ error: "Enter an affiliate name up to 100 characters" }, 400);
+      if (!name || name.length > 100)
+        return json(
+          { error: "Enter an affiliate name up to 100 characters" },
+          400,
+        );
       const { data, error } = await admin.rpc("crm_rename_affiliate_source", {
         p_actor_id: actorId,
         p_company_id: companyId,
         p_source_id: String(body.source_id),
         p_name: name,
       });
-      if (error) return json({ error: error.message || "Affiliate connection could not be renamed" }, 400);
+      if (error)
+        return json(
+          {
+            error: error.message || "Affiliate connection could not be renamed",
+          },
+          400,
+        );
       return json({ result: data });
     }
 
     if (["sync_sheet", "set_source_active", "rotate_key"].includes(action)) {
-      if (!uuid(body.source_id)) return json({ error: "Select a valid source" }, 400);
-      const { data: source, error } = await admin.from("crm_lead_sources").select("*").eq("id", body.source_id).eq("company_id", companyId).single();
+      if (!uuid(body.source_id))
+        return json({ error: "Select a valid source" }, 400);
+      const { data: source, error } = await admin
+        .from("crm_lead_sources")
+        .select("*")
+        .eq("id", body.source_id)
+        .eq("company_id", companyId)
+        .single();
       if (error || !source) return json({ error: "Source not found" }, 404);
       if (action === "sync_sheet") {
-        if (source.kind !== "google_sheet" || !source.active) return json({ error: "Activate a Google Sheet to sync it" }, 400);
+        if (source.kind !== "google_sheet" || !source.active)
+          return json({ error: "Activate a Google Sheet to sync it" }, 400);
         return json({ result: await syncSheet(admin, source) });
       }
       if (action === "set_source_active") {
         const active = body.active === true;
-        const { error: updateError } = await admin.from("crm_lead_sources").update({ active }).eq("id", source.id);
+        const { error: updateError } = await admin
+          .from("crm_lead_sources")
+          .update({ active })
+          .eq("id", source.id);
         if (updateError) throw updateError;
-        await admin.from("admin_action_logs").insert({ admin_user_id: actorId, action: "crm_lead_source_status", after_data: { source_id: source.id, active }, reason: "Changed lead source access" });
+        await admin.from("admin_action_logs").insert({
+          admin_user_id: actorId,
+          action: "crm_lead_source_status",
+          after_data: { source_id: source.id, active },
+          reason: "Changed lead source access",
+        });
         return json({ active });
       }
-      if (source.kind !== "affiliate_api") return json({ error: "Only affiliate keys can be rotated" }, 400);
+      if (source.kind !== "affiliate_api")
+        return json({ error: "Only affiliate keys can be rotated" }, 400);
       const apiKey = newAffiliateKey();
-      const { error: updateError } = await admin.from("crm_lead_sources").update({ api_key_hash: await keyHash(apiKey) }).eq("id", source.id);
+      const { error: updateError } = await admin
+        .from("crm_lead_sources")
+        .update({ api_key_hash: await keyHash(apiKey) })
+        .eq("id", source.id);
       if (updateError) throw updateError;
-      await admin.from("admin_action_logs").insert({ admin_user_id: actorId, action: "crm_affiliate_key_rotated", after_data: { source_id: source.id }, reason: "Rotated affiliate lead key" });
+      await admin.from("admin_action_logs").insert({
+        admin_user_id: actorId,
+        action: "crm_affiliate_key_rotated",
+        after_data: { source_id: source.id },
+        reason: "Rotated affiliate lead key",
+      });
       return json({ api_key: apiKey });
     }
 
     if (action === "import_rows") {
-      if (!Array.isArray(body.rows) || body.rows.length > 200) return json({ error: "Upload up to 200 rows per batch" }, 400);
-      const name = String(body.filename || "Imported file").trim().slice(0, 100);
-      return json({ result: await insertLeads(admin, body.rows, { id: null, kind: "file", name, companyId }) });
+      if (!Array.isArray(body.rows) || body.rows.length > 200)
+        return json({ error: "Upload up to 200 rows per batch" }, 400);
+      const name = String(body.filename || "Imported file")
+        .trim()
+        .slice(0, 100);
+      return json({
+        result: await insertLeads(admin, body.rows, {
+          id: null,
+          kind: "file",
+          name,
+          companyId,
+        }),
+      });
     }
 
     if (action === "reprocess_phone_routing") {
-      if (!isAdmin) return json({ error: "Only Admin can reprocess phone routing" }, 403);
+      if (!isAdmin)
+        return json({ error: "Only Admin can reprocess phone routing" }, 403);
       const result = await reprocessPhoneRouting(admin, companyId);
       await admin.from("admin_action_logs").insert({
-        admin_user_id: actorId, action: "crm_lead_phone_routing_reprocessed",
-        after_data: { company_id: companyId, updated: result.updated }, reason: "Revalidated and routed CRM lead phone numbers",
+        admin_user_id: actorId,
+        action: "crm_lead_phone_routing_reprocessed",
+        after_data: { company_id: companyId, updated: result.updated },
+        reason: "Revalidated and routed CRM lead phone numbers",
       });
       return json({ result });
     }
 
     if (action === "register_lead") {
-      if (!uuid(body.lead_id)) return json({ error: "Select a valid lead" }, 400);
+      if (!uuid(body.lead_id))
+        return json({ error: "Select a valid lead" }, 400);
       const ownerRole = body.owner_role ? String(body.owner_role) : null;
       const ownerId = body.owner_id ? String(body.owner_id) : null;
-      const { data: allowed, error: accessError } = await admin.rpc("crm_actor_can_manage_lead", { p_actor_id: actorId, p_lead_id: String(body.lead_id), p_agent_id: ownerId });
-      if (accessError || allowed !== true) return json({ error: "This lead is unavailable or the Agent belongs to a different Office" }, 403);
-      return json(await registerLead(admin, String(body.lead_id), actorId, companyId, ownerRole, ownerId));
+      const { data: allowed, error: accessError } = await admin.rpc(
+        "crm_actor_can_manage_lead",
+        {
+          p_actor_id: actorId,
+          p_lead_id: String(body.lead_id),
+          p_agent_id: ownerId,
+        },
+      );
+      if (accessError || allowed !== true)
+        return json(
+          {
+            error:
+              "This lead is unavailable or the Agent belongs to a different Office",
+          },
+          403,
+        );
+      return json(
+        await registerLead(
+          admin,
+          String(body.lead_id),
+          actorId,
+          companyId,
+          ownerRole,
+          ownerId,
+        ),
+      );
     }
 
     return json({ error: "Unsupported lead action" }, 400);

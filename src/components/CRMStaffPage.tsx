@@ -5,6 +5,7 @@ import {
   Bot,
   ExternalLink,
   Loader2,
+  Phone,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -151,7 +152,7 @@ function DataTable({
                       className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-300"
                     >
                       {column.endsWith("_at") && row[column]
-                        ? new Date(String(row[column])).toLocaleString('en-GB')
+                        ? new Date(String(row[column])).toLocaleString("en-GB")
                         : valueOf(row[column])}
                     </td>
                   ))}
@@ -564,6 +565,15 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                       <p className="mt-1 text-sm text-slate-400">
                         {workspace.profile.email}
                       </p>
+                      {workspace.profile.phone_number && (
+                        <a
+                          href={`tel:${workspace.profile.phone_number}`}
+                          className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-slate-200 hover:text-violet-300"
+                        >
+                          <Phone size={14} />
+                          {workspace.profile.phone_number}
+                        </a>
+                      )}
                       <p className="mt-1 font-mono text-xs text-slate-500">
                         {workspace.profile.id}
                       </p>
@@ -707,7 +717,7 @@ export default function CRMStaffPage({ role }: { role: StaffRole }) {
                                 {Number(row.amount || 0).toFixed(2)} ·{" "}
                                 {new Date(
                                   String(row.created_at),
-                                ).toLocaleString('en-GB')}
+                                ).toLocaleString("en-GB")}
                               </span>
                               <button
                                 type="button"

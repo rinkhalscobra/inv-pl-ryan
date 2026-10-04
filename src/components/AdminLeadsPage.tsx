@@ -17,6 +17,7 @@ import {
   Download,
   Upload,
   FileSpreadsheet,
+  History,
   KeyRound,
   Link2,
   Loader2,
@@ -66,6 +67,7 @@ interface Lead {
   notes: string;
   source_kind: string;
   source_name: string;
+  source_id: string | null;
   status: LeadStatus;
   registered_user_id: string | null;
   registered_is_promoted: boolean | null;
@@ -96,7 +98,24 @@ interface Lead {
     user_id: string;
     name: string;
     role: string;
+    assigned_at: string | null;
   } | null;
+}
+interface SourceOption {
+  value: string;
+  label: string;
+  kind: string;
+}
+interface AssignmentHistoryEvent {
+  id: string;
+  previous_agent_id: string | null;
+  previous_agent_name: string | null;
+  new_agent_id: string | null;
+  new_agent_name: string | null;
+  performed_by_id: string | null;
+  performed_by_name: string;
+  assigned_at: string;
+  initial_assignment: boolean;
 }
 interface Source {
   id: string;
@@ -141,6 +160,7 @@ interface Dashboard {
   owners: Owner[];
   offices: Office[];
   desk_managers: DeskManager[];
+  source_options: SourceOption[];
   incorrect_phone_count: number;
   routing_review_count: number;
   actor_role: "admin" | "workflow_manager" | "desk_manager";
@@ -183,6 +203,7 @@ const emptyDashboard: Dashboard = {
   owners: [],
   offices: [],
   desk_managers: [],
+  source_options: [],
   incorrect_phone_count: 0,
   routing_review_count: 0,
   actor_role: "admin",
@@ -494,8 +515,23 @@ const assigneeRoleLabel = (role: string) =>
 const operationError = (cause: unknown) => {
   if (cause instanceof Error) return cause.message;
   if (cause && typeof cause === "object" && "message" in cause)
-    return String((cause as { message?: unknown }).message || "The action failed");
+    return String(
+      (cause as { message?: unknown }).message || "The action failed",
+    );
   return "The action failed";
+};
+
+type CreationDatePreset =
+  "all" | "today" | "yesterday" | "last_7_days" | "last_30_days" | "custom";
+
+const localIsoDate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const dateDaysAgo = (days: number) => {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - days);
+  return localIsoDate(date);
 };
 
 export default function AdminLeadsPage({
@@ -514,7 +550,10 @@ export default function AdminLeadsPage({
   const [disposition, setDisposition] = useState("all");
   const [officeFilter, setOfficeFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [phoneFilter, setPhoneFilter] = useState("all");
+  const [creationDatePreset, setCreationDatePreset] =
+    useState<CreationDatePreset>("all");
   const [receivedFrom, setReceivedFrom] = useState("");
   const [receivedTo, setReceivedTo] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -533,6 +572,13 @@ export default function AdminLeadsPage({
   const [editingAffiliateName, setEditingAffiliateName] = useState("");
   const [deleteAffiliate, setDeleteAffiliate] = useState<Source | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [assignmentLead, setAssignmentLead] = useState<Lead | null>(null);
+  const [assignmentOwner, setAssignmentOwner] = useState("");
+  const [assignmentHistory, setAssignmentHistory] = useState<
+    AssignmentHistoryEvent[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [owner, setOwner] = useState("");
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(
     () => new Set(),
@@ -549,6 +595,7 @@ export default function AdminLeadsPage({
   const [confirmBulkUnassign, setConfirmBulkUnassign] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const bulkRunningRef = useRef(false);
+  const dashboardRequestRef = useRef(0);
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
   const [companyId, setCompanyId] = useState(getSelectedCrmCompanyId() || "");
   const [isPlatformNetwork, setIsPlatformNetwork] = useState(false);
@@ -598,6 +645,7 @@ export default function AdminLeadsPage({
     disposition,
     officeFilter,
     assigneeFilter,
+    sourceFilter,
     phoneFilter,
     receivedFrom,
     receivedTo,
@@ -605,6 +653,7 @@ export default function AdminLeadsPage({
   ]);
 
   const refresh = useCallback(async () => {
+    const requestId = ++dashboardRequestRef.current;
     setLoading(true);
     try {
       const data = await invokeLeadAction({
@@ -615,16 +664,19 @@ export default function AdminLeadsPage({
         search,
         office_id: officeFilter,
         assignee_id: assigneeFilter,
+        source_filter: sourceFilter,
         phone_filter: phoneFilter,
         date_from: receivedFrom || null,
         date_to: receivedTo || null,
       });
+      if (requestId !== dashboardRequestRef.current) return;
       setDashboard(data as unknown as Dashboard);
       setError(null);
     } catch (cause) {
+      if (requestId !== dashboardRequestRef.current) return;
       setError(cause instanceof Error ? cause.message : "Could not load leads");
     } finally {
-      setLoading(false);
+      if (requestId === dashboardRequestRef.current) setLoading(false);
     }
   }, [
     invokeLeadAction,
@@ -634,6 +686,7 @@ export default function AdminLeadsPage({
     search,
     officeFilter,
     assigneeFilter,
+    sourceFilter,
     phoneFilter,
     receivedFrom,
     receivedTo,
@@ -850,6 +903,82 @@ export default function AdminLeadsPage({
       return `${nameOf(lead)} marked as ${dispositionLabels[nextDisposition]}.`;
     });
 
+  const applyCreationDatePreset = (preset: CreationDatePreset) => {
+    setCreationDatePreset(preset);
+    setPage(0);
+    if (preset === "custom") return;
+    if (preset === "all") {
+      setReceivedFrom("");
+      setReceivedTo("");
+      return;
+    }
+    const today = dateDaysAgo(0);
+    if (preset === "today") {
+      setReceivedFrom(today);
+      setReceivedTo(today);
+    } else if (preset === "yesterday") {
+      const yesterday = dateDaysAgo(1);
+      setReceivedFrom(yesterday);
+      setReceivedTo(yesterday);
+    } else {
+      setReceivedFrom(dateDaysAgo(preset === "last_7_days" ? 6 : 29));
+      setReceivedTo(today);
+    }
+  };
+
+  const openAssignment = async (lead: Lead) => {
+    if (!lead.registered_user_id) {
+      setError("This lead is still waiting for its linked client account.");
+      return;
+    }
+    setAssignmentLead(lead);
+    setError(null);
+    setAssignmentOwner(
+      lead.assignee && ["agent", "retention"].includes(lead.assignee.role)
+        ? `${lead.assignee.role}:${lead.assignee.user_id}`
+        : "",
+    );
+    setAssignmentHistory([]);
+    setHistoryError(null);
+    setHistoryLoading(true);
+    try {
+      const data = await invokeLeadAction({
+        action: "assignment_history",
+        lead_id: lead.id,
+      });
+      setAssignmentHistory(
+        Array.isArray(data.history)
+          ? (data.history as unknown as AssignmentHistoryEvent[])
+          : [],
+      );
+    } catch (cause) {
+      setHistoryError(operationError(cause));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const saveAssignment = () => {
+    if (!assignmentLead) return;
+    const lead = assignmentLead;
+    const [ownerRole, ownerId] = assignmentOwner
+      ? assignmentOwner.split(":")
+      : ["unassigned", null];
+    void run(`assignment-${lead.id}`, async () => {
+      await invokeLeadAction({
+        action: "set_lead_owner",
+        lead_id: lead.id,
+        owner_role: ownerRole,
+        owner_id: ownerId,
+      });
+      setAssignmentLead(null);
+      setAssignmentHistory([]);
+      return assignmentOwner
+        ? `${nameOf(lead)} was assigned successfully.`
+        : `${nameOf(lead)} is now unassigned.`;
+    });
+  };
+
   const applyBulkAction = async (actionConfirmed = false) => {
     if (
       !bulkAction ||
@@ -875,10 +1004,14 @@ export default function AdminLeadsPage({
       return;
     }
 
-    const leads = dashboard.leads.filter((lead) => selectedLeadIds.has(lead.id));
+    const leads = dashboard.leads.filter((lead) =>
+      selectedLeadIds.has(lead.id),
+    );
     if (!leads.length) {
       setSelectedLeadIds(new Set());
-      setError("The selected leads are no longer on this page. Select them again.");
+      setError(
+        "The selected leads are no longer on this page. Select them again.",
+      );
       return;
     }
 
@@ -954,11 +1087,11 @@ export default function AdminLeadsPage({
             ? "assigned"
             : bulkAction === "unassign"
               ? "unassigned"
-            : bulkAction === "delete"
-              ? "deleted"
-              : bulkAction === "promote"
-                ? "promoted"
-                : "demoted";
+              : bulkAction === "delete"
+                ? "deleted"
+                : bulkAction === "promote"
+                  ? "promoted"
+                  : "demoted";
       if (failures.length) {
         setSelectedLeadIds(new Set(failures.map((failure) => failure.leadId)));
         setNotice(
@@ -1052,10 +1185,9 @@ export default function AdminLeadsPage({
     : [];
   const availableDeskManagers = (
     dashboard.actor_role === "desk_manager" ? [] : [...dashboard.desk_managers]
-  )
-    .sort((left, right) =>
-      deskManagerName(left).localeCompare(deskManagerName(right)),
-    );
+  ).sort((left, right) =>
+    deskManagerName(left).localeCompare(deskManagerName(right)),
+  );
   const availableAgents = dashboard.owners
     .filter((candidate) => candidate.role === "agent")
     .sort((left, right) => ownerName(left).localeCompare(ownerName(right)));
@@ -1250,214 +1382,131 @@ export default function AdminLeadsPage({
                   Search
                 </button>
               </form>
-              <AppSelect
-                value={phoneFilter}
-                onChange={(event) => {
-                  setPage(0);
-                  setPhoneFilter(event.target.value);
-                }}
-                className={`${input} w-48`}
-                aria-label="Filter phone quality"
-              >
-                <option value="all">All phone numbers</option>
-                <option value="valid">Correct numbers</option>
-                <option value="incorrect">Incorrect numbers</option>
-                <option value="routing_review">Routing review</option>
-              </AppSelect>
-              {dashboard.actor_role !== "desk_manager" && (
-                <AppSelect
-                  value={officeFilter}
-                  onChange={(event) => {
-                    setPage(0);
-                    setOfficeFilter(event.target.value);
-                  }}
-                  className={`${input} w-44`}
-                  aria-label="Filter by Office"
-                >
-                  <option value="all">All Offices</option>
-                  <option value="unassigned">No Office</option>
-                  {dashboard.offices.map((office) => (
-                    <option key={office.id} value={office.id}>
-                      {office.code} · {office.name}
-                    </option>
-                  ))}
-                </AppSelect>
-              )}
-              <AppSelect
-                value={assigneeFilter}
-                onChange={(event) => {
-                  setPage(0);
-                  setAssigneeFilter(event.target.value);
-                }}
-                className={`${input} w-52`}
-                aria-label="Filter by assignee"
-              >
-                <option value="all">
-                  {dashboard.actor_role === "desk_manager"
-                    ? "All Agents"
-                    : "All / Any Assignee"}
-                </option>
-                {availableDeskManagers.length > 0 && (
-                  <optgroup label="Desk Managers">
-                    {availableDeskManagers.map((manager) => (
-                      <option
-                        key={`desk_manager:${manager.user_id}`}
-                        value={manager.user_id}
-                      >
-                        {deskManagerName(manager)}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {availableAgents.length > 0 && (
-                  <optgroup label="Agents">
-                    {availableAgents.map((agent) => (
-                      <option
-                        key={`agent:${agent.user_id}`}
-                        value={agent.user_id}
-                      >
-                        {ownerName(agent)}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {availableRetentionUsers.length > 0 && (
-                  <optgroup label="Retention">
-                    {availableRetentionUsers.map((retentionUser) => (
-                      <option
-                        key={`retention:${retentionUser.user_id}`}
-                        value={retentionUser.user_id}
-                      >
-                        {ownerName(retentionUser)}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </AppSelect>
-              <AppSelect
-                value={disposition}
-                onChange={(event) => {
-                  setPage(0);
-                  setDisposition(event.target.value);
-                }}
-                className={`${input} w-44`}
-                aria-label="Filter sales status"
-              >
-                <option value="all">All lead statuses</option>
-                {(
-                  Object.entries(dispositionLabels) as [
-                    LeadDisposition,
-                    string,
-                  ][]
-                ).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </AppSelect>
-              <AppSelect
-                value={status}
-                onChange={(event) => {
-                  setPage(0);
-                  setStatus(event.target.value);
-                }}
-                className={`${input} w-40`}
-                aria-label="Filter account status"
-              >
-                <option value="all">All account states</option>
-                <option value="new">Not registered</option>
-                <option value="inviting">Processing</option>
-                <option value="registered">Registered</option>
-                <option value="existing">Existing client</option>
-              </AppSelect>
-              <label className="min-w-40 text-[11px] text-slate-400">
-                Received from
-                <AppDateInput
-                  value={receivedFrom}
-                  max={receivedTo || undefined}
-                  onChange={(value) => {
-                    setPage(0);
-                    setReceivedFrom(value);
-                  }}
-                  className={`${input} mt-1 min-w-40 [color-scheme:dark]`}
-                  aria-label="Filter leads received from date"
-                />
-              </label>
-              <label className="min-w-40 text-[11px] text-slate-400">
-                Received to
-                <AppDateInput
-                  value={receivedTo}
-                  min={receivedFrom || undefined}
-                  onChange={(value) => {
-                    setPage(0);
-                    setReceivedTo(value);
-                  }}
-                  className={`${input} mt-1 min-w-40 [color-scheme:dark]`}
-                  aria-label="Filter leads received through date"
-                />
-              </label>
-            </div>
-            {selectedLeadIds.size > 0 &&
-              createPortal(
-              <div
-                role="region"
-                aria-label="Bulk actions"
-                className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-h-[calc(100vh-1.5rem)] max-w-5xl flex-wrap items-center gap-2 overflow-y-auto rounded-xl border border-violet-400/30 bg-[#171d29]/95 p-3 shadow-[0_18px_60px_rgba(0,0,0,0.65)] backdrop-blur sm:inset-x-6 sm:bottom-5 sm:p-4"
-              >
-                <div className="mr-auto min-w-32 px-1">
-                  <div className="text-sm font-semibold text-violet-100">
-                    {selectedLeadIds.size} lead
-                    {selectedLeadIds.size === 1 ? "" : "s"} selected
-                  </div>
-                  {bulkProgress && (
-                    <div
-                      aria-live="polite"
-                      className="mt-0.5 text-xs text-violet-300"
-                    >
-                      Processing {bulkProgress.completed} of {bulkProgress.total}
-                    </div>
-                  )}
-                </div>
-                <AppSelect
-                  value={bulkAction}
-                  onChange={(event) => {
-                    setBulkAction(event.target.value as BulkAction);
-                    setBulkOwner("");
-                  }}
-                  disabled={busy === "bulk"}
-                  className={`${input} w-full py-2 sm:w-44`}
-                  aria-label="Choose bulk action"
-                >
-                  <option value="">Mass actions</option>
-                  <option value="status">Change status</option>
-                  {["admin", "desk_manager"].includes(dashboard.actor_role) && (
-                    <option value="assign">Assign</option>
-                  )}
-                  {["admin", "desk_manager"].includes(dashboard.actor_role) && (
-                    <option value="unassign">Unassign</option>
-                  )}
-                  {dashboard.actor_role !== "desk_manager" && (
-                    <option value="promote">Promote</option>
-                  )}
-                  {dashboard.actor_role === "admin" && (
-                    <option value="demote">Demote</option>
-                  )}
-                  {dashboard.actor_role === "admin" && (
-                    <option value="delete">Delete</option>
-                  )}
-                </AppSelect>
-                {bulkAction === "status" && (
+              <div className="grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <label className="text-[11px] text-slate-400">
+                  Phone quality
                   <AppSelect
-                    value={bulkDisposition}
-                    onChange={(event) =>
-                      setBulkDisposition(
-                        event.target.value as LeadDisposition,
-                      )
-                    }
-                    disabled={busy === "bulk"}
-                    className={`${input} w-full py-2 sm:w-44`}
-                    aria-label="Choose new lead status"
+                    value={phoneFilter}
+                    onChange={(event) => {
+                      setPage(0);
+                      setPhoneFilter(event.target.value);
+                    }}
+                    className={`${input} mt-1 w-full`}
+                    aria-label="Filter phone quality"
                   >
+                    <option value="all">All phone numbers</option>
+                    <option value="valid">Correct numbers</option>
+                    <option value="incorrect">Incorrect numbers</option>
+                    <option value="routing_review">Routing review</option>
+                  </AppSelect>
+                </label>
+                {dashboard.actor_role !== "desk_manager" && (
+                  <label className="text-[11px] text-slate-400">
+                    Office
+                    <AppSelect
+                      value={officeFilter}
+                      onChange={(event) => {
+                        setPage(0);
+                        setOfficeFilter(event.target.value);
+                      }}
+                      className={`${input} mt-1 w-full`}
+                      aria-label="Filter by office"
+                    >
+                      <option value="all">All Offices</option>
+                      <option value="unassigned">No Office</option>
+                      {dashboard.offices.map((office) => (
+                        <option key={office.id} value={office.id}>
+                          {office.code} · {office.name}
+                        </option>
+                      ))}
+                    </AppSelect>
+                  </label>
+                )}
+                <label className="text-[11px] text-slate-400">
+                  Agent
+                  <AppSelect
+                    value={assigneeFilter}
+                    onChange={(event) => {
+                      setPage(0);
+                      setAssigneeFilter(event.target.value);
+                    }}
+                    className={`${input} mt-1 w-full`}
+                    aria-label="Filter by assigned agent"
+                  >
+                    <option value="all">
+                      {dashboard.actor_role === "desk_manager"
+                        ? "All Agents"
+                        : "All / Any Assignee"}
+                    </option>
+                    {availableDeskManagers.length > 0 && (
+                      <optgroup label="Desk Managers">
+                        {availableDeskManagers.map((manager) => (
+                          <option
+                            key={`desk_manager:${manager.user_id}`}
+                            value={manager.user_id}
+                          >
+                            {deskManagerName(manager)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {availableAgents.length > 0 && (
+                      <optgroup label="Agents">
+                        {availableAgents.map((agent) => (
+                          <option
+                            key={`agent:${agent.user_id}`}
+                            value={agent.user_id}
+                          >
+                            {ownerName(agent)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {availableRetentionUsers.length > 0 && (
+                      <optgroup label="Retention">
+                        {availableRetentionUsers.map((retentionUser) => (
+                          <option
+                            key={`retention:${retentionUser.user_id}`}
+                            value={retentionUser.user_id}
+                          >
+                            {ownerName(retentionUser)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </AppSelect>
+                </label>
+                <label className="text-[11px] text-slate-400">
+                  Source
+                  <AppSelect
+                    value={sourceFilter}
+                    onChange={(event) => {
+                      setPage(0);
+                      setSourceFilter(event.target.value);
+                    }}
+                    className={`${input} mt-1 w-full`}
+                    aria-label="Filter by lead source"
+                  >
+                    <option value="all">All Sources</option>
+                    {(dashboard.source_options || []).map((source) => (
+                      <option key={source.value} value={source.value}>
+                        {source.label}
+                      </option>
+                    ))}
+                  </AppSelect>
+                </label>
+                <label className="text-[11px] text-slate-400">
+                  Lead status
+                  <AppSelect
+                    value={disposition}
+                    onChange={(event) => {
+                      setPage(0);
+                      setDisposition(event.target.value);
+                    }}
+                    className={`${input} mt-1 w-full`}
+                    aria-label="Filter lead status"
+                  >
+                    <option value="all">All lead statuses</option>
                     {(
                       Object.entries(dispositionLabels) as [
                         LeadDisposition,
@@ -1469,69 +1518,214 @@ export default function AdminLeadsPage({
                       </option>
                     ))}
                   </AppSelect>
-                )}
-                {bulkAction === "assign" && (
+                </label>
+                <label className="text-[11px] text-slate-400">
+                  Account state
                   <AppSelect
-                    value={bulkOwner}
-                    onChange={(event) => setBulkOwner(event.target.value)}
-                    disabled={busy === "bulk"}
-                    className={`${input} w-full py-2 sm:w-56`}
-                    aria-label="Choose assignment owner"
+                    value={status}
+                    onChange={(event) => {
+                      setPage(0);
+                      setStatus(event.target.value);
+                    }}
+                    className={`${input} mt-1 w-full`}
+                    aria-label="Filter account status"
                   >
-                    <option value="">Choose owner</option>
-                    {dashboard.owners.map((item) => {
-                      const user = Array.isArray(item.users)
-                        ? item.users[0]
-                        : item.users;
-                      const office = dashboard.offices.find(
-                        (entry) => entry.id === user?.office_id,
-                      );
-                      return (
-                        <option
-                          key={`${item.role}:${item.user_id}`}
-                          value={`${item.role}:${item.user_id}`}
-                        >
-                          {ownerName(item)} · {item.role === "agent" ? "Agent" : "Retention"}
-                          {office ? ` · ${office.code}` : ""}
-                        </option>
-                      );
-                    })}
+                    <option value="all">All account states</option>
+                    <option value="new">Not registered</option>
+                    <option value="inviting">Processing</option>
+                    <option value="registered">Registered</option>
+                    <option value="existing">Existing client</option>
                   </AppSelect>
+                </label>
+                <label className="text-[11px] text-slate-400">
+                  Lead created
+                  <AppSelect
+                    value={creationDatePreset}
+                    onChange={(event) =>
+                      applyCreationDatePreset(
+                        event.target.value as CreationDatePreset,
+                      )
+                    }
+                    className={`${input} mt-1 w-full`}
+                    aria-label="Filter by lead creation date"
+                  >
+                    <option value="all">All dates</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="last_7_days">Last 7 days</option>
+                    <option value="last_30_days">Last 30 days</option>
+                    <option value="custom">Custom date range</option>
+                  </AppSelect>
+                </label>
+                {creationDatePreset === "custom" && (
+                  <>
+                    <label className="text-[11px] text-slate-400">
+                      Created from
+                      <AppDateInput
+                        value={receivedFrom}
+                        max={receivedTo || undefined}
+                        onChange={(value) => {
+                          setPage(0);
+                          setReceivedFrom(value);
+                        }}
+                        className={`${input} mt-1 w-full [color-scheme:dark]`}
+                        aria-label="Filter leads created from date"
+                      />
+                    </label>
+                    <label className="text-[11px] text-slate-400">
+                      Created to
+                      <AppDateInput
+                        value={receivedTo}
+                        min={receivedFrom || undefined}
+                        onChange={(value) => {
+                          setPage(0);
+                          setReceivedTo(value);
+                        }}
+                        className={`${input} mt-1 w-full [color-scheme:dark]`}
+                        aria-label="Filter leads created through date"
+                      />
+                    </label>
+                  </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => void applyBulkAction()}
-                  disabled={
-                    !!busy ||
-                    !bulkAction ||
-                    (bulkAction === "assign" && !bulkOwner)
-                  }
-                  className={`${button} ${bulkAction === "delete" ? "bg-red-600 text-white hover:bg-red-500" : "bg-violet-600 text-white hover:bg-violet-500"}`}
+              </div>
+            </div>
+            {selectedLeadIds.size > 0 &&
+              createPortal(
+                <div
+                  role="region"
+                  aria-label="Bulk actions"
+                  className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-h-[calc(100vh-1.5rem)] max-w-5xl flex-wrap items-center gap-2 overflow-y-auto rounded-xl border border-violet-400/30 bg-[#171d29]/95 p-3 shadow-[0_18px_60px_rgba(0,0,0,0.65)] backdrop-blur sm:inset-x-6 sm:bottom-5 sm:p-4"
                 >
-                  {busy === "bulk" && (
-                    <Loader2 size={15} className="animate-spin" />
+                  <div className="mr-auto min-w-32 px-1">
+                    <div className="text-sm font-semibold text-violet-100">
+                      {selectedLeadIds.size} lead
+                      {selectedLeadIds.size === 1 ? "" : "s"} selected
+                    </div>
+                    {bulkProgress && (
+                      <div
+                        aria-live="polite"
+                        className="mt-0.5 text-xs text-violet-300"
+                      >
+                        Processing {bulkProgress.completed} of{" "}
+                        {bulkProgress.total}
+                      </div>
+                    )}
+                  </div>
+                  <AppSelect
+                    value={bulkAction}
+                    onChange={(event) => {
+                      setBulkAction(event.target.value as BulkAction);
+                      setBulkOwner("");
+                    }}
+                    disabled={busy === "bulk"}
+                    className={`${input} w-full py-2 sm:w-44`}
+                    aria-label="Choose bulk action"
+                  >
+                    <option value="">Mass actions</option>
+                    <option value="status">Change status</option>
+                    {["admin", "desk_manager"].includes(
+                      dashboard.actor_role,
+                    ) && <option value="assign">Assign</option>}
+                    {["admin", "desk_manager"].includes(
+                      dashboard.actor_role,
+                    ) && <option value="unassign">Unassign</option>}
+                    {dashboard.actor_role !== "desk_manager" && (
+                      <option value="promote">Promote</option>
+                    )}
+                    {dashboard.actor_role === "admin" && (
+                      <option value="demote">Demote</option>
+                    )}
+                    {dashboard.actor_role === "admin" && (
+                      <option value="delete">Delete</option>
+                    )}
+                  </AppSelect>
+                  {bulkAction === "status" && (
+                    <AppSelect
+                      value={bulkDisposition}
+                      onChange={(event) =>
+                        setBulkDisposition(
+                          event.target.value as LeadDisposition,
+                        )
+                      }
+                      disabled={busy === "bulk"}
+                      className={`${input} w-full py-2 sm:w-44`}
+                      aria-label="Choose new lead status"
+                    >
+                      {(
+                        Object.entries(dispositionLabels) as [
+                          LeadDisposition,
+                          string,
+                        ][]
+                      ).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </AppSelect>
                   )}
-                  {busy === "bulk" ? "Processing" : "Apply"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedLeadIds(new Set())}
-                  disabled={busy === "bulk"}
-                  className={`${button} border border-white/10 text-slate-300 hover:text-white`}
-                >
-                  Clear
-                </button>
-              </div>,
-              document.body,
-            )}
+                  {bulkAction === "assign" && (
+                    <AppSelect
+                      value={bulkOwner}
+                      onChange={(event) => setBulkOwner(event.target.value)}
+                      disabled={busy === "bulk"}
+                      className={`${input} w-full py-2 sm:w-56`}
+                      aria-label="Choose assignment owner"
+                    >
+                      <option value="">Choose owner</option>
+                      {dashboard.owners.map((item) => {
+                        const user = Array.isArray(item.users)
+                          ? item.users[0]
+                          : item.users;
+                        const office = dashboard.offices.find(
+                          (entry) => entry.id === user?.office_id,
+                        );
+                        return (
+                          <option
+                            key={`${item.role}:${item.user_id}`}
+                            value={`${item.role}:${item.user_id}`}
+                          >
+                            {ownerName(item)} ·{" "}
+                            {item.role === "agent" ? "Agent" : "Retention"}
+                            {office ? ` · ${office.code}` : ""}
+                          </option>
+                        );
+                      })}
+                    </AppSelect>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void applyBulkAction()}
+                    disabled={
+                      !!busy ||
+                      !bulkAction ||
+                      (bulkAction === "assign" && !bulkOwner)
+                    }
+                    className={`${button} ${bulkAction === "delete" ? "bg-red-600 text-white hover:bg-red-500" : "bg-violet-600 text-white hover:bg-violet-500"}`}
+                  >
+                    {busy === "bulk" && (
+                      <Loader2 size={15} className="animate-spin" />
+                    )}
+                    {busy === "bulk" ? "Processing" : "Apply"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLeadIds(new Set())}
+                    disabled={busy === "bulk"}
+                    className={`${button} border border-white/10 text-slate-300 hover:text-white`}
+                  >
+                    Clear
+                  </button>
+                </div>,
+                document.body,
+              )}
             <div className="max-w-full overflow-x-auto">
-              <table className="w-full min-w-[1100px] table-fixed text-left text-[13px]">
+              <table className="w-full min-w-[1150px] table-fixed text-left text-[13px]">
                 <colgroup>
                   <col className="w-10" />
                   <col className="w-[170px]" />
                   <col className="w-[150px]" />
                   <col className="w-[175px]" />
-                  <col className="w-[130px]" />
+                  <col className="w-[180px]" />
                   <col className="w-[90px]" />
                   <col className="w-[100px]" />
                   <col className="w-[150px]" />
@@ -1555,9 +1749,9 @@ export default function AdminLeadsPage({
                     <th className="px-3 py-2.5">Lead</th>
                     <th className="px-3 py-2.5">Contact</th>
                     <th className="px-3 py-2.5">Office</th>
-                    <th className="px-3 py-2.5">Assign To</th>
+                    <th className="px-3 py-2.5">Assigned agent</th>
                     <th className="px-3 py-2.5">Source</th>
-                    <th className="px-3 py-2.5">Received</th>
+                    <th className="px-3 py-2.5">Created</th>
                     <th className="px-3 py-2.5">Lead status</th>
                     <th className="px-3 py-2.5 text-right">Action</th>
                   </tr>
@@ -1584,20 +1778,39 @@ export default function AdminLeadsPage({
                         />
                       </td>
                       <td className="min-w-0 px-3 py-2.5">
-                        <div className="truncate font-semibold text-white" title={nameOf(lead)}>
+                        <div
+                          className="truncate font-semibold text-white"
+                          title={nameOf(lead)}
+                        >
                           {nameOf(lead)}
                         </div>
-                        <div className="truncate text-xs text-slate-400" title={lead.email}>
+                        <div
+                          className="truncate text-xs text-slate-400"
+                          title={lead.email}
+                        >
                           {lead.email}
                         </div>
                         {lead.campaign && (
-                          <div className="mt-1 truncate text-[11px] text-violet-300" title={lead.campaign}>
+                          <div
+                            className="mt-1 truncate text-[11px] text-violet-300"
+                            title={lead.campaign}
+                          >
                             {lead.campaign}
                           </div>
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-slate-300">
-                        <div>{lead.phone_e164 || lead.phone || "—"}</div>
+                        {lead.phone_e164 || lead.phone ? (
+                          <a
+                            href={`tel:${lead.phone_e164 || lead.phone}`}
+                            className="font-medium text-slate-100 hover:text-violet-300"
+                            title="Call this lead"
+                          >
+                            {lead.phone_e164 || lead.phone}
+                          </a>
+                        ) : (
+                          <div>—</div>
+                        )}
                         {lead.phone_validation_status === "valid" ? (
                           <div className="mt-1 text-[11px] font-medium text-emerald-300">
                             Correct · {lead.phone_country_code} (+
@@ -1680,34 +1893,97 @@ export default function AdminLeadsPage({
                       <td className="px-3 py-2.5 text-xs">
                         {lead.assignee ? (
                           <>
-                            <div className="truncate font-medium text-slate-200" title={lead.assignee.name}>
+                            <div
+                              className="truncate font-medium text-slate-200"
+                              title={lead.assignee.name}
+                            >
                               {lead.assignee.name}
                             </div>
                             <div className="mt-1 text-[10px] text-slate-500">
                               {assigneeRoleLabel(lead.assignee.role)}
                             </div>
+                            {lead.assignee.assigned_at && (
+                              <time
+                                dateTime={lead.assignee.assigned_at}
+                                className="mt-1 block text-[10px] text-slate-400"
+                                title={new Date(
+                                  lead.assignee.assigned_at,
+                                ).toLocaleString("en-GB")}
+                              >
+                                Assigned{" "}
+                                {new Date(
+                                  lead.assignee.assigned_at,
+                                ).toLocaleString("en-GB", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </time>
+                            )}
                           </>
                         ) : (
                           <span className="text-slate-500">Unassigned</span>
                         )}
+                        {lead.registered_user_id &&
+                          ["admin", "desk_manager"].includes(
+                            dashboard.actor_role,
+                          ) &&
+                          (!lead.registered_is_promoted ||
+                            dashboard.actor_role === "admin") && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void openAssignment(lead)}
+                                disabled={!!busy}
+                                className="inline-flex items-center gap-1 rounded-md border border-violet-400/30 px-2 py-1 text-[10px] font-medium text-violet-200 transition hover:bg-violet-500/10 disabled:opacity-50"
+                              >
+                                <Users size={11} />
+                                {lead.assignee ? "Reassign" : "Assign agent"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void openAssignment(lead)}
+                                disabled={!!busy}
+                                className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[10px] font-medium text-slate-300 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
+                              >
+                                <History size={11} />
+                                History
+                              </button>
+                            </div>
+                          )}
                       </td>
                       <td className="px-3 py-2.5 text-xs text-slate-300">
-                        <div className="truncate" title={lead.source_name || "Import"}>{lead.source_name || "Import"}</div>
-                        <div className="truncate text-slate-500" title={lead.source_kind.replaceAll("_", " ")}>
+                        <div
+                          className="truncate"
+                          title={lead.source_name || "Import"}
+                        >
+                          {lead.source_name || "Import"}
+                        </div>
+                        <div
+                          className="truncate text-slate-500"
+                          title={lead.source_kind.replaceAll("_", " ")}
+                        >
                           {lead.source_kind.replaceAll("_", " ")}
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-slate-400">
                         <time
                           dateTime={lead.created_at}
-                          title={new Date(lead.created_at).toLocaleString('en-GB')}
+                          title={new Date(lead.created_at).toLocaleString(
+                            "en-GB",
+                          )}
                         >
                           <span className="block">
-                            {new Date(lead.created_at).toLocaleDateString('en-GB', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                            })}
+                            {new Date(lead.created_at).toLocaleDateString(
+                              "en-GB",
+                              {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              },
+                            )}
                           </span>
                           <span className="mt-0.5 block font-mono text-[11px] text-slate-500">
                             {new Date(lead.created_at).toLocaleTimeString([], {
@@ -1761,7 +2037,10 @@ export default function AdminLeadsPage({
                             <div
                               className={`mt-1 text-[10px] font-medium ${lead.registered_is_promoted ? "text-amber-300" : "text-cyan-300"}`}
                             >
-                              Workspace: {lead.registered_is_promoted ? "Retention" : "Sales"}
+                              Workspace:{" "}
+                              {lead.registered_is_promoted
+                                ? "Retention"
+                                : "Sales"}
                             </div>
                           )}
                         {lead.registration_error && (
@@ -2053,7 +2332,9 @@ export default function AdminLeadsPage({
                         {source.last_synced_at && (
                           <div className="mt-2 text-[11px] text-slate-500">
                             Last sync{" "}
-                            {new Date(source.last_synced_at).toLocaleString('en-GB')}
+                            {new Date(source.last_synced_at).toLocaleString(
+                              "en-GB",
+                            )}
                           </div>
                         )}
                         {source.last_sync_error && (
@@ -2476,11 +2757,11 @@ export default function AdminLeadsPage({
                     The validated phone country controls Office routing: +49 →
                     DE, +33 → FR, +34 → ES and +39 → IT when those active Office
                     mappings and Desk Managers exist. Routed leads create or
-                    link their client accounts automatically. Invalid or
-                    missing numbers go to{" "}
-                    <b>Incorrect numbers</b>. Valid countries without an Office
-                    or Desk Manager go to <b>Routing review</b>. Submitted
-                    country or office text cannot override the detected number.
+                    link their client accounts automatically. Invalid or missing
+                    numbers go to <b>Incorrect numbers</b>. Valid countries
+                    without an Office or Desk Manager go to{" "}
+                    <b>Routing review</b>. Submitted country or office text
+                    cannot override the detected number.
                   </p>
                 </section>
 
@@ -2985,6 +3266,193 @@ for (;;) {
           </div>
         )}
 
+        {assignmentLead && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="assignment-title"
+              className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#171e2b] shadow-2xl"
+            >
+              <header className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+                <div>
+                  <h2
+                    id="assignment-title"
+                    className="flex items-center gap-2 text-lg font-semibold"
+                  >
+                    <Users size={19} className="text-violet-300" />
+                    Assign agent
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {nameOf(assignmentLead)} · {assignmentLead.email}
+                  </p>
+                  {(assignmentLead.phone_e164 || assignmentLead.phone) && (
+                    <a
+                      href={`tel:${assignmentLead.phone_e164 || assignmentLead.phone}`}
+                      className="mt-1 inline-flex items-center gap-1.5 text-sm text-slate-200 hover:text-violet-300"
+                    >
+                      <PhoneCall size={14} />
+                      {assignmentLead.phone_e164 || assignmentLead.phone}
+                    </a>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssignmentLead(null);
+                    setAssignmentHistory([]);
+                    setHistoryError(null);
+                  }}
+                  disabled={!!busy}
+                  aria-label="Close assignment"
+                  className="text-slate-400 hover:text-white disabled:opacity-50"
+                >
+                  <X size={20} />
+                </button>
+              </header>
+
+              <div className="overflow-y-auto p-5">
+                {error && (
+                  <div
+                    role="alert"
+                    className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"
+                  >
+                    {error}
+                  </div>
+                )}
+                <label className="block text-xs font-medium text-slate-300">
+                  Current assigned agent
+                  <AppSelect
+                    value={assignmentOwner}
+                    onChange={(event) => setAssignmentOwner(event.target.value)}
+                    disabled={!!busy}
+                    className={`mt-1.5 ${input}`}
+                  >
+                    <option value="">Unassigned</option>
+                    {(assignmentLead.registered_is_promoted
+                      ? availableRetentionUsers
+                      : availableAgents
+                    )
+                      .filter((item) => {
+                        if (!assignmentLead.office_id) return false;
+                        const user = Array.isArray(item.users)
+                          ? item.users[0]
+                          : item.users;
+                        return (
+                          (user?.office_id || null) ===
+                          (assignmentLead.office_id || null)
+                        );
+                      })
+                      .map((item) => (
+                        <option
+                          key={`${item.role}:${item.user_id}`}
+                          value={`${item.role}:${item.user_id}`}
+                        >
+                          {ownerName(item)}
+                        </option>
+                      ))}
+                  </AppSelect>
+                </label>
+                <p className="mt-2 text-[11px] leading-4 text-slate-500">
+                  Saving changes assigns or reassigns this lead immediately.
+                  Every change is recorded below with the person and time.
+                </p>
+
+                <section className="mt-5 rounded-xl border border-white/10 bg-[#0e1420]/70">
+                  <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
+                    <History size={16} className="text-violet-300" />
+                    <h3 className="text-sm font-semibold">
+                      Assignment history
+                    </h3>
+                  </div>
+                  {historyLoading ? (
+                    <div className="flex items-center justify-center gap-2 p-6 text-sm text-slate-400">
+                      <Loader2 size={16} className="animate-spin" />
+                      Loading assignment history
+                    </div>
+                  ) : historyError ? (
+                    <div
+                      role="alert"
+                      className="m-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"
+                    >
+                      {historyError}
+                    </div>
+                  ) : assignmentHistory.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-slate-500">
+                      No assignment changes have been recorded yet.
+                    </div>
+                  ) : (
+                    <ol className="divide-y divide-white/[0.07]">
+                      {assignmentHistory.map((event) => (
+                        <li key={event.id} className="px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-medium text-slate-300">
+                              {event.previous_agent_id
+                                ? event.previous_agent_name || "Unknown agent"
+                                : "Unassigned"}
+                            </span>
+                            <span className="text-slate-600">→</span>
+                            <span className="font-semibold text-violet-200">
+                              {event.new_agent_id
+                                ? event.new_agent_name || "Unknown agent"
+                                : "Unassigned"}
+                            </span>
+                            {event.initial_assignment && (
+                              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+                                Initial assignment
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            By {event.performed_by_name} ·{" "}
+                            <time dateTime={event.assigned_at}>
+                              {new Date(event.assigned_at).toLocaleString(
+                                "en-GB",
+                                {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                },
+                              )}
+                            </time>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
+              </div>
+
+              <footer className="flex flex-wrap justify-end gap-2 border-t border-white/10 bg-[#151b26] p-4">
+                <button
+                  type="button"
+                  onClick={() => setAssignmentLead(null)}
+                  disabled={!!busy}
+                  className={`${button} border border-white/10 text-slate-300 hover:text-white`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveAssignment}
+                  disabled={!!busy}
+                  className={`${button} bg-violet-600 text-white hover:bg-violet-500`}
+                >
+                  {busy === `assignment-${assignmentLead.id}` ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Check size={16} />
+                  )}
+                  Save assignment
+                </button>
+              </footer>
+            </section>
+          </div>
+        )}
+
         {selectedLead && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
             <section
@@ -3022,7 +3490,7 @@ for (;;) {
                   (item) => item.id === selectedLead.office_id,
                 )?.code || "No office"}
                 {selectedLead.phone_routing_status === "routed" &&
-                  selectedLead.phone_calling_code
+                selectedLead.phone_calling_code
                   ? `, automatically routed from +${selectedLead.phone_calling_code}`
                   : ""}
                 .{" "}
@@ -3166,7 +3634,10 @@ for (;;) {
                   <AlertTriangle size={20} />
                 </div>
                 <div>
-                  <h2 id="bulk-unassign-title" className="text-lg font-semibold">
+                  <h2
+                    id="bulk-unassign-title"
+                    className="text-lg font-semibold"
+                  >
                     Unassign {selectedLeadIds.size} selected lead
                     {selectedLeadIds.size === 1 ? "" : "s"}?
                   </h2>

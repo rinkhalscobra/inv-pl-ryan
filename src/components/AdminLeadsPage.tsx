@@ -20,6 +20,7 @@ import {
   History,
   KeyRound,
   Link2,
+  ListFilter,
   Loader2,
   Pencil,
   PhoneCall,
@@ -105,6 +106,7 @@ interface SourceOption {
   value: string;
   label: string;
   kind: string;
+  lead_count?: number;
 }
 interface AssignmentHistoryEvent {
   id: string;
@@ -126,6 +128,7 @@ interface Source {
   last_synced_at: string | null;
   last_sync_error: string | null;
   created_at: string;
+  lead_count?: number;
 }
 interface Owner {
   user_id: string;
@@ -1194,6 +1197,12 @@ export default function AdminLeadsPage({
   const availableRetentionUsers = dashboard.owners
     .filter((candidate) => candidate.role === "retention")
     .sort((left, right) => ownerName(left).localeCompare(ownerName(right)));
+  const affiliateSourceOptions = (dashboard.source_options || []).filter(
+    (source) => source.kind === "affiliate_api",
+  );
+  const otherSourceOptions = (dashboard.source_options || []).filter(
+    (source) => source.kind !== "affiliate_api",
+  );
   const currentPageLeadIds = dashboard.leads.map((lead) => lead.id);
   const selectedOnPage = currentPageLeadIds.filter((id) =>
     selectedLeadIds.has(id),
@@ -1352,7 +1361,10 @@ export default function AdminLeadsPage({
         <div
           className={`grid items-start gap-4 ${staffMode ? "" : "min-[1480px]:grid-cols-[minmax(0,1fr)_300px]"}`}
         >
-          <section className={`${panel} min-w-0 overflow-hidden`}>
+          <section
+            id="lead-inbox-results"
+            className={`${panel} min-w-0 overflow-hidden`}
+          >
             <div className="flex flex-wrap items-center gap-2.5 border-b border-white/10 p-3">
               <div className="mr-auto">
                 <h2 className="font-semibold">Leads</h2>
@@ -1477,7 +1489,7 @@ export default function AdminLeadsPage({
                   </AppSelect>
                 </label>
                 <label className="text-[11px] text-slate-400">
-                  Source
+                  Affiliate / source
                   <AppSelect
                     value={sourceFilter}
                     onChange={(event) => {
@@ -1487,12 +1499,27 @@ export default function AdminLeadsPage({
                     className={`${input} mt-1 w-full`}
                     aria-label="Filter by lead source"
                   >
-                    <option value="all">All Sources</option>
-                    {(dashboard.source_options || []).map((source) => (
-                      <option key={source.value} value={source.value}>
-                        {source.label}
-                      </option>
-                    ))}
+                    <option value="all">All affiliates and sources</option>
+                    {affiliateSourceOptions.length > 0 && (
+                      <optgroup label="Affiliates">
+                        {affiliateSourceOptions.map((source) => (
+                          <option key={source.value} value={source.value}>
+                            {source.label} —{" "}
+                            {(source.lead_count || 0).toLocaleString()} leads
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {otherSourceOptions.length > 0 && (
+                      <optgroup label="Other sources">
+                        {otherSourceOptions.map((source) => (
+                          <option key={source.value} value={source.value}>
+                            {source.label} —{" "}
+                            {(source.lead_count || 0).toLocaleString()} leads
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </AppSelect>
                 </label>
                 <label className="text-[11px] text-slate-400">
@@ -2322,6 +2349,9 @@ export default function AdminLeadsPage({
                                   ? "Google Sheet"
                                   : "Affiliate API"}{" "}
                                 · {source.active ? "Active" : "Paused"}
+                                {" · "}
+                                {(source.lead_count || 0).toLocaleString()} lead
+                                {source.lead_count === 1 ? "" : "s"}
                               </div>
                             </div>
                             <span
@@ -2343,6 +2373,24 @@ export default function AdminLeadsPage({
                           </div>
                         )}
                         <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPage(0);
+                              setSourceFilter(`source:${source.id}`);
+                              document
+                                .getElementById("lead-inbox-results")
+                                ?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                });
+                            }}
+                            disabled={!!busy}
+                            className={`${button} border border-violet-400/25 text-xs text-violet-200 hover:bg-violet-500/10`}
+                          >
+                            <ListFilter size={13} />
+                            Filter these leads
+                          </button>
                           {source.kind === "google_sheet" && (
                             <button
                               type="button"

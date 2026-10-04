@@ -1002,6 +1002,7 @@ Deno.serve(async (request) => {
         leadResult,
         sourceResult,
         sourceOptionResult,
+        sourceCountResult,
         ownerResult,
         officeResult,
         deskManagerResult,
@@ -1023,6 +1024,10 @@ Deno.serve(async (request) => {
           .eq("company_id", companyId)
           .order("name")
           .limit(200),
+        admin.rpc("crm_service_get_lead_source_counts", {
+          p_actor_id: actorId,
+          p_company_id: companyId,
+        }),
         ownerQuery,
         officeQuery,
         admin
@@ -1040,6 +1045,7 @@ Deno.serve(async (request) => {
         leadResult.error ||
         sourceResult.error ||
         sourceOptionResult.error ||
+        sourceCountResult.error ||
         ownerResult.error ||
         officeResult.error ||
         deskManagerResult.error ||
@@ -1050,6 +1056,7 @@ Deno.serve(async (request) => {
           leadResult.error?.message ||
             sourceResult.error?.message ||
             sourceOptionResult.error?.message ||
+            sourceCountResult.error?.message ||
             ownerResult.error?.message ||
             officeResult.error?.message ||
             deskManagerResult.error?.message ||
@@ -1219,6 +1226,27 @@ Deno.serve(async (request) => {
         `${String(user?.first_name || "")} ${String(user?.last_name || "")}`.trim() ||
         String(user?.email || "").trim() ||
         "Unnamed user";
+      const sourceCountRows = Array.isArray(sourceCountResult.data)
+        ? (sourceCountResult.data as Array<{
+            source_id?: unknown;
+            source_kind?: unknown;
+            lead_count?: unknown;
+          }>)
+        : [];
+      const sourceCountById = new Map<string, number>();
+      const sourceCountByKind = new Map<string, number>();
+      for (const row of sourceCountRows) {
+        const count = Math.max(0, Number(row.lead_count) || 0);
+        const sourceId = String(row.source_id || "");
+        const sourceKind = String(row.source_kind || "");
+        if (sourceId) sourceCountById.set(sourceId, count);
+        if (sourceKind) {
+          sourceCountByKind.set(
+            sourceKind,
+            (sourceCountByKind.get(sourceKind) || 0) + count,
+          );
+        }
+      }
       return json({
         leads: leadRows.map((lead) => {
           const clientId = lead.registered_user_id
@@ -1266,26 +1294,39 @@ Deno.serve(async (request) => {
           return { ...lead, registered_is_promoted: promoted, assignee };
         }),
         total: assigneeTotal ?? leadResult.count ?? 0,
-        sources: isAdmin ? sourceResult.data || [] : [],
+        sources: isAdmin
+          ? (sourceResult.data || []).map((source) => ({
+              ...source,
+              lead_count: sourceCountById.get(String(source.id)) || 0,
+            }))
+          : [],
         owners: ownerResult.data || [],
         offices: officeResult.data || [],
         source_options: [
           {
             value: "kind:affiliate_api",
-            label: "Affiliate / API",
+            label: "All affiliate partners",
             kind: "affiliate_api",
+            lead_count: sourceCountByKind.get("affiliate_api") || 0,
           },
           {
             value: "kind:google_sheet",
             label: "Google Sheet",
             kind: "google_sheet",
+            lead_count: sourceCountByKind.get("google_sheet") || 0,
           },
-          { value: "kind:file", label: "File import", kind: "file" },
+          {
+            value: "kind:file",
+            label: "File import",
+            kind: "file",
+            lead_count: sourceCountByKind.get("file") || 0,
+          },
           ...(sourceOptionResult.data || []).map(
             (source: { id: unknown; name: unknown; kind: unknown }) => ({
               value: `source:${String(source.id)}`,
               label: String(source.name || "Configured source"),
               kind: String(source.kind || "other"),
+              lead_count: sourceCountById.get(String(source.id || "")) || 0,
             }),
           ),
         ],

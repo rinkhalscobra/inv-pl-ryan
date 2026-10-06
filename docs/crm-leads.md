@@ -58,16 +58,21 @@ restricted to the affiliate connection represented by the key. It never
 exposes CRM notes, assigned staff, balances, deposit amounts, or other
 affiliates' leads.
 
-### Near-real-time status events
+### Near-real-time latest-status feed
 
-For a reliable ordered feed, poll this endpoint from the affiliate's backend:
+For a reliable ordered feed of current lead statuses, poll this endpoint from
+the affiliate's backend:
 
 `GET https://vvomlpkrfehkgkxnglrn.supabase.co/functions/v1/affiliate-leads/events?after=0&limit=100`
 
-Each response contains `events`, `next_cursor`, and `has_more`. Save
+Each response contains `events`, `next_cursor`, and `has_more`. A response
+contains at most one row per lead: only the newest matching status is returned,
+not every status the lead previously had. Upsert that row using `tracking_id`
+(or a unique `external_id`) instead of inserting a new lead row. Save
 `next_cursor`, use it as the next `after` value, and poll again every five
-seconds. Event cursors are ordered and make reconnecting safe: after a restart,
-continue from the last cursor that the affiliate successfully stored.
+seconds. When a lead changes later, it is returned again with a newer cursor so
+the affiliate can update the existing row. Internal CRM changes that leave the
+affiliate-facing status unchanged do not produce another feed row.
 
 Use `from` and `to` with either `YYYY-MM-DD` dates or ISO-8601 timestamps that
 include `Z` or an explicit timezone offset. Date-only `to` values include the
@@ -100,8 +105,9 @@ qualifying deposit also exists. Automatic deposit-backed FTDs use
 
 Partner-facing statuses are `received`, `contact_attempted`, `follow_up`,
 `invalid`, `not_qualified`, `processing`, `registered`, and `converted`. The
-stream contains the initial `lead.received` event, later `lead.status_changed`
-events, and a canonical `lead.ftd` event at the exact first-deposit time.
+feed exposes only the latest matching event for each lead. The `type` identifies
+whether that latest event was `lead.received`, `lead.status_changed`, or the
+canonical `lead.ftd` event at the exact first-deposit time.
 
 ```js
 const endpoint =
@@ -124,7 +130,7 @@ for (;;) {
       event.ftd_date,
       event.occurred_at,
     );
-    // Update the affiliate database idempotently using event.cursor.
+    // Upsert by tracking_id; do not insert another lead row for each cursor.
     cursor = event.cursor;
   }
 

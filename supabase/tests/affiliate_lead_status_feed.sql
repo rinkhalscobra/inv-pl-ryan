@@ -6,6 +6,7 @@ DECLARE
   v_source_id uuid;
   v_lead_id uuid;
   v_tracking_id uuid;
+  v_event_count bigint;
 BEGIN
   SELECT id INTO v_company_id
   FROM public.crm_companies
@@ -89,6 +90,47 @@ BEGIN
   END IF;
   IF public.crm_affiliate_status('inviting', 'new') <> 'processing' THEN
     RAISE EXCEPTION 'Registration-processing status mapping is incorrect';
+  END IF;
+
+  UPDATE public.crm_leads
+  SET disposition_status = 'low_potential'
+  WHERE id = v_lead_id;
+
+  SELECT count(*) INTO v_event_count
+  FROM public.crm_affiliate_lead_events
+  WHERE lead_id = v_lead_id;
+
+  UPDATE public.crm_leads
+  SET disposition_status = 'no_money'
+  WHERE id = v_lead_id;
+
+  IF (
+    SELECT count(*)
+    FROM public.crm_affiliate_lead_events
+    WHERE lead_id = v_lead_id
+  ) <> v_event_count THEN
+    RAISE EXCEPTION 'An unchanged affiliate status created a repeated event';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM public.crm_affiliate_lead_events_page(
+      v_source_id, 0, 101, NULL, NULL, 'event'
+    )
+    WHERE tracking_id = v_tracking_id
+  ) <> 1 THEN
+    RAISE EXCEPTION 'Affiliate feed returned more than the latest status for one lead';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.crm_affiliate_lead_events_page(
+      v_source_id, 0, 101, NULL, NULL, 'event'
+    )
+    WHERE tracking_id = v_tracking_id
+      AND affiliate_status = 'not_qualified'
+  ) THEN
+    RAISE EXCEPTION 'Affiliate feed did not return the newest lead status';
   END IF;
 END;
 $$;

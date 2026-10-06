@@ -243,7 +243,7 @@ POST ${apiUrl}
 Current-status endpoint
 GET ${apiUrl}/status?tracking_id=TRACKING_UUID
 
-Ordered live-event endpoint
+Latest-status feed endpoint
 GET ${apiUrl}/events?after=0&limit=100
 
 Required headers
@@ -350,7 +350,7 @@ Current snapshot by affiliate reference
 curl --request GET '${apiUrl}/status?external_id=partner-123' \
   --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'
 
-Ordered event feed
+Latest-status feed (one newest row per lead)
 curl --request GET '${apiUrl}/events?after=0&limit=100' \
   --header 'x-affiliate-key: YOUR_AFFILIATE_KEY'
 
@@ -399,8 +399,7 @@ for (;;) {
 
   for (const event of payload.events) {
     console.log(event.external_id, event.status, event.ftd_status, event.ftd_date, event.occurred_at);
-    // Save the status and cursor in the affiliate database. Processing by
-    // cursor makes reconnects and repeated responses idempotent.
+    // Upsert by tracking_id; do not insert a new lead row for each cursor.
     cursor = event.cursor;
   }
 
@@ -430,7 +429,9 @@ FTD fields and date filters
 - A qualifying deposit creates a canonical lead.ftd event at the exact wallet-credit time.
 
 Cursor rules
-- Start with after=0 to read all retained events for this affiliate.
+- Start with after=0 to read one latest status for every affiliate lead.
+- Each response contains at most one row per lead. Upsert by tracking_id (or a unique external_id).
+- Internal CRM changes that keep the same affiliate status do not create another feed row.
 - Save next_cursor only after the events have been stored successfully.
 - When has_more is true, request the next page immediately.
 - When has_more is false, poll again after approximately five seconds.
@@ -2706,7 +2707,7 @@ export default function AdminLeadsPage({
                         {apiUrl}/events?after=0&amp;limit=100
                       </span>
                       <p className="mt-1 pl-[51px] font-sans text-[11px] text-slate-500">
-                        Read every ordered change after a saved cursor.
+                        Read only the newest status per lead after a saved cursor.
                       </p>
                     </div>
                     <div className="border-t border-white/10 pt-3 text-slate-300">
@@ -3132,7 +3133,7 @@ for (;;) {
       event.ftd_date,
       event.occurred_at
     );
-    // Update the affiliate database idempotently by event.cursor.
+    // Upsert by tracking_id; do not insert a new lead row per cursor.
     cursor = event.cursor;
   }
 

@@ -167,6 +167,29 @@ interface Dashboard {
   incorrect_phone_count: number;
   routing_review_count: number;
   actor_role: "admin" | "workflow_manager" | "desk_manager";
+  can_export_leads: boolean;
+}
+interface LeadExportRow {
+  lead_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  normalized_phone: string;
+  submitted_country: string;
+  detected_phone_country: string;
+  office: string;
+  assigned_to: string;
+  assigned_role: string;
+  source: string;
+  source_type: string;
+  campaign: string;
+  lead_status: string;
+  account_state: string;
+  phone_quality: string;
+  routing_status: string;
+  created_at: string;
+  notes: string;
 }
 interface ImportResult {
   added: number;
@@ -210,6 +233,7 @@ const emptyDashboard: Dashboard = {
   incorrect_phone_count: 0,
   routing_review_count: 0,
   actor_role: "admin",
+  can_export_leads: false,
 };
 const dispositionLabels: Record<LeadDisposition, string> = {
   new: "NEW",
@@ -1149,6 +1173,94 @@ export default function AdminLeadsPage({
       return `${result?.updated || 0} lead phone number${result?.updated === 1 ? "" : "s"} revalidated and routed. ${completed} account${completed === 1 ? "" : "s"} registered automatically.`;
     });
 
+  const exportFilteredLeads = async () => {
+    if (busy || loading) return;
+    setBusy("export");
+    setError(null);
+    setNotice(null);
+    try {
+      const data = await invokeLeadAction({
+        action: "export_leads",
+        status,
+        disposition,
+        search,
+        office_id: officeFilter,
+        assignee_id: assigneeFilter,
+        source_filter: sourceFilter,
+        phone_filter: phoneFilter,
+        date_from: receivedFrom || null,
+        date_to: receivedTo || null,
+      });
+      const rows = Array.isArray(data.export_rows)
+        ? (data.export_rows as unknown as LeadExportRow[])
+        : [];
+      if (!rows.length)
+        throw new Error("There are no leads matching the current filters.");
+
+      const { default: writeXlsxFile } = await import(
+        "write-excel-file/browser"
+      );
+      const columns: Array<{
+        header: string;
+        key: keyof LeadExportRow;
+        width: number;
+      }> = [
+        { header: "Lead ID", key: "lead_id", width: 38 },
+        { header: "First name", key: "first_name", width: 18 },
+        { header: "Last name", key: "last_name", width: 18 },
+        { header: "Email", key: "email", width: 32 },
+        { header: "Phone", key: "phone", width: 20 },
+        { header: "Normalized phone", key: "normalized_phone", width: 20 },
+        { header: "Submitted country", key: "submitted_country", width: 18 },
+        {
+          header: "Detected phone country",
+          key: "detected_phone_country",
+          width: 23,
+        },
+        { header: "Office", key: "office", width: 24 },
+        { header: "Assigned to", key: "assigned_to", width: 26 },
+        { header: "Assigned role", key: "assigned_role", width: 18 },
+        { header: "Source", key: "source", width: 24 },
+        { header: "Source type", key: "source_type", width: 18 },
+        { header: "Campaign", key: "campaign", width: 24 },
+        { header: "Lead status", key: "lead_status", width: 18 },
+        { header: "Account state", key: "account_state", width: 18 },
+        { header: "Phone quality", key: "phone_quality", width: 18 },
+        { header: "Routing status", key: "routing_status", width: 22 },
+        { header: "Created at", key: "created_at", width: 22 },
+        { header: "Notes", key: "notes", width: 48 },
+      ];
+      const sheet = [
+        columns.map(({ header }) => ({
+          value: header,
+          type: String,
+          fontWeight: "bold" as const,
+          backgroundColor: "#DDD6FE",
+        })),
+        ...rows.map((row) =>
+          columns.map(({ key }) => ({
+            value: String(row[key] ?? ""),
+            type: String,
+            wrap: key === "notes",
+          })),
+        ),
+      ];
+      const fileDate = localIsoDate(new Date());
+      await writeXlsxFile(sheet, {
+        sheet: "Leads",
+        columns: columns.map(({ width }) => ({ width })),
+        stickyRowsCount: 1,
+      }).toFile(`filtered-leads-${fileDate}.xlsx`);
+      setNotice(
+        `${rows.length.toLocaleString()} filtered lead${rows.length === 1 ? "" : "s"} exported to XLSX.`,
+      );
+    } catch (cause) {
+      setError(operationError(cause));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/affiliate-leads`;
   const copyToClipboard = async (value: string, message: string) => {
     try {
@@ -1274,6 +1386,21 @@ export default function AdminLeadsPage({
                   </option>
                 ))}
               </AppSelect>
+            )}
+            {dashboard.can_export_leads && (
+              <button
+                type="button"
+                onClick={() => void exportFilteredLeads()}
+                disabled={loading || !!busy || dashboard.total === 0}
+                className={`${button} border border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20`}
+              >
+                {busy === "export" ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Download size={16} />
+                )}
+                {busy === "export" ? "Exporting..." : "Export XLSX"}
+              </button>
             )}
             {!staffMode && (
               <button

@@ -10,10 +10,14 @@ Edge Functions use the same allowlist. Administrator sign-in still applies.
 Manage addresses in **Administration CRM → IP access**. Only an administrator
 on an already approved network can add or remove an address. The current IP
 cannot be removed from its own session, and at least one IP must remain. The
-initial list is `46.166.172.116` and `92.246.87.144`. Changes are audited in
-`admin_action_logs` and take effect without a new deployment. Missing IP
-headers and allowlist lookup errors fail closed. Do not accept a client-provided
-`x-forwarded-for` header as an administrator address.
+platform owner network is `46.166.172.116`. Company networks are stored with a
+`company_id`; they can pass the page-level network gate but every CRM operation
+is restricted to that network's company. `92.246.87.144` belongs to Vlad, while
+Ryan is resolved by its primary network `176.65.136.41`. Ryan's additional
+approved networks are `85.206.173.103`, `85.206.173.105`, `85.206.173.107`,
+`85.206.173.114`, and `85.206.173.115`. Missing IP headers and allowlist lookup
+errors fail closed. Do not accept a client-provided `x-forwarded-for` header as
+an administrator address.
 
 The restriction applies to administrator CRM access. The separate staff CRM
 route retains its agent and retention role checks and assignment scope.

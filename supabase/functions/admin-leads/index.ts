@@ -14,6 +14,7 @@ import {
   routePhoneToOffice,
 } from "../_shared/leadPhoneRouting.ts";
 import { automaticallyRegisterRoutedLeads } from "../_shared/automaticLeadRegistration.ts";
+import { canExportLeads } from "../_shared/leadExportAccess.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -44,7 +45,6 @@ const isoDate = (value: string | null) => {
     new Date(timestamp).toISOString().slice(0, 10) === value
   );
 };
-
 async function keyHash(key: string) {
   const bytes = new Uint8Array(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)),
@@ -792,6 +792,346 @@ Deno.serve(async (request) => {
         403,
       );
 
+    if (action === "export_leads") {
+      if (!canExportLeads(isAdmin, clientIp))
+        return json({ error: "Lead export is not available from this network" }, 403);
+
+      const status = ["new", "inviting", "registered", "existing"].includes(
+        String(body.status),
+      )
+        ? String(body.status)
+        : null;
+      const disposition = [
+        "new",
+        "no_answer",
+        "call_back",
+        "low_potential",
+        "no_money",
+        "wrong_number",
+        "ftd",
+      ].includes(String(body.disposition))
+        ? String(body.disposition)
+        : null;
+      const search = String(body.search || "").trim().slice(0, 100);
+      const officeId = String(body.office_id || "all");
+      const assigneeId = String(body.assignee_id || "all");
+      const sourceFilter = String(body.source_filter || "all");
+      const phoneFilter = [
+        "all",
+        "valid",
+        "incorrect",
+        "routing_review",
+      ].includes(String(body.phone_filter))
+        ? String(body.phone_filter)
+        : "all";
+      const dateFrom =
+        body.date_from == null || body.date_from === ""
+          ? null
+          : String(body.date_from);
+      const dateTo =
+        body.date_to == null || body.date_to === ""
+          ? null
+          : String(body.date_to);
+      if (officeId !== "all" && officeId !== "unassigned" && !uuid(officeId))
+        return json({ error: "Select a valid Office filter" }, 400);
+      if (assigneeId !== "all" && !uuid(assigneeId))
+        return json({ error: "Select a valid assignee filter" }, 400);
+      if (
+        sourceFilter !== "all" &&
+        !["kind:affiliate_api", "kind:google_sheet", "kind:file"].includes(
+          sourceFilter,
+        ) &&
+        !(sourceFilter.startsWith("source:") && uuid(sourceFilter.slice(7)))
+      )
+        return json({ error: "Select a valid lead source" }, 400);
+      if (!isoDate(dateFrom) || !isoDate(dateTo))
+        return json({ error: "Select a valid lead creation date range" }, 400);
+      if (dateFrom && dateTo && dateFrom > dateTo)
+        return json(
+          { error: "Created from date must be before created to date" },
+          400,
+        );
+      const dateToExclusive = dateTo
+        ? new Date(
+            Date.parse(`${dateTo}T00:00:00.000Z`) + 86_400_000,
+          ).toISOString()
+        : null;
+
+      let filteredLeadIds: string[] | null = null;
+      if (assigneeId !== "all") {
+        filteredLeadIds = [];
+        let expectedTotal = 0;
+        for (let filterPage = 0; filterPage <= 1000; filterPage++) {
+          const { data: filtered, error: filteredError } = await admin.rpc(
+            "crm_service_filter_lead_ids_by_assignee",
+            {
+              p_actor_id: actorId,
+              p_company_id: companyId,
+              p_assignee_id: assigneeId,
+              p_page: filterPage,
+              p_status: status,
+              p_disposition: disposition,
+              p_search: search,
+              p_office_filter: officeId,
+              p_phone_filter: phoneFilter,
+              p_date_from: dateFrom,
+              p_date_to: dateTo,
+              p_source_filter: sourceFilter,
+            },
+          );
+          if (filteredError)
+            return json(
+              {
+                error:
+                  filteredError.message ||
+                  "Assignee filter could not be applied",
+              },
+              400,
+            );
+          const pageResult = (filtered || {}) as {
+            lead_ids?: unknown;
+            total?: unknown;
+          };
+          const pageIds = Array.isArray(pageResult.lead_ids)
+            ? pageResult.lead_ids.map(String).filter(uuid)
+            : [];
+          expectedTotal = Math.max(0, Number(pageResult.total) || 0);
+          filteredLeadIds.push(...pageIds);
+          if (!pageIds.length || filteredLeadIds.length >= expectedTotal) break;
+        }
+      }
+
+      const exportQuery = (
+        from: number,
+        to: number,
+        selectedIds?: string[],
+      ) => {
+        let query = admin
+          .from("crm_leads")
+          .select(
+            "id,email,first_name,last_name,phone,country,campaign,notes,source_kind,source_name,status,disposition_status,registered_user_id,created_at,office_id,phone_e164,phone_country_code,phone_validation_status,phone_routing_status",
+          )
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
+        if (selectedIds) query = query.in("id", selectedIds);
+        if (officeId === "unassigned") query = query.is("office_id", null);
+        else if (officeId !== "all") query = query.eq("office_id", officeId);
+        if (status) query = query.eq("status", status);
+        if (disposition)
+          query = query.eq("disposition_status", disposition);
+        if (search) query = query.ilike("email", `%${search}%`);
+        if (dateFrom)
+          query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
+        if (dateToExclusive)
+          query = query.lt("created_at", dateToExclusive);
+        if (sourceFilter.startsWith("source:"))
+          query = query.eq("source_id", sourceFilter.slice(7));
+        else if (sourceFilter.startsWith("kind:"))
+          query = query.eq("source_kind", sourceFilter.slice(5));
+        if (phoneFilter === "valid")
+          query = query.eq("phone_validation_status", "valid");
+        else if (phoneFilter === "incorrect")
+          query = query.in("phone_validation_status", [
+            "invalid",
+            "unsupported",
+            "missing",
+          ]);
+        else if (phoneFilter === "routing_review")
+          query = query.in("phone_routing_status", [
+            "no_office",
+            "no_desk_manager",
+          ]);
+        return query.range(from, to);
+      };
+
+      const leadRows: Array<
+        Record<string, unknown> & { registered_user_id?: string | null }
+      > = [];
+      if (filteredLeadIds === null) {
+        for (let offset = 0; ; offset += 1000) {
+          const result = await exportQuery(offset, offset + 999);
+          if (result.error) throw result.error;
+          const batch = (result.data || []) as Array<
+            Record<string, unknown> & { registered_user_id?: string | null }
+          >;
+          leadRows.push(...batch);
+          if (batch.length < 1000) break;
+        }
+      } else {
+        for (let offset = 0; offset < filteredLeadIds.length; offset += 200) {
+          const ids = filteredLeadIds.slice(offset, offset + 200);
+          const result = await exportQuery(0, ids.length - 1, ids);
+          if (result.error) throw result.error;
+          leadRows.push(
+            ...((result.data || []) as Array<
+              Record<string, unknown> & {
+                registered_user_id?: string | null;
+              }
+            >),
+          );
+        }
+        leadRows.sort((left, right) => {
+          const byDate = String(right.created_at).localeCompare(
+            String(left.created_at),
+          );
+          return byDate || String(right.id).localeCompare(String(left.id));
+        });
+      }
+
+      const { data: officeRows, error: officeError } = await admin
+        .from("crm_offices")
+        .select("id,name,code")
+        .eq("company_id", companyId);
+      if (officeError) throw officeError;
+      const officeById = new Map(
+        (officeRows || []).map((office) => [
+          String(office.id),
+          `${String(office.code || "").trim()} · ${String(office.name || "").trim()}`.replace(
+            /^ · | · $/g,
+            "",
+          ),
+        ]),
+      );
+      const registeredIds = Array.from(
+        new Set(
+          leadRows
+            .map((lead) => lead.registered_user_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const promotionByUserId = new Map<string, boolean>();
+      const agentByClientId = new Map<string, string>();
+      const retentionByClientId = new Map<string, string>();
+      for (let offset = 0; offset < registeredIds.length; offset += 200) {
+        const ids = registeredIds.slice(offset, offset + 200);
+        const [users, agents, retention] = await Promise.all([
+          admin
+            .from("users")
+            .select("id,is_promoted")
+            .eq("company_id", companyId)
+            .in("id", ids),
+          admin
+            .from("crm_client_agent_assignments")
+            .select("client_id,agent_id")
+            .in("client_id", ids),
+          admin
+            .from("crm_client_retention_assignments")
+            .select("client_id,retention_id")
+            .in("client_id", ids),
+        ]);
+        if (users.error || agents.error || retention.error)
+          throw new Error(
+            users.error?.message ||
+              agents.error?.message ||
+              retention.error?.message ||
+              "Could not load lead assignments",
+          );
+        for (const user of users.data || [])
+          promotionByUserId.set(String(user.id), user.is_promoted === true);
+        for (const assignment of agents.data || [])
+          agentByClientId.set(
+            String(assignment.client_id),
+            String(assignment.agent_id),
+          );
+        for (const assignment of retention.data || [])
+          retentionByClientId.set(
+            String(assignment.client_id),
+            String(assignment.retention_id),
+          );
+      }
+      const assignedUserIds = Array.from(
+        new Set([
+          ...agentByClientId.values(),
+          ...retentionByClientId.values(),
+        ]),
+      );
+      const assignedUserById = new Map<
+        string,
+        { email: string; first_name: string; last_name: string }
+      >();
+      for (let offset = 0; offset < assignedUserIds.length; offset += 200) {
+        const { data: assignedUsers, error: assignedUserError } = await admin
+          .from("users")
+          .select("id,email,first_name,last_name")
+          .eq("company_id", companyId)
+          .in("id", assignedUserIds.slice(offset, offset + 200));
+        if (assignedUserError) throw assignedUserError;
+        for (const user of assignedUsers || [])
+          assignedUserById.set(String(user.id), {
+            email: String(user.email || ""),
+            first_name: String(user.first_name || ""),
+            last_name: String(user.last_name || ""),
+          });
+      }
+      const displayUser = (
+        user:
+          | { email: string; first_name: string; last_name: string }
+          | undefined,
+      ) =>
+        `${user?.first_name || ""} ${user?.last_name || ""}`.trim() ||
+        user?.email ||
+        "";
+      const humanize = (value: unknown) =>
+        String(value || "")
+          .replaceAll("_", " ")
+          .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+      return json({
+        export_rows: leadRows.map((lead) => {
+          const clientId = lead.registered_user_id
+            ? String(lead.registered_user_id)
+            : null;
+          const promoted = clientId
+            ? promotionByUserId.get(clientId)
+            : undefined;
+          const agentId = clientId
+            ? agentByClientId.get(clientId) || null
+            : null;
+          const retentionId = clientId
+            ? retentionByClientId.get(clientId) || null
+            : null;
+          const assignedId =
+            promoted === true
+              ? retentionId
+              : promoted === false
+                ? agentId
+                : retentionId || agentId;
+          const assignedRole = assignedId
+            ? assignedId === retentionId
+              ? "Retention"
+              : "Agent"
+            : "";
+          return {
+            lead_id: String(lead.id || ""),
+            first_name: String(lead.first_name || ""),
+            last_name: String(lead.last_name || ""),
+            email: String(lead.email || ""),
+            phone: String(lead.phone || ""),
+            normalized_phone: String(lead.phone_e164 || ""),
+            submitted_country: String(lead.country || ""),
+            detected_phone_country: String(lead.phone_country_code || ""),
+            office: lead.office_id
+              ? officeById.get(String(lead.office_id)) || ""
+              : "",
+            assigned_to: assignedId
+              ? displayUser(assignedUserById.get(assignedId))
+              : "",
+            assigned_role: assignedRole,
+            source: String(lead.source_name || "Import"),
+            source_type: humanize(lead.source_kind),
+            campaign: String(lead.campaign || ""),
+            lead_status: humanize(lead.disposition_status),
+            account_state: humanize(lead.status),
+            phone_quality: humanize(lead.phone_validation_status),
+            routing_status: humanize(lead.phone_routing_status),
+            created_at: String(lead.created_at || ""),
+            notes: String(lead.notes || ""),
+          };
+        }),
+      });
+    }
+
     if (action === "dashboard") {
       const page = Math.max(0, Math.min(1000, Number(body.page) || 0));
       const status = ["new", "inviting", "registered", "existing"].includes(
@@ -1335,6 +1675,7 @@ Deno.serve(async (request) => {
         routing_review_count: routingReviewCount,
         actor_role: actorRole,
         can_manage_sources: isAdmin,
+        can_export_leads: canExportLeads(isAdmin, clientIp),
       });
     }
 

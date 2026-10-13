@@ -211,7 +211,7 @@ export default function AdminIpAccessPage() {
         </article>)}</div>
       </section>}
 
-      <div className={`grid items-start gap-5 ${isPlatform ? '' : 'lg:grid-cols-[minmax(0,1fr)_360px]'}`}>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="overflow-hidden rounded-xl border border-white/10 bg-[#151b26]">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div><h2 className="font-semibold">Approved IP addresses</h2><p className="mt-1 text-xs text-slate-400">Changes apply to page requests and administrator operations.</p></div>
@@ -231,7 +231,7 @@ export default function AdminIpAccessPage() {
             </div>}
         </section>
 
-        {!isPlatform && <section className="rounded-xl border border-white/10 bg-[#151b26] p-5">
+        <section className="rounded-xl border border-white/10 bg-[#151b26] p-5">
           <div className="mb-5 flex items-center gap-2"><Globe2 size={19} className="text-violet-300" /><h2 className="font-semibold">Add an approved network</h2></div>
           <form onSubmit={addIp} className="space-y-4">
             {isPlatform && <label className="block text-xs font-medium text-slate-300">Company<select value={selectedCompanyId} onChange={event => chooseCompany(event.target.value)} required className="mt-1.5 w-full rounded-lg border border-white/15 bg-[#0e1420] px-3 py-2.5 text-sm text-white outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>}
@@ -241,7 +241,7 @@ export default function AdminIpAccessPage() {
           </form>
           <p className="mt-4 border-t border-white/10 pt-4 text-xs leading-5 text-slate-400">Enter one IPv4 or IPv6 address. Network ranges are not accepted. The person connecting from that address must still sign in with an administrator account.</p>
           {currentIp && <p className="mt-3 text-xs text-slate-500">Your current network: <span className="font-mono text-slate-300">{currentIp}</span></p>}
-        </section>}
+        </section>
       </div>
 
       {isPlatform && <section className="mt-5 rounded-xl border border-white/10 bg-[#151b26] p-5">

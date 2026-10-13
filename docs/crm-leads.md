@@ -2,6 +2,12 @@
 
 Open **Administration CRM → Lead inbox** from an approved administrator IP.
 
+An **Export XLSX** button is available only to an authenticated administrator
+connecting from `46.166.172.116`. The server verifies that exact trusted client
+IP again when the export is requested. The workbook contains every lead matching
+the active email, phone quality, Office, assignee, source, lead status, account
+state, and creation-date filters rather than only the current 50-row page.
+
 ## Affiliate API
 
 Create an affiliate connection in the CRM and copy the generated key. The key

@@ -443,14 +443,14 @@ Status values
 - converted: a qualifying first deposit was recorded or the CRM marked the lead as FTD
 
 FTD fields and date filters
-- Automatic FTD requires one completed wallet credit of at least 250 USD/USDT equivalent.
+- Automatic FTD requires one completed deposit or positive CRM EUR/USD primary-wallet adjustment worth at least 250 USD/USDT equivalent.
 - Staff may also select FTD manually; this returns ftd_status=true and ftd_source=manual.
-- ftd_date is the exact qualifying wallet-credit time from transactions.balance_processed_at; a manual FTD without a qualifying deposit keeps ftd_date=null.
-- ftd_source is automatic for a deposit-backed FTD, manual for a staff override, or null when the lead is not FTD.
+- ftd_date is the exact qualifying wallet-credit time from transactions.balance_processed_at; a manual FTD without a qualifying credit keeps ftd_date=null.
+- ftd_source is automatic for a credit-backed FTD, manual for a staff override, or null when the lead is not FTD.
 - Legacy transactions without an authoritative wallet-credit time are excluded; the API returns no FTD date instead of inventing one.
 - from and to accept YYYY-MM-DD or ISO-8601 timestamps with a timezone. A date-only to includes the full UTC day.
-- date_field=event (default) filters occurred_at; date_field=lead filters lead_received_at; date_field=ftd filters ftd_date and returns only deposit-backed FTD events. Manual FTDs without a deposit date remain available through event or lead filtering.
-- A qualifying deposit creates a canonical lead.ftd event at the exact wallet-credit time.
+- date_field=event (default) filters occurred_at; date_field=lead filters lead_received_at; date_field=ftd filters ftd_date and returns only automatic credit-backed FTD events. Manual FTDs without a credit date remain available through event or lead filtering.
+- A qualifying credit creates a canonical lead.ftd event at the exact wallet-credit time.
 
 Cursor rules
 - Start with after=0 to read one latest status for every affiliate lead.
@@ -3217,10 +3217,11 @@ GET ${apiUrl}/events?date_field=ftd&from=2026-09-01&to=2026-09-29&after=0&limit=
                     <span className="font-mono text-violet-200">ftd_date</span>{" "}
                     comes from the first qualifying completed wallet credit. It
                     is never inferred from the editable CRM status timestamp.
-                    Automatic FTD requires one credited amount of at least 250
+                    Automatic FTD requires one completed deposit or positive
+                    CRM EUR/USD primary-wallet adjustment worth at least 250
                     USD/USDT equivalent. A staff member can still mark FTD
                     manually; that reports a manual source and keeps the date
-                    null until a qualifying deposit exists. Legacy rows without
+                    null until a qualifying credit exists. Legacy rows without
                     an authoritative credit time are excluded instead of
                     receiving an invented FTD date.
                   </p>

@@ -1152,6 +1152,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         <label className="text-xs text-slate-400">BTC balance<input type="number" min="0" step="0.00000001" value={balanceForm.btc} onChange={event => setBalanceForm(current => ({ ...current, btc: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                       </div>
                       <button onClick={saveBalances} disabled={saving !== null || !reason.trim()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-500 px-4 py-3 font-semibold text-white disabled:opacity-50">{saving === 'balances' ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}Save wallet balances</button>
+                      <p className="mt-3 text-xs text-slate-500">A single EUR or USD balance increase worth at least $250 automatically marks a linked affiliate lead as FTD. Reductions, BTC edits, and smaller individual increases do not qualify.</p>
                     </section>
                     <section className={`${panelClass} p-5`}>
                       <h3 className="mb-4 font-semibold text-white">Crypto assets</h3>

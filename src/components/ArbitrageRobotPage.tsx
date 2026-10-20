@@ -8,7 +8,7 @@ import {
   Settings, 
   TrendingUp, 
   TrendingDown, 
-  DollarSign, 
+  Euro,
   Activity, 
   AlertTriangle, 
   CheckCircle,
@@ -61,7 +61,14 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
 }) => {
   const { t } = useTranslation();
   const { prices, getPriceBySymbol } = useBybitData();
-  const { formatFiat, formatFiatPrice, formatTradingPair } = useFiatCurrency();
+  const {
+    convertUsdToEur,
+    eurUsdRate,
+    formatEur,
+    formatFiat,
+    formatFiatPrice,
+    formatTradingPair
+  } = useFiatCurrency();
   useEffect(() => {
     const firstPair = [...prices.keys()].find(symbol => symbol.endsWith('USDT'));
     if (firstPair && !prices.has(selectedPair)) {
@@ -87,6 +94,11 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
       ? availableBalance
       : usdtBalance - localAllocatedBalance - usedMargin;
   }, [availableBalance, usdtBalance, localAllocatedBalance, usedMargin]);
+
+  const actualAvailableBalanceEur = React.useMemo(
+    () => convertUsdToEur(actualAvailableBalance),
+    [actualAvailableBalance, convertUsdToEur]
+  );
   
   // Simulated trading logs
   const [tradingLogs] = useState<any[]>([]);
@@ -113,10 +125,10 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
 
   useEffect(() => {
     const currentAmount = parseFloat(allocationAmount);
-    if (!isNaN(currentAmount) && currentAmount > actualAvailableBalance) {
+    if (!isNaN(currentAmount) && currentAmount > actualAvailableBalanceEur) {
       setAllocationAmount('');
     }
-  }, [actualAvailableBalance, allocationAmount]);
+  }, [actualAvailableBalanceEur, allocationAmount]);
 
   // Exchange-specific arbitrage needs independently sourced exchange books.
   // The Twelve Data reference quote is used only for account valuation.
@@ -174,14 +186,19 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   };
 
   const handleAllocateBalance = async () => {
-    const amount = parseFloat(allocationAmount);
+    const amountEur = parseFloat(allocationAmount);
 
-    if (isNaN(amount) || amount <= 0) {
+    if (isNaN(amountEur) || amountEur <= 0) {
       setError(t('errors.invalidAmount'));
       return;
     }
 
-    if (amount > actualAvailableBalance) {
+    if (eurUsdRate <= 0) {
+      setError('A current EUR exchange rate is required to allocate funds.');
+      return;
+    }
+
+    if (amountEur > actualAvailableBalanceEur) {
       setError(t('errors.insufficientBalance'));
       return;
     }
@@ -190,15 +207,17 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
     setError(null);
     setSuccess(null);
 
-    const prevAllocated = localAllocatedBalance;
-    setLocalAllocatedBalance(prevAllocated + amount);
-
     try {
-      const { error: rpcError } = await supabase.rpc('allocate_robot_funds', {
-        p_amount: amount
+      const { data, error: rpcError } = await supabase.rpc('allocate_robot_eur_funds', {
+        p_amount_eur: amountEur
       });
 
       if (rpcError) throw rpcError;
+
+      const newAllocatedBalance = Number(data?.new_allocated_balance);
+      if (Number.isFinite(newAllocatedBalance)) {
+        setLocalAllocatedBalance(newAllocatedBalance);
+      }
 
       await Promise.all([
         fetchBalances?.(),
@@ -206,11 +225,10 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
       ]);
 
       refreshBreakdown?.();
-      setSuccess(t('robot.successfullyAllocated', { amount: amount.toFixed(2) }));
+      setSuccess(t('robot.successfullyAllocated', { amount: formatEur(amountEur) }));
       setAllocationAmount('');
       setShowAllocationForm(false);
     } catch (error: any) {
-      setLocalAllocatedBalance(prevAllocated);
       setError(error.message || t('robot.failedToAllocateBalance'));
     } finally {
       setIsAllocating(false);
@@ -233,7 +251,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
     setLocalAllocatedBalance(0);
 
     try {
-      const { error: rpcError } = await supabase.rpc('deallocate_robot_funds');
+      const { data, error: rpcError } = await supabase.rpc('deallocate_robot_eur_funds');
 
       if (rpcError) throw rpcError;
 
@@ -243,7 +261,10 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
       ]);
 
       refreshBreakdown?.();
-      setSuccess(t('robot.successfullyRemoved', { amount: allocatedAmount.toFixed(2) }));
+      const removedAmountEur = Number(data?.deallocated_amount_eur);
+      setSuccess(t('robot.successfullyRemoved', {
+        amount: formatEur(Number.isFinite(removedAmountEur) ? removedAmountEur : convertUsdToEur(allocatedAmount))
+      }));
     } catch (error: any) {
       setLocalAllocatedBalance(allocatedAmount);
       setError(error.message || t('robot.failedToRemoveFunds'));
@@ -359,7 +380,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
             <div className={`${glassSoftClass} w-full rounded-lg border border-white/[0.08] px-4 py-2 sm:w-auto`}>
               <div className="text-xs text-slate-400">{t('header.availableBalance')}</div>
-              <div className="font-mono text-lg text-white">{formatFiat(actualAvailableBalance)}</div>
+              <div className="font-mono text-lg text-white">{formatEur(actualAvailableBalanceEur)}</div>
             </div>
             
             <div className="flex w-full gap-3 sm:w-auto">
@@ -430,11 +451,11 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                 <div className={`${glassInnerClass} rounded-xl p-4 border border-slate-700/30`}>
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/25">
-                      <DollarSign size={20} className="text-white" />
+                      <Euro size={20} className="text-white" />
                     </div>
                     <div>
                       <div className="text-slate-400 text-sm">{t('robot.allocatedBalance')}</div>
-                      <div className="text-white font-bold text-xl">{formatFiat(localAllocatedBalance)}</div>
+                      <div className="text-white font-bold text-xl">{formatEur(convertUsdToEur(localAllocatedBalance))}</div>
                     </div>
                   </div>
                   
@@ -482,33 +503,38 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                       <div className="mb-3">
                         <label className="block text-sm text-slate-400 mb-1">{t('robot.amountToAllocate')}</label>
                         <div className="flex gap-2">
-                          <input
-                            type="number"
-                            value={allocationAmount}
-                            onChange={(e) => setAllocationAmount(e.target.value)}
-                            placeholder={t('swap.enterAmount')}
-                            className={`flex-1 ${robotCompactFieldClass} px-3 py-2 rounded-lg border ${
-                              parseFloat(allocationAmount) > actualAvailableBalance
-                                ? 'border-red-500/50 focus:ring-red-500/50'
-                                : 'border-slate-600/50 focus:ring-blue-500/50'
-                            } focus:outline-none focus:ring-1`}
-                          />
+                          <div className="relative min-w-0 flex-1">
+                            <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">€</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={allocationAmount}
+                              onChange={(e) => setAllocationAmount(e.target.value)}
+                              placeholder={t('swap.enterAmount')}
+                              className={`w-full ${robotCompactFieldClass} py-2 pl-8 pr-3 rounded-lg border ${
+                                parseFloat(allocationAmount) > actualAvailableBalanceEur
+                                  ? 'border-red-500/50 focus:ring-red-500/50'
+                                  : 'border-slate-600/50 focus:ring-blue-500/50'
+                              } focus:outline-none focus:ring-1`}
+                            />
+                          </div>
                           <button
-                            onClick={() => setAllocationAmount(Math.floor(actualAvailableBalance * 100) / 100 + '')}
+                            onClick={() => setAllocationAmount((Math.floor(actualAvailableBalanceEur * 100) / 100).toFixed(2))}
                             className={`${glassSurfaceClass} ${glassHoverClass} text-slate-300 px-3 py-2 rounded-lg text-xs font-medium`}
                           >
                             {t('common.max')}
                           </button>
                         </div>
-                        {parseFloat(allocationAmount) > actualAvailableBalance && (
+                        {parseFloat(allocationAmount) > actualAvailableBalanceEur && (
                           <p className="text-red-400 text-xs mt-1">
-                            {t('errors.insufficientBalance')} (Max: {formatFiat(actualAvailableBalance)})
+                            {t('errors.insufficientBalance')} (Max: {formatEur(actualAvailableBalanceEur)})
                           </p>
                         )}
                       </div>
                       <button
                         onClick={handleAllocateBalance}
-                        disabled={isAllocating || parseFloat(allocationAmount) > actualAvailableBalance || !allocationAmount}
+                        disabled={isAllocating || eurUsdRate <= 0 || parseFloat(allocationAmount) > actualAvailableBalanceEur || !allocationAmount}
                         className={`w-full ${glassActionClass} ${glassActionHoverClass} disabled:from-slate-700 disabled:via-slate-700 disabled:to-slate-800 text-white py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2`}
                       >
                         {isAllocating ? (
@@ -528,7 +554,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                     </div>
                     <div>
                       <div className="text-slate-400 text-sm">{t('robot.todaysProfit')}</div>
-                      <div className="text-emerald-400 font-bold text-xl">+{formatFiat(displayedTodaysProfit)}</div>
+                      <div className="text-emerald-400 font-bold text-xl">+{formatEur(convertUsdToEur(displayedTodaysProfit))}</div>
                     </div>
                   </div>
                   
@@ -563,17 +589,17 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className={`${glassSurfaceClass} rounded-lg p-3 border border-slate-700/50`}>
                     <div className="text-slate-400 text-sm mb-1">{t('robot.daily')}</div>
-                    <div className="text-emerald-400 font-bold text-lg">+{formatFiat(estimatedDailyProfit)}</div>
+                    <div className="text-emerald-400 font-bold text-lg">+{formatEur(convertUsdToEur(estimatedDailyProfit))}</div>
                     <div className="text-xs text-slate-500">{t('robot.ofAllocatedBalance', { percentage: getDailyProfitPercentage() })}</div>
                   </div>
                   <div className={`${glassSurfaceClass} rounded-lg p-3 border border-slate-700/50`}>
                     <div className="text-slate-400 text-sm mb-1">{t('robot.monthly')}</div>
-                    <div className="text-emerald-400 font-bold text-lg">+{formatFiat(estimatedMonthlyProfit)}</div>
+                    <div className="text-emerald-400 font-bold text-lg">+{formatEur(convertUsdToEur(estimatedMonthlyProfit))}</div>
                     <div className="text-xs text-slate-500">{t('robot.ofAllocatedBalance', { percentage: (getDailyProfitPercentage() * 30).toFixed(1) })}</div>
                   </div>
                   <div className={`${glassSurfaceClass} rounded-lg p-3 border border-slate-700/50`}>
                     <div className="text-slate-400 text-sm mb-1">{t('robot.yearly')}</div>
-                    <div className="text-emerald-400 font-bold text-lg">+{formatFiat(estimatedYearlyProfit)}</div>
+                    <div className="text-emerald-400 font-bold text-lg">+{formatEur(convertUsdToEur(estimatedYearlyProfit))}</div>
                     <div className="text-xs text-slate-500">{t('robot.ofAllocatedBalance', { percentage: (getDailyProfitPercentage() * 365).toFixed(1) })}</div>
                   </div>
                 </div>

@@ -261,6 +261,18 @@ const WalletPage: React.FC<WalletPageProps> = ({
     if (description.startsWith('CRM balance adjustment:')) {
       return `EUR funds ${direction} account`;
     }
+    if (description.startsWith('CRM robot profit:')) {
+      return 'Robot profit credited';
+    }
+    if (description.startsWith('CRM EUR wallet deposit')) {
+      return 'EUR deposit completed';
+    }
+    if (description.startsWith('CRM USD wallet deposit')) {
+      return 'USD deposit completed';
+    }
+    if (description.startsWith('CRM ')) {
+      return 'Account transaction';
+    }
 
     return description;
   };

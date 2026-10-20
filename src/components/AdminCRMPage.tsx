@@ -266,7 +266,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [taxSubmissionError, setTaxSubmissionError] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [reason, setReason] = useState('CRM account update');
+  const [reason, setReason] = useState('Account update');
   const [kycReviewReason, setKycReviewReason] = useState('');
   const workspaceRequestId = useRef(0);
   const [profileForm, setProfileForm] = useState<Record<string, string | boolean>>({});

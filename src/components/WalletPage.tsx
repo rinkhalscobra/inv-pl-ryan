@@ -239,11 +239,30 @@ const WalletPage: React.FC<WalletPageProps> = ({
   const formatTransactionAmount = (transaction: { amount: number; currency?: string; description?: string }) => {
     const transactionAmount = Number(transaction.amount);
     const currency = transaction.currency?.toUpperCase() ||
-      (transaction.description?.startsWith('CRM BTC balance adjustment:') ? 'BTC' : '');
+      (transaction.description?.startsWith('CRM BTC balance adjustment:') ||
+       transaction.description?.startsWith('BTC funds ') ? 'BTC' : '');
     if (currency === 'EUR') return formatEur(transactionAmount);
     if (currency === 'USD') return formatUsd(transactionAmount);
     if (currency === 'BTC') return `${transactionAmount.toFixed(8)} BTC`;
     return formatFiat(transactionAmount);
+  };
+
+  const getTransactionDescription = (transaction: { amount: number; description?: string }) => {
+    const description = transaction.description || 'Account transaction';
+    const amount = Number(transaction.amount);
+    const direction = amount >= 0 ? 'added to' : 'removed from';
+
+    if (description.startsWith('CRM BTC balance adjustment:')) {
+      return `BTC funds ${direction} account`;
+    }
+    if (description.startsWith('CRM USD balance adjustment:')) {
+      return `USD funds ${direction} account`;
+    }
+    if (description.startsWith('CRM balance adjustment:')) {
+      return `EUR funds ${direction} account`;
+    }
+
+    return description;
   };
 
   const formatCrypto = (amount: number, symbol: string) => {
@@ -560,7 +579,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                       {getTransactionIcon(transaction.type)}
                       <div>
                         <div className="text-white font-medium text-sm">
-                          {transaction.description}
+                          {getTransactionDescription(transaction)}
                         </div>
                         <div className="text-slate-400 text-xs">
                           {formatDate(transaction.created_at)}
@@ -833,7 +852,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                     {getTransactionIcon(transaction.type)}
                     <div>
                       <div className="text-white font-medium">
-                        {transaction.description}
+                        {getTransactionDescription(transaction)}
                       </div>
                       <div className="text-slate-400 text-sm">
                         {new Date(transaction.created_at).toLocaleString('en-GB')}

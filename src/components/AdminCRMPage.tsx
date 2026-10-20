@@ -15,6 +15,7 @@ import {
   EyeOff,
   Gift,
   Headphones,
+  Info,
   Landmark,
   LayoutDashboard,
   Loader2,
@@ -181,6 +182,108 @@ const recordValue = (column: string, value: unknown) => {
     return value === null || value === undefined || value === '' ? '—' : `${compactValue(value)}%`;
   }
   return compactValue(value);
+};
+
+const tradeRecordFieldHelp: Record<string, string> = {
+  symbol: 'Instrument being traded. Crypto futures normally end in USDT; CFD symbols represent forex, stocks, indices, or commodities.',
+  side: 'Trade direction. A long benefits when the market rises above entry price; a short benefits when it falls below entry price.',
+  amount: 'Quantity of the instrument in the position or order. Increasing it increases both potential profit and potential loss.',
+  position_size: 'Total market exposure represented by this position. It is normally derived from amount, price, and leverage.',
+  entry_price: 'Price where the position opened. This is the baseline used to calculate profit or loss.',
+  current_price: 'Latest mark or market price used for unrealized P&L. Live pricing may overwrite a manual value.',
+  exit_price: 'Price where the position closed. It is used to calculate the final realized result.',
+  close_price: 'Final execution price recorded when the position was closed.',
+  leverage: 'Exposure multiplier. Higher leverage raises ROI sensitivity and liquidation risk; it does not change market direction.',
+  margin: 'Collateral currently committed to the position.',
+  reserved_margin: 'Collateral held for an order that has not filled yet.',
+  margin_type: 'Isolated limits risk to this position. Cross may use more of the account balance to support it.',
+  liquidation_price: 'Estimated price where available collateral can no longer support the position and liquidation may occur.',
+  unrealized_pnl: 'Current open profit or loss before the position closes. Positive is profit; negative is loss. Usually calculated automatically.',
+  realized_pnl: 'Final profit or loss already locked in when the position closed. Positive is profit; negative is loss.',
+  pnl: 'Profit or loss value. Positive means profit and negative means loss; verify whether this record is open or already settled.',
+  roi: 'Return on the committed margin, expressed as a percentage. Positive is profit; negative is loss. Usually derived from P&L and margin.',
+  is_open: 'Enabled means the position is active. Disabling it removes it from open positions, but does not by itself perform normal settlement.',
+  tp_price: 'Take-profit trigger. For a long it is normally above entry; for a short it is normally below entry. Blank disables it.',
+  sl_price: 'Stop-loss trigger. For a long it is normally below entry; for a short it is normally above entry. Blank disables it.',
+  take_profit: 'Take-profit trigger that closes or reduces the trade after the favorable target is reached.',
+  stop_loss: 'Stop-loss trigger that closes or reduces the trade when the adverse limit is reached.',
+  spread_cost: 'Bid/ask spread charged when the position opened. This reduces net P&L.',
+  swap_fee: 'Financing or overnight charge applied to the position. A positive charge reduces the client result.',
+  accumulated_swap_fee: 'Total financing or overnight charges accumulated on this position.',
+  order_type: 'Market executes at the available market price; limit waits for a chosen price; stop activates at a trigger.',
+  price: 'Order price. Its exact role depends on whether the order is market, limit, or stop.',
+  limit_price: 'Requested execution price for a limit order.',
+  stop_price: 'Trigger price that activates a stop order.',
+  trigger_price: 'Market level that activates the pending instruction.',
+  status: 'Lifecycle state such as open, pending, filled, cancelled, or closed. Changing text alone may not perform settlement actions.',
+  filled: 'Quantity already executed from the original order amount.',
+  filled_amount: 'Quantity already executed from the original order amount.',
+  reduce_only: 'When enabled, this order may only reduce an existing position and cannot increase exposure.',
+  time_in_force: 'Controls how long an unfilled order remains active, for example GTC, IOC, or FOK.',
+  close_reason: 'Reason recorded for closing, such as manual close, take profit, stop loss, or liquidation.',
+  position_id: 'Identifier linking this row to its parent position.',
+  charged_at: 'Time when the financing or swap charge was applied.',
+  created_at: 'Time when this record was created.',
+  updated_at: 'Most recent time this record was changed.'
+};
+
+const getTradeRecordFieldHelp = (column: string, title: string) => {
+  if (tradeRecordFieldHelp[column]) return tradeRecordFieldHelp[column];
+  const label = recordColumnLabel(column);
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)} stored for this ${title.toLowerCase()} record. Change it only when correcting verified account data.`;
+};
+
+const getTradeEditorOverview = (table: string, title: string, values: Record<string, string | boolean>) => {
+  if (table === 'futures_positions' && title.toLowerCase().includes('positions')) {
+    const side = asText(values.side).toLowerCase();
+    const entryPrice = asNumber(values.entry_price);
+    const currentPrice = asNumber(values.current_price);
+    const isOpen = Boolean(values.is_open);
+    const targetDirection = side === 'short' ? 'below' : side === 'long' ? 'above' : '';
+    const grossProfit = side === 'short'
+      ? currentPrice > 0 && entryPrice > 0 && currentPrice < entryPrice
+      : side === 'long'
+        ? currentPrice > entryPrice && entryPrice > 0
+        : false;
+    const equalPrices = currentPrice > 0 && entryPrice > 0 && currentPrice === entryPrice;
+    const directionStatus = entryPrice > 0 && currentPrice > 0 && targetDirection
+      ? equalPrices
+        ? 'Current direction: approximately break-even before spread and fees.'
+        : `Current direction: price movement indicates a gross ${grossProfit ? 'profit' : 'loss'} before spread and fees.`
+      : 'Enter valid side, entry price, and current price to evaluate the direction.';
+
+    return {
+      heading: 'How profit works for this position',
+      body: `${side === 'short' ? 'SHORT' : side === 'long' ? 'LONG' : 'The selected side'} is in gross profit when current price is ${targetDirection || 'on the profitable side of'} entry price${entryPrice > 0 ? ` (${entryPrice})` : ''}. ${directionStatus} ROI and unrealized P&L are calculated values and should not be edited alone. ${isOpen ? 'This position is currently active.' : 'This position is currently closed/disabled; enabling it does not perform normal trade settlement.'}`,
+      positive: grossProfit && isOpen
+    };
+  }
+
+  if (table === 'futures_orders') {
+    return {
+      heading: 'How this order works',
+      body: 'An order is only an instruction until it fills. Price, trigger, side, amount, and order type control execution. Editing status alone does not safely execute, cancel, reserve margin, or settle an order.',
+      positive: false
+    };
+  }
+
+  if (table === 'futures_position_history') {
+    return {
+      heading: 'Closed-position history',
+      body: 'This is a historical record. Positive realized P&L means profit and negative means loss. Editing history does not automatically move wallet funds or reopen a position.',
+      positive: false
+    };
+  }
+
+  if (table === 'position_swap_charges') {
+    return {
+      heading: 'Overnight financing record',
+      body: 'This row records a swap or overnight financing charge linked to a position. Editing it does not automatically recalculate the position or wallet balance.',
+      positive: false
+    };
+  }
+
+  return null;
 };
 
 const RecordSection: React.FC<{
@@ -847,6 +950,15 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     { key: 'audit', label: 'Audit', icon: Database }
   ];
   const tabs = accountRole === 'client' ? clientTabs : primaryTabs;
+  const isTradeRecordEditor = Boolean(editingRecord && [
+    'futures_positions',
+    'futures_orders',
+    'futures_position_history',
+    'position_swap_charges'
+  ].includes(editingRecord.table));
+  const tradeEditorOverview = editingRecord && isTradeRecordEditor
+    ? getTradeEditorOverview(editingRecord.table, editingRecord.title, recordForm)
+    : null;
 
   const managedSection = (title: string, table: string, rows: JsonRow[], removable = true) => (
     <RecordSection
@@ -1342,13 +1454,27 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
               <button onClick={() => setEditingRecord(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><XCircle size={20} /></button>
             </div>
             <div className="max-h-[calc(90vh-145px)] overflow-y-auto p-5">
+              {tradeEditorOverview && (
+                <div className={`mb-5 rounded-xl border p-4 ${tradeEditorOverview.positive ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-blue-500/30 bg-blue-500/10'}`}>
+                  <div className="flex items-start gap-3">
+                    <Info className={tradeEditorOverview.positive ? 'mt-0.5 shrink-0 text-emerald-300' : 'mt-0.5 shrink-0 text-blue-300'} size={18} />
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">{tradeEditorOverview.heading}</h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-300">{tradeEditorOverview.body}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid gap-4 md:grid-cols-2">
                 {Object.entries(recordForm).map(([key, value]) => {
                   const original = editingRecord.row[key];
-                  const isLong = typeof original === 'object' || String(value).length > 100;
+                  const isLong = (typeof original === 'object' && original !== null) || String(value).length > 100;
+                  const fieldHelp = isTradeRecordEditor
+                    ? getTradeRecordFieldHelp(key, editingRecord.title)
+                    : '';
                   return (
                     <label key={key} className={`text-xs text-slate-400 ${isLong ? 'md:col-span-2' : ''}`}>
-                      {key.replaceAll('_', ' ')}
+                      <span className="font-medium text-slate-300">{recordColumnLabel(key)}</span>
                       {typeof original === 'boolean' ? (
                         <span className="mt-1.5 flex min-h-[42px] items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/60 px-3 text-sm text-white"><input type="checkbox" checked={value as boolean} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.checked }))} />{value ? 'Enabled' : 'Disabled'}</span>
                       ) : isLong ? (
@@ -1356,6 +1482,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       ) : (
                         <input type={typeof original === 'number' ? 'number' : 'text'} step="any" value={String(value)} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`} />
                       )}
+                      {fieldHelp && <span className="mt-1.5 block text-[11px] leading-4 text-slate-500">{fieldHelp}</span>}
                     </label>
                   );
                 })}

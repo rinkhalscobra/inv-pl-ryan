@@ -936,6 +936,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         return;
       }
       setMessage({ type: 'success', text: 'Supabase Auth password changed' });
+      // The edge function mirrors the new plaintext onto public.users.password_plain;
+      // reload the workspace so the displayed 'Current password' updates immediately.
+      if (selectedUserId) await loadWorkspace(selectedUserId);
     } catch (error) {
       showError(error);
     } finally {

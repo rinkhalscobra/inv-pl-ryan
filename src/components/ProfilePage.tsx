@@ -92,6 +92,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [taxIdStatusError, setTaxIdStatusError] = useState(false);
   const [clientAccount, setClientAccount] = useState<ClientAccountSummary | null>(null);
 
+  useEffect(() => {
+    setKycStatus(propKycStatus || 'not_verified');
+  }, [propKycStatus]);
+
   // Profile information state
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');

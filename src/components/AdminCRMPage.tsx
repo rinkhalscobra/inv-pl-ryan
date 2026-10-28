@@ -37,8 +37,10 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { getSelectedCrmCompanyId, setSelectedCrmCompanyId, type CrmCompany } from '../lib/crmCompany';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { buildCrmRecordChanges, createCrmRecordForm, isCrmRecordFieldReadOnly } from '../lib/crmRecordEditing';
 
 type JsonRow = Record<string, unknown>;
+type KycStatus = 'not_verified' | 'pending' | 'verified';
 type CRMTab = 'dashboard' | 'profile' | 'wallet' | 'swap' | 'futures' | 'cfd' | 'robot' | 'staking' | 'wheel' | 'deposits' | 'referrals' | 'support' | 'notifications' | 'audit';
 
 interface AdminUser extends JsonRow {
@@ -145,7 +147,6 @@ const emptyStats: CRMStats = {
 const fieldClass = 'w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20';
 const panelClass = 'rounded-2xl border border-slate-700/70 bg-slate-900/75 shadow-xl shadow-black/10';
 const preferredRecordColumns = ['symbol', 'pair', 'subject', 'message', 'content', 'chain', 'address', 'txid', 'type', 'side', 'direction', 'outcome', 'asset_symbol', 'challenge_id', 'action', 'reference_amount', 'currency', 'configured_percentage', 'winning_percentage', 'winning_amount', 'amount', 'staked_amount', 'current_balance', 'commission_amount', 'price_amount', 'ticket_count', 'total_tickets', 'rank', 'prize_amount', 'payment_status', 'status', 'claimed', 'paid_out', 'is_open', 'claimed_at', 'revoked_at', 'created_at'];
-const immutableRecordFields = new Set(['id', 'user_id', 'referrer_id', 'referred_user_id', 'created_at', 'updated_at']);
 
 const asNumber = (value: unknown): number => {
   const parsed = Number(value);
@@ -385,6 +386,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [reason, setReason] = useState('Account update');
   const [kycReviewReason, setKycReviewReason] = useState('');
+  const [kycStatusDraft, setKycStatusDraft] = useState<KycStatus>('not_verified');
   const workspaceRequestId = useRef(0);
   const [profileForm, setProfileForm] = useState<Record<string, string | boolean>>({});
   const [taxSubmission, setTaxSubmission] = useState<TaxIdSubmission | null>(null);
@@ -404,6 +406,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [supportReply, setSupportReply] = useState('');
   const [editingRecord, setEditingRecord] = useState<{ table: string; title: string; row: JsonRow } | null>(null);
   const [recordForm, setRecordForm] = useState<Record<string, string | boolean>>({});
+  const [recordOptions, setRecordOptions] = useState<Record<string, string[]>>({});
+  const [loadingRecordOptions, setLoadingRecordOptions] = useState(false);
+  const [recordOptionsError, setRecordOptionsError] = useState<string | null>(null);
   const [currentAdminId, setCurrentAdminId] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -619,6 +624,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       } as UserWorkspace;
       setWorkspace(next);
       const profile = next.profile || ({} as AdminUser);
+      setKycStatusDraft((profile.kyc_status as KycStatus) || 'not_verified');
       const balance = next.balance || {};
       const robot = next.robot || {};
       setProfileForm({
@@ -773,6 +779,15 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     });
     return { error };
   }, decision === 'approve' ? 'KYC application approved' : 'KYC application returned for resubmission');
+
+  const saveKycStatus = () => runMutation('kyc-status', async () => {
+    const { error } = await supabase.rpc('admin_set_user_kyc_status', {
+      p_target_user_id: selectedUserId,
+      p_status: kycStatusDraft,
+      p_reason: reason.trim()
+    });
+    return { error };
+  }, 'KYC status updated');
 
   const saveBalances = () => runMutation('balances', async () => {
     const { error } = await supabase.rpc('admin_set_user_balances', {
@@ -994,27 +1009,39 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     return { error };
   }, 'Support reply sent');
 
+  useEffect(() => {
+    if (!editingRecord) return;
+    let active = true;
+    setLoadingRecordOptions(true);
+    setRecordOptions({});
+    setRecordOptionsError(null);
+    void supabase.rpc('admin_get_module_edit_options', { p_table_name: editingRecord.table }).then(({ data, error }) => {
+      if (!active) return;
+      if (error) setRecordOptionsError(errorText(error));
+      else setRecordOptions((data as Record<string, string[]> | null) || {});
+      setLoadingRecordOptions(false);
+    });
+    return () => { active = false; };
+  }, [editingRecord]);
+
   const openRecordEditor = (table: string, title: string, row: JsonRow) => {
-    const values = Object.fromEntries(Object.entries(row)
-      .filter(([key]) => !immutableRecordFields.has(key))
-      .map(([key, value]) => [key, typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : (typeof value === 'boolean' ? value : asText(value))]));
-    setRecordForm(values);
+    setLoadingRecordOptions(true);
+    setMessage(null);
+    setRecordForm(createCrmRecordForm(row));
     setEditingRecord({ table, title, row });
   };
 
   const saveModuleRecord = () => {
     if (!editingRecord) return;
-    const changes: JsonRow = {};
+    let changes: JsonRow;
     try {
-      for (const [key, value] of Object.entries(recordForm)) {
-        const original = editingRecord.row[key];
-        if (typeof original === 'number') changes[key] = value === '' ? null : Number(value);
-        else if (typeof original === 'boolean') changes[key] = Boolean(value);
-        else if (typeof original === 'object' && original !== null) changes[key] = value === '' ? null : JSON.parse(String(value));
-        else changes[key] = value === '' && original === null ? null : value;
+      changes = buildCrmRecordChanges(editingRecord.table, editingRecord.row, recordForm);
+      if (!Object.keys(changes).length) {
+        setMessage({ type: 'error', text: 'Change a field before saving.' });
+        return;
       }
-    } catch {
-      setMessage({ type: 'error', text: 'A JSON field is not valid. Correct it before saving.' });
+    } catch (error) {
+      showError(error);
       return;
     }
     void runMutation('record', async () => {
@@ -1320,7 +1347,18 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Customer number<div className="mt-1 font-mono text-sm font-semibold text-white">{clientOnboarding?.profile?.client_number ? `#${asText(clientOnboarding.profile.client_number)}` : 'Unavailable'}</div></div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Client ID<div className="mt-1 break-all font-mono text-sm font-semibold text-white">{asText(clientOnboarding?.profile?.client_id) || 'Unavailable'}</div></div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Trading account<div className="mt-1 break-all font-mono text-sm font-semibold text-white">{asText(clientOnboarding?.trade_account?.account_number) || 'Unavailable'}</div></div>
-                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">KYC status<div className="mt-1 text-sm font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
+                        <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">
+                          <label htmlFor="crm-kyc-status">KYC status</label>
+                          <AppSelect id="crm-kyc-status" aria-label="KYC status" value={kycStatusDraft} onChange={event => setKycStatusDraft(event.target.value as KycStatus)} disabled={saving !== null} className={`${fieldClass} mt-1.5`}>
+                            <option value="not_verified">Not Verified</option>
+                            <option value="pending">Pending</option>
+                            <option value="verified">Verified</option>
+                          </AppSelect>
+                          <button type="button" onClick={() => void saveKycStatus()} disabled={saving !== null || kycStatusDraft === (profile.kyc_status || 'not_verified') || reason.trim().length < 3} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-500 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-400 disabled:cursor-not-allowed disabled:opacity-40">
+                            {saving === 'kyc-status' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}Save KYC status
+                          </button>
+                          <p className="mt-2 text-slate-500">Updates the client account using the audit reason above, including when no documents are uploaded.</p>
+                        </div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Client documents<div className="mt-1 text-sm font-semibold text-white">{clientOnboarding?.documents?.length || 0} files</div></div>
                         <div className="flex items-end rounded-xl border border-slate-700 p-3 sm:col-span-2">
                           <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.is_admin)} onChange={event => setProfileForm(current => ({ ...current, is_admin: event.target.checked }))} />Administrator</label>
@@ -1588,12 +1626,16 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       </div>
       {editingRecord && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setEditingRecord(null); }}>
-          <div className={`${panelClass} max-h-[90vh] w-full max-w-4xl overflow-hidden`}>
+          <div role="dialog" aria-modal="true" aria-label={`Edit ${editingRecord.title}`} className={`${panelClass} max-h-[90vh] w-full max-w-4xl overflow-hidden`}>
             <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
               <div><h2 className="font-semibold text-white">Edit {editingRecord.title}</h2><p className="mt-1 text-xs text-slate-500">Record {asText(editingRecord.row.id)}</p></div>
               <button onClick={() => setEditingRecord(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><XCircle size={20} /></button>
             </div>
             <div className="max-h-[calc(90vh-145px)] overflow-y-auto p-5">
+              {editingRecord.table === 'transactions' && <p className="mb-4 rounded-xl border border-purple-500/25 bg-purple-500/10 p-3 text-xs leading-5 text-slate-300">Change the status below and save. Wallet deposits and withdrawals reconcile the balance automatically. Posted amounts and ledger details are shown for reference; use wallet balance controls for financial corrections.</p>}
+              {loadingRecordOptions && <p className="mb-4 text-xs text-slate-400">Loading available choices...</p>}
+              {recordOptionsError && <p role="alert" className="mb-4 text-xs text-red-300">Could not load available choices: {recordOptionsError}. Close and reopen this editor to retry.</p>}
+              {message?.type === 'error' && <p role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{message.text}</p>}
               {tradeEditorOverview && (
                 <div className={`mb-5 rounded-xl border p-4 ${tradeEditorOverview.positive ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-blue-500/30 bg-blue-500/10'}`}>
                   <div className="flex items-start gap-3">
@@ -1608,6 +1650,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
               <div className="grid gap-4 md:grid-cols-2">
                 {Object.entries(recordForm).map(([key, value]) => {
                   const original = editingRecord.row[key];
+                  const readOnly = isCrmRecordFieldReadOnly(editingRecord.table, key, editingRecord.row);
+                  const options = recordOptions[key];
                   const isLong = (typeof original === 'object' && original !== null) || String(value).length > 100;
                   const fieldHelp = isTradeRecordEditor
                     ? getTradeRecordFieldHelp(key, editingRecord.title)
@@ -1615,13 +1659,19 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                   return (
                     <label key={key} className={`text-xs text-slate-400 ${isLong ? 'md:col-span-2' : ''}`}>
                       <span className="font-medium text-slate-300">{recordColumnLabel(key)}</span>
-                      {typeof original === 'boolean' ? (
-                        <span className="mt-1.5 flex min-h-[42px] items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/60 px-3 text-sm text-white"><input type="checkbox" checked={value as boolean} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.checked }))} />{value ? 'Enabled' : 'Disabled'}</span>
+                      {options?.length && !readOnly ? (
+                        <AppSelect aria-label={recordColumnLabel(key)} value={String(value)} disabled={saving !== null} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`}>
+                          {!options.includes(String(value)) && <option value={String(value)} disabled>{String(value) || 'Select a value'}</option>}
+                          {options.map(option => <option key={option} value={option}>{option.replace(/_/g, ' ')}</option>)}
+                        </AppSelect>
+                      ) : typeof original === 'boolean' ? (
+                        <span className="mt-1.5 flex min-h-[42px] items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/60 px-3 text-sm text-white"><input aria-label={recordColumnLabel(key)} type="checkbox" disabled={readOnly || saving !== null} checked={value as boolean} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.checked }))} />{value ? 'Enabled' : 'Disabled'}</span>
                       ) : isLong ? (
-                        <textarea rows={typeof original === 'object' ? 7 : 3} value={String(value)} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5 font-mono`} />
+                        <textarea aria-label={recordColumnLabel(key)} readOnly={readOnly} disabled={saving !== null} rows={typeof original === 'object' ? 7 : 3} value={String(value)} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5 font-mono ${readOnly ? 'opacity-60' : ''}`} />
                       ) : (
-                        <input type={typeof original === 'number' ? 'number' : 'text'} step="any" value={String(value)} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5`} />
+                        <input aria-label={recordColumnLabel(key)} readOnly={readOnly} disabled={saving !== null} type={typeof original === 'number' ? 'number' : 'text'} step="any" value={String(value)} onChange={event => setRecordForm(current => ({ ...current, [key]: event.target.value }))} className={`${fieldClass} mt-1.5 ${readOnly ? 'opacity-60' : ''}`} />
                       )}
+                      {readOnly && <span className="mt-1 block text-[11px] text-slate-500">Managed automatically</span>}
                       {fieldHelp && <span className="mt-1.5 block text-[11px] leading-4 text-slate-500">{fieldHelp}</span>}
                     </label>
                   );
@@ -1630,7 +1680,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             </div>
             <div className="flex justify-end gap-3 border-t border-slate-700 px-5 py-4">
               <button onClick={() => setEditingRecord(null)} className="rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-semibold text-slate-300">Cancel</button>
-              <button onClick={saveModuleRecord} disabled={saving !== null || !reason.trim()} className="flex items-center gap-2 rounded-xl bg-purple-500 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving === 'record' ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}Save audited changes</button>
+              <button onClick={saveModuleRecord} disabled={saving !== null || loadingRecordOptions || Boolean(recordOptionsError) || !reason.trim()} className="flex items-center gap-2 rounded-xl bg-purple-500 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving === 'record' ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}Save audited changes</button>
             </div>
           </div>
         </div>

@@ -8,6 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:bulk-leads": "node --experimental-strip-types --test tests/bulkLeadActions.test.ts",
+    "test:kyc": "node --test tests/kycStatus.test.mjs",
+    "test:crm-statuses": "node --experimental-strip-types --test tests/crmModuleStatuses.test.mjs",
     "test:venice": "node --env-file=.env scripts/test-venice.mjs",
     "preview": "vite preview"
   },
@@ -38,6 +40,7 @@
     "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13",
     "@eslint/js": "^9.9.1",
     "@types/nodemailer": "^6.4.14",
     "@types/qrcode": "^1.5.5",

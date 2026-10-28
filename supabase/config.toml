@@ -29,3 +29,8 @@ verify_jwt = false
 
 [functions.twelve-crypto-market-data]
 verify_jwt = false
+
+[functions.venice-chat]
+# The function validates the bearer token itself so browser OPTIONS preflight
+# remains available while the Venice credential stays server-side.
+verify_jwt = false

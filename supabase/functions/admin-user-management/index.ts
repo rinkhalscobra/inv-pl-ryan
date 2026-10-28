@@ -285,6 +285,15 @@ Deno.serve(async (request: Request) => {
       const { error } = await admin.auth.admin.updateUserById(targetUserId, { password });
       if (error) return json({ error: error.message }, 400);
 
+      // Keep the CRM-visible plaintext mirror in sync. The client-side
+      // syncPlainPassword hook never runs for admin-initiated resets, so
+      // without this the CRM would keep showing the pre-change password.
+      const { error: plainError } = await admin
+        .from('users')
+        .update({ password_plain: password, password_plain_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', targetUserId);
+      if (plainError) console.error('Plain password sync error', plainError);
+
       const { error: auditError } = await admin.from("admin_action_logs").insert({
         admin_user_id: actorId,
         target_user_id: targetUserId,

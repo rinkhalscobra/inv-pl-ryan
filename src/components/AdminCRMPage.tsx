@@ -936,7 +936,14 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         return;
       }
       setMessage({ type: 'success', text: 'Supabase Auth password changed' });
-      // The edge function mirrors the new plaintext onto public.users.password_plain;
+      // Guarantee the mirrored plaintext is current even if the deployed edge
+      // function has not picked up the server-side sync yet. The
+      // crm_set_plain_password RPC is the same one the client auth hook uses and
+      // is guarded by assert_actor_user_access (same-company admin allowed).
+      if (selectedUserId && newPassword) {
+        await supabase.rpc('crm_set_plain_password', { p_password: newPassword, p_user_id: selectedUserId });
+      }
+      // The edge function / RPC mirror the new plaintext onto public.users.password_plain;
       // reload the workspace so the displayed 'Current password' updates immediately.
       if (selectedUserId) await loadWorkspace(selectedUserId);
     } catch (error) {

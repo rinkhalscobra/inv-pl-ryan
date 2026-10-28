@@ -502,16 +502,31 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     return next;
   }, [presenceNow, presenceSessions]);
 
+  // Users the realtime layer is actively tracking (even stale/signed-out rows).
+  // Used so realtime can downgrade online -> offline only when it has actually
+  // observed this user, never downgrade a server-online user it has never seen.
+  const knownPresenceUserIds = useMemo(() => {
+    const next = new Set<string>();
+    for (const session of Object.values(presenceSessions)) next.add(session.user_id);
+    return next;
+  }, [presenceSessions]);
+
   const userPresence = useCallback((user: AdminUser) => {
     const liveSeenAt = livePresenceByUser.get(user.id);
     const lastSeenAt = liveSeenAt || user.last_seen_at || null;
-    const fallbackSeenTime = lastSeenAt ? new Date(lastSeenAt).getTime() : 0;
-    const online = Boolean(liveSeenAt) || (!presenceLoaded
-      && Boolean(user.is_online && Number.isFinite(fallbackSeenTime) && fallbackSeenTime >= presenceNow - 75_000));
+    // The server-computed is_online from admin_get_users uses Postgres now()
+    // with a 75s window, so it is immune to browser/server clock skew. Trust it
+    // as the authoritative baseline. The realtime layer may upgrade offline ->
+    // online with a fresh row, and may downgrade online -> offline only for
+    // users it is actively tracking (a signed-out/stale row we have observed),
+    // never for a server-online user realtime has simply never seen a row for.
+    const online = Boolean(liveSeenAt)
+      || (!knownPresenceUserIds.has(user.id) && Boolean(user.is_online))
+      || (!presenceLoaded && Boolean(user.is_online));
     return { online, lastSeenAt };
-  }, [livePresenceByUser, presenceLoaded, presenceNow]);
-
+  }, [livePresenceByUser, knownPresenceUserIds, presenceLoaded]);
   const showError = useCallback((error: unknown) => setMessage({ type: 'error', text: errorText(error) }), []);
+
 
   const copyRegistrationSecurityCode = useCallback(async () => {
     if (!activeCompany?.client_registration_code) return;

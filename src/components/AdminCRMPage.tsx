@@ -676,6 +676,17 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     const viewer = window.open('about:blank', '_blank');
     if (!viewer) { showError(new Error('Allow pop-ups to open the document')); return; }
     viewer.opener = null;
+    viewer.document.title = 'Loading document';
+    Object.assign(viewer.document.body.style, {
+      margin: '0',
+      minHeight: '100vh',
+      display: 'grid',
+      placeItems: 'center',
+      background: '#0b1120',
+      color: '#cbd5e1',
+      font: '14px system-ui, sans-serif',
+    });
+    viewer.document.body.textContent = 'Loading secure document…';
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData.session) throw sessionError || new Error('Your session expired. Sign in again.');

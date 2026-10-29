@@ -677,9 +677,23 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     if (!viewer) { showError(new Error('Allow pop-ups to open the document')); return; }
     viewer.opener = null;
     try {
-      const { data, error } = await supabase.functions.invoke('admin-kyc-document', { body: { path } });
-      if (error || !(data instanceof Blob)) throw error || new Error('Document unavailable');
-      const url = URL.createObjectURL(data);
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) throw sessionError || new Error('Your session expired. Sign in again.');
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-kyc-document`, {
+        method: 'POST',
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || 'Document unavailable');
+      }
+      const document = await response.blob();
+      const url = URL.createObjectURL(document);
       viewer.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 300_000);
     } catch (error) {

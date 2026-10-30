@@ -47,6 +47,15 @@ interface ArbitrageOpportunity {
   timestamp: Date;
 }
 
+const INVESTMENT_TIERS = [
+  { name: 'SHRIMP', amountEur: 5_000, rate: '0.2 - 0.5%', image: '/shrimp.png' },
+  { name: 'CRAB', amountEur: 15_000, rate: '0.35 - 0.7%', image: '/crab.png' },
+  { name: 'OCTOPUS', amountEur: 25_000, rate: '0.6 - 1%', image: '/octopus.png' },
+  { name: 'DOLPHIN', amountEur: 50_000, rate: '0.8 - 1.3%', image: '/dolphin.png' },
+  { name: 'SHARK', amountEur: 100_000, rate: '1.2 - 2.6%', image: '/shark.png' },
+  { name: 'WHALE', amountEur: 1_000_000, rate: '2.1 - 4.2%', image: '/whale.png' },
+];
+
 const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   usdtBalance,
   selectedPair,
@@ -60,7 +69,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   fetchRobotState
 }) => {
   const { t } = useTranslation();
-  const { prices, getPriceBySymbol } = useBybitData();
+  const { prices } = useBybitData();
   const {
     convertUsdToEur,
     eurUsdRate,
@@ -87,6 +96,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
   const [showTradingLogs, setShowTradingLogs] = useState(false);
   const [isRemovingFunds, setIsRemovingFunds] = useState(false);
   const [showInvestmentTiers, setShowInvestmentTiers] = useState(false);
+  const [selectedInvestmentTier, setSelectedInvestmentTier] = useState(0);
   const [localAllocatedBalance, setLocalAllocatedBalance] = useState(robotState?.allocated_balance || 0);
 
   const actualAvailableBalance = React.useMemo(() => {
@@ -273,7 +283,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
     }
   };
 
-  // Calculate daily profit percentage based on allocated balance (in BTC equivalent)
+  // Calculate the tier from the allocated EUR balance.
   const getDailyProfitPercentage = () => {
     const crmPercentage = Number(robotState?.custom_daily_profit_percentage);
     if (
@@ -285,17 +295,14 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
       return crmPercentage;
     }
 
-    const allocatedBalance = localAllocatedBalance;
-    const btcPrice = getPriceBySymbol('BTCUSDT');
-    if (!(btcPrice > 0)) return 0;
-    const allocatedBalanceInBTC = allocatedBalance / btcPrice;
-
-    if (allocatedBalanceInBTC >= 50) return 2.1; // WHALE tier (50 BTC)
-    if (allocatedBalanceInBTC >= 10) return 1.2; // SHARK tier (10 BTC)
-    if (allocatedBalanceInBTC >= 5) return 0.8; // DOLPHIN tier (5 BTC)
-    if (allocatedBalanceInBTC >= 1) return 0.6; // OCTOPUS tier (1 BTC)
-    if (allocatedBalanceInBTC >= 0.1) return 0.35; // CRAB tier (0.1 BTC)
-    return 0.2; // SHRIMP tier (0.01 BTC)
+    const allocatedBalanceEur = convertUsdToEur(localAllocatedBalance);
+    if (allocatedBalanceEur >= 1_000_000) return 2.1;
+    if (allocatedBalanceEur >= 100_000) return 1.2;
+    if (allocatedBalanceEur >= 50_000) return 0.8;
+    if (allocatedBalanceEur >= 25_000) return 0.6;
+    if (allocatedBalanceEur >= 15_000) return 0.35;
+    if (allocatedBalanceEur >= 5_000) return 0.2;
+    return 0;
   };
 
   // Calculate estimated daily profit
@@ -320,19 +327,15 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
     return wasCreditedToday ? robotState.todays_profit || 0 : 0;
   }, [robotState?.last_profit_timestamp, robotState?.todays_profit]);
   
-  // Get investment tier based on allocated balance (in BTC equivalent)
+  // Get investment tier based on the allocated EUR balance.
   const getInvestmentTier = () => {
-    const allocatedBalance = localAllocatedBalance;
-    const btcPrice = getPriceBySymbol('BTCUSDT');
-    if (!(btcPrice > 0)) return 'NONE';
-    const allocatedBalanceInBTC = allocatedBalance / btcPrice;
-
-    if (allocatedBalanceInBTC >= 50) return 'WHALE';
-    if (allocatedBalanceInBTC >= 10) return 'SHARK';
-    if (allocatedBalanceInBTC >= 5) return 'DOLPHIN';
-    if (allocatedBalanceInBTC >= 1) return 'OCTOPUS';
-    if (allocatedBalanceInBTC >= 0.1) return 'CRAB';
-    if (allocatedBalanceInBTC > 0) return 'SHRIMP';
+    const allocatedBalanceEur = convertUsdToEur(localAllocatedBalance);
+    if (allocatedBalanceEur >= 1_000_000) return 'WHALE';
+    if (allocatedBalanceEur >= 100_000) return 'SHARK';
+    if (allocatedBalanceEur >= 50_000) return 'DOLPHIN';
+    if (allocatedBalanceEur >= 25_000) return 'OCTOPUS';
+    if (allocatedBalanceEur >= 15_000) return 'CRAB';
+    if (allocatedBalanceEur >= 5_000) return 'SHRIMP';
     return 'NONE';
   };
 
@@ -894,72 +897,29 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              {/* SHRIMP Tier */}
-              <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
-                <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">ðŸ¦</span>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">SHRIMP</h3>
-                <div className="text-2xl font-bold text-emerald-400 mb-4">0.2 - 0.5%</div>
-                <div className="text-slate-400 text-sm mb-2">Minimum Investment</div>
-                <div className="text-white font-bold">0.01 BTC</div>
-              </div>
-
-              {/* CRAB Tier */}
-              <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
-                <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">ðŸ¦€</span>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">CRAB</h3>
-                <div className="text-2xl font-bold text-emerald-400 mb-4">0.35 - 0.7%</div>
-                <div className="text-slate-400 text-sm mb-2">Minimum Investment</div>
-                <div className="text-white font-bold">0.1 BTC</div>
-              </div>
-
-              {/* OCTOPUS Tier */}
-              <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
-                <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">ðŸ™</span>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">OCTOPUS</h3>
-                <div className="text-2xl font-bold text-emerald-400 mb-4">0.6 - 1%</div>
-                <div className="text-slate-400 text-sm mb-2">Minimum Investment</div>
-                <div className="text-white font-bold">1 BTC</div>
-              </div>
-
-              {/* DOLPHIN Tier */}
-              <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
-                <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">ðŸ¬</span>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">DOLPHIN</h3>
-                <div className="text-2xl font-bold text-emerald-400 mb-4">0.8 - 1.3%</div>
-                <div className="text-slate-400 text-sm mb-2">Minimum Investment</div>
-                <div className="text-white font-bold">5 BTC</div>
-              </div>
-
-              {/* SHARK Tier */}
-              <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
-                <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">ðŸ¦ˆ</span>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">SHARK</h3>
-                <div className="text-2xl font-bold text-emerald-400 mb-4">1.2 - 2.6%</div>
-                <div className="text-slate-400 text-sm mb-2">Minimum Investment</div>
-                <div className="text-white font-bold">10 BTC</div>
-              </div>
-
-              {/* WHALE Tier */}
-              <div className={`${glassTierCardClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
-                <div className="flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">ðŸ‹</span>
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">WHALE</h3>
-                <div className="text-2xl font-bold text-emerald-400 mb-4">2.1 - 4.2%</div>
-                <div className="text-slate-400 text-sm mb-2">Minimum Investment</div>
-                <div className="text-white font-bold">50 BTC</div>
-              </div>
+            <div className="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-2 lg:grid-cols-3">
+              {INVESTMENT_TIERS.map(({ name, amountEur, rate, image }, index) => {
+                const selected = selectedInvestmentTier === index;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setSelectedInvestmentTier(index)}
+                    className={`${glassTierCardClass} rounded-xl p-5 border text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${selected ? 'border-purple-400 ring-1 ring-purple-400/60' : 'border-slate-700/50 hover:border-slate-500'}`}
+                  >
+                    <img src={image} alt="" aria-hidden="true" className="mx-auto mb-3 h-12 w-12 object-contain" />
+                    <h3 className="text-lg font-bold text-white mb-1">{name}</h3>
+                    <div className="text-xl font-bold text-emerald-400 mb-3">{rate}</div>
+                    <div className="text-slate-400 text-sm mb-1">Minimum Investment</div>
+                    <div className="text-white font-bold">{formatEur(amountEur)}</div>
+                    <div className={`mt-3 text-xs font-medium ${selected ? 'text-purple-300' : 'text-slate-500'}`}>
+                      {selected ? 'Selected' : 'Select this tier'}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             <div className={`${glassInnerClass} rounded-xl p-6 border border-slate-700/50 text-center`}>
@@ -982,6 +942,7 @@ const ArbitrageRobotPage: React.FC<ArbitrageRobotPageProps> = ({
                 <button
                   onClick={() => {
                     setShowInvestmentTiers(false);
+                    setAllocationAmount(INVESTMENT_TIERS[selectedInvestmentTier].amountEur.toFixed(2));
                     setShowAllocationForm(true);
                   }}
                   className={`${glassActionClass} ${glassActionHoverClass} text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-emerald-500/25`}

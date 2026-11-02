@@ -10,8 +10,9 @@ Edge Functions use the same allowlist. Administrator sign-in still applies.
 Manage addresses in **Administration CRM → IP access**. Only an administrator
 on an already approved network can add or remove an address. The current IP
 cannot be removed from its own session, and at least one IP must remain. The
-platform owner network is `46.166.172.116`. Company networks are stored with a
-`company_id`; they can pass the page-level network gate but every CRM operation
+platform owner network is `46.166.172.116` and can add an address to any active
+company, or create a company when no company is selected. Company networks are
+stored with a `company_id`; they can pass the page-level network gate but every CRM operation
 is restricted to that network's company. Within that boundary an administrator
 has the complete client-management workflow, including account roles, profile,
 KYC, wallet, robot, trading records, deposits, support, password resets, and

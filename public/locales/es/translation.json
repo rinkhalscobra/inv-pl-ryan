@@ -470,6 +470,8 @@
     "activateRobot": "Activa el robot para comenzar a operar"
   },
   "languages": {
+    "selectLanguage": "Cambiar idioma",
+    "changeFailed": "No se pudo cambiar el idioma. Inténtalo de nuevo.",
     "english": "English",
     "spanish": "Español",
     "french": "Français",

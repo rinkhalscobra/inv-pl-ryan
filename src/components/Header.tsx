@@ -31,6 +31,7 @@ import { useBybitData } from '../contexts/BybitDataContext';
 import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constants/tradingPairs';
 import { useFiatCurrency, type DisplayCurrency } from '../hooks/useFiatCurrency';
 import AppSelect from './AppSelect';
+import LanguageSwitcher from './LanguageSwitcher';
 
 interface HeaderProps {
   tradingMode: TradingMode;
@@ -409,6 +410,7 @@ const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* User Menu */}
+            <LanguageSwitcher compact />
             <div className="relative" ref={userMenuRef}>
               <button
                 type="button"

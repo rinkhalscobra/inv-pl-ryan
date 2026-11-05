@@ -1,3 +1,4 @@
+import { useMarketingTranslation } from "../hooks/useMarketingTranslation";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
@@ -975,59 +976,66 @@ const overviewComparison = [
   },
 ];
 
-const OverviewHero = ({ learn = false }: { learn?: boolean }) => (
-  <section className="relative isolate overflow-hidden border-b border-white/[0.07] py-20 sm:py-28">
-    <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_18%_12%,rgba(124,58,237,.16),transparent_30%),radial-gradient(circle_at_84%_8%,rgba(37,99,235,.1),transparent_25%),linear-gradient(180deg,#0c0d18,#090a12)]" />
-    <div className="landing-grid absolute inset-0 -z-10 opacity-25" />
-    <div className="mx-auto grid max-w-[1380px] items-center gap-14 px-5 sm:px-8 lg:grid-cols-[.9fr_1.1fr]">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-          {learn ? "Atlas learning centre" : "Atlas product directory"}
-        </p>
-        <h1 className="mt-5 max-w-4xl text-5xl font-medium leading-[1.03] tracking-[-0.055em] sm:text-6xl lg:text-[72px]">
-          {learn
-            ? "Build knowledge before exposure."
-            : "Choose how you access the market."}
-        </h1>
-        <p className="mt-7 max-w-2xl text-base leading-8 text-slate-400">
-          {learn
-            ? "Work through market structure, risk planning, and execution behaviour in a practical sequence designed to improve the questions you ask before trading."
-            : "Compare ownership, derivative exposure, global market contracts, and longer-term allocations by mechanics, cost structure, liquidity, and risk—not by headline alone."}
-        </p>
-        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-          <Link
-            to={learn ? "/learn/trading-basics" : "/products/spot"}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-bold text-[#090a12] hover:bg-violet-100"
-          >
-            {learn ? "Start with the basics" : "Explore spot trading"}{" "}
-            <ArrowRight size={15} />
-          </Link>
-          <Link
-            to={learn ? "/learn/risk-management" : "/legal/risk-disclosure"}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-6 py-3.5 text-sm font-semibold text-slate-300 hover:bg-white/[0.04]"
-          >
-            {learn ? "Go to risk management" : "Understand the risks"}
-          </Link>
+const OverviewHero = ({ learn = false }: { learn?: boolean }) => {
+  const mt = useMarketingTranslation();
+  return (
+    <section className="relative isolate overflow-hidden border-b border-white/[0.07] py-20 sm:py-28">
+      <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_18%_12%,rgba(124,58,237,.16),transparent_30%),radial-gradient(circle_at_84%_8%,rgba(37,99,235,.1),transparent_25%),linear-gradient(180deg,#0c0d18,#090a12)]" />
+      <div className="landing-grid absolute inset-0 -z-10 opacity-25" />
+      <div className="mx-auto grid max-w-[1380px] items-center gap-14 px-5 sm:px-8 lg:grid-cols-[.9fr_1.1fr]">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
+            {mt(learn ? "Atlas learning centre" : "Atlas product directory")}
+          </p>
+          <h1 className="mt-5 max-w-4xl text-5xl font-medium leading-[1.03] tracking-[-0.055em] sm:text-6xl lg:text-[72px]">
+            {mt(
+              learn
+                ? "Build knowledge before exposure."
+                : "Choose how you access the market.",
+            )}
+          </h1>
+          <p className="mt-7 max-w-2xl text-base leading-8 text-slate-400">
+            {mt(
+              learn
+                ? "Work through market structure, risk planning, and execution behaviour in a practical sequence designed to improve the questions you ask before trading."
+                : "Compare ownership, derivative exposure, global market contracts, and longer-term allocations by mechanics, cost structure, liquidity, and risk—not by headline alone.",
+            )}
+          </p>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <Link
+              to={learn ? "/learn/trading-basics" : "/products/spot"}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-bold text-[#090a12] hover:bg-violet-100"
+            >
+              {mt(learn ? "Start with the basics" : "Explore spot trading")}{" "}
+              <ArrowRight size={15} />
+            </Link>
+            <Link
+              to={learn ? "/learn/risk-management" : "/legal/risk-disclosure"}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-6 py-3.5 text-sm font-semibold text-slate-300 hover:bg-white/[0.04]"
+            >
+              {mt(learn ? "Go to risk management" : "Understand the risks")}
+            </Link>
+          </div>
         </div>
+        <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2 shadow-[0_30px_80px_rgba(0,0,0,.38)]">
+          <img
+            src={
+              learn
+                ? "/atlas-trading-education.jpg"
+                : "/atlas-products-overview.jpg"
+            }
+            alt={mt(
+              learn
+                ? "Market educator discussing a written trading plan"
+                : "Professional comparing several market products",
+            )}
+            className="aspect-[16/10] w-full rounded-xl object-cover"
+          />
+        </figure>
       </div>
-      <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2 shadow-[0_30px_80px_rgba(0,0,0,.38)]">
-        <img
-          src={
-            learn
-              ? "/atlas-trading-education.jpg"
-              : "/atlas-products-overview.jpg"
-          }
-          alt={
-            learn
-              ? "Market educator discussing a written trading plan"
-              : "Professional comparing several market products"
-          }
-          className="aspect-[16/10] w-full rounded-xl object-cover"
-        />
-      </figure>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const CardGrid = ({
   cards,
@@ -1035,205 +1043,222 @@ const CardGrid = ({
 }: {
   cards: RouteCard[];
   learn?: boolean;
-}) => (
-  <section className="py-24 sm:py-28">
-    <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
-      <div className="mb-12 max-w-2xl">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-          {learn ? "Structured learning paths" : "Product specifications"}
-        </p>
-        <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] sm:text-5xl">
-          {learn
-            ? "One concept at a time, in the right order."
-            : "Start with how the product actually works."}
-        </h2>
-        <p className="mt-5 text-sm leading-7 text-slate-500">
-          {learn
-            ? "Each guide ends with a practical checklist and connects to the concept that should follow."
-            : "Every route explains exposure, order flow, operational terms, relevant costs, and the risks that deserve attention before use."}
-        </p>
-      </div>
-      <div className="grid gap-5 md:grid-cols-2">
-        {cards.map(
-          ({
-            icon: Icon,
-            image,
-            imageAlt,
-            title,
-            eyebrow,
-            text,
-            to,
-            facts,
-          }) => (
-            <Link
-              key={title}
-              to={to}
-              className="group overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0e16] transition hover:-translate-y-1 hover:border-violet-400/25 hover:bg-[#10121c]"
-            >
-              <div className="relative aspect-[16/8] overflow-hidden">
-                <img
-                  src={image}
-                  alt={imageAlt}
-                  className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0c0e16] via-transparent to-transparent" />
-                <span className="absolute bottom-4 left-5 grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-[#0b0d15]/80 text-violet-200 backdrop-blur">
-                  <Icon size={19} />
-                </span>
-                <ArrowUpRight
-                  size={17}
-                  className="absolute right-5 top-5 text-white/60 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-white"
-                />
-              </div>
-              <div className="p-7 sm:p-8">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                  {eyebrow}
-                </p>
-                <h2 className="mt-2 text-xl font-semibold">{title}</h2>
-                <p className="mt-3 max-w-lg text-xs leading-6 text-slate-500">
-                  {text}
-                </p>
-                <div className="mt-6 grid grid-cols-3 divide-x divide-white/[0.07] border-y border-white/[0.07] py-4">
-                  {facts.map((fact) => (
-                    <div key={fact.label} className="px-3 first:pl-0 last:pr-0">
-                      <p className="text-[8px] uppercase tracking-wider text-slate-700">
-                        {fact.label}
-                      </p>
-                      <p className="mt-1.5 text-[10px] font-semibold text-slate-300">
-                        {fact.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <span className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-violet-300">
-                  Open detailed guide{" "}
-                  <ArrowRight
-                    size={13}
-                    className="transition group-hover:translate-x-1"
-                  />
-                </span>
-              </div>
-            </Link>
-          ),
-        )}
-      </div>
-    </div>
-  </section>
-);
-
-const ProductComparison = () => (
-  <section className="border-y border-white/[0.07] bg-[#080910] py-24">
-    <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
-      <div className="grid gap-8 lg:grid-cols-[.7fr_1.3fr] lg:items-end">
-        <div>
+}) => {
+  const mt = useMarketingTranslation();
+  return (
+    <section className="py-24 sm:py-28">
+      <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
+        <div className="mb-12 max-w-2xl">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-            Side-by-side
+            {mt(learn ? "Structured learning paths" : "Product specifications")}
           </p>
           <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] sm:text-5xl">
-            Different exposure. Different obligations.
-          </h2>
-        </div>
-        <p className="max-w-2xl text-sm leading-7 text-slate-500">
-          The same market opinion can produce very different account behaviour
-          depending on whether you own an asset, use leverage, hold through a
-          financing cut-off, or commit assets for a term.
-        </p>
-      </div>
-      <div className="mt-12 overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0c0e16]">
-        <div className="min-w-[820px]">
-          <div className="grid grid-cols-[.8fr_1.1fr_1fr_1.2fr_1.2fr] border-b border-white/[0.07] bg-white/[0.02] px-6 py-4 text-[9px] font-semibold uppercase tracking-widest text-slate-600">
-            <span>Route</span>
-            <span>Relationship</span>
-            <span>Direction</span>
-            <span>Cost context</span>
-            <span>Primary risk</span>
-          </div>
-          {overviewComparison.map((row) => (
-            <div
-              key={row.name}
-              className="grid grid-cols-[.8fr_1.1fr_1fr_1.2fr_1.2fr] border-b border-white/[0.06] px-6 py-5 text-xs last:border-0"
-            >
-              <span className="font-semibold text-white">{row.name}</span>
-              <span className="text-slate-400">{row.relationship}</span>
-              <span className="text-slate-400">{row.direction}</span>
-              <span className="text-slate-500">{row.cost}</span>
-              <span className="text-slate-500">{row.primaryRisk}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  </section>
-);
-
-const LearningSequence = () => (
-  <section className="border-y border-white/[0.07] bg-[#080910] py-24">
-    <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
-      <div className="grid gap-14 lg:grid-cols-[.72fr_1.28fr] lg:gap-24">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-            Recommended sequence
-          </p>
-          <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] sm:text-5xl">
-            Mechanics, boundaries, execution.
+            {mt(
+              learn
+                ? "One concept at a time, in the right order."
+                : "Start with how the product actually works.",
+            )}
           </h2>
           <p className="mt-5 text-sm leading-7 text-slate-500">
-            The curriculum moves from understanding what a trade is, to defining
-            what the account can risk, to choosing how an instruction should
-            behave in the market.
+            {mt(
+              learn
+                ? "Each guide ends with a practical checklist and connects to the concept that should follow."
+                : "Every route explains exposure, order flow, operational terms, relevant costs, and the risks that deserve attention before use.",
+            )}
           </p>
         </div>
-        <div className="space-y-3">
-          {[
-            {
-              number: "01",
-              title: "Build the vocabulary",
-              text: "Identify the instrument, read both sides of a quote, and translate price movement into account impact.",
-              to: "/learn/trading-basics",
-            },
-            {
-              number: "02",
-              title: "Set the loss boundary",
-              text: "Calculate position quantity from planned loss, then test correlation and free-margin resilience.",
-              to: "/learn/risk-management",
-            },
-            {
-              number: "03",
-              title: "Choose the instruction",
-              text: "Balance execution speed against price control and understand every possible order status.",
-              to: "/learn/order-types",
-            },
-          ].map((item) => (
-            <Link
-              to={item.to}
-              key={item.number}
-              className="group grid gap-4 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5 transition hover:border-violet-400/25 sm:grid-cols-[48px_1fr_auto] sm:items-center"
-            >
-              <span className="grid h-10 w-10 place-items-center rounded-lg bg-violet-400/[0.08] text-[9px] font-semibold text-violet-300">
-                {item.number}
-              </span>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-200">
-                  {item.title}
-                </h3>
-                <p className="mt-2 text-xs leading-6 text-slate-500">
-                  {item.text}
-                </p>
-              </div>
-              <ArrowRight
-                size={15}
-                className="hidden text-slate-600 transition group-hover:translate-x-1 group-hover:text-violet-300 sm:block"
-              />
-            </Link>
-          ))}
+        <div className="grid gap-5 md:grid-cols-2">
+          {cards.map(
+            ({
+              icon: Icon,
+              image,
+              imageAlt,
+              title,
+              eyebrow,
+              text,
+              to,
+              facts,
+            }) => (
+              <Link
+                key={title}
+                to={to}
+                className="group overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0e16] transition hover:-translate-y-1 hover:border-violet-400/25 hover:bg-[#10121c]"
+              >
+                <div className="relative aspect-[16/8] overflow-hidden">
+                  <img
+                    src={image}
+                    alt={mt(imageAlt)}
+                    className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0c0e16] via-transparent to-transparent" />
+                  <span className="absolute bottom-4 left-5 grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-[#0b0d15]/80 text-violet-200 backdrop-blur">
+                    <Icon size={19} />
+                  </span>
+                  <ArrowUpRight
+                    size={17}
+                    className="absolute right-5 top-5 text-white/60 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-white"
+                  />
+                </div>
+                <div className="p-7 sm:p-8">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                    {mt(eyebrow)}
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold">{mt(title)}</h2>
+                  <p className="mt-3 max-w-lg text-xs leading-6 text-slate-500">
+                    {mt(text)}
+                  </p>
+                  <div className="mt-6 grid grid-cols-3 divide-x divide-white/[0.07] border-y border-white/[0.07] py-4">
+                    {facts.map((fact) => (
+                      <div
+                        key={fact.label}
+                        className="px-3 first:pl-0 last:pr-0"
+                      >
+                        <p className="text-[8px] uppercase tracking-wider text-slate-700">
+                          {mt(fact.label)}
+                        </p>
+                        <p className="mt-1.5 text-[10px] font-semibold text-slate-300">
+                          {mt(fact.value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <span className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-violet-300">
+                    {mt("Open detailed guide")}{" "}
+                    <ArrowRight
+                      size={13}
+                      className="transition group-hover:translate-x-1"
+                    />
+                  </span>
+                </div>
+              </Link>
+            ),
+          )}
         </div>
       </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
+
+const ProductComparison = () => {
+  const mt = useMarketingTranslation();
+  return (
+    <section className="border-y border-white/[0.07] bg-[#080910] py-24">
+      <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
+        <div className="grid gap-8 lg:grid-cols-[.7fr_1.3fr] lg:items-end">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
+              {mt("Side-by-side")}
+            </p>
+            <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] sm:text-5xl">
+              {mt("Different exposure. Different obligations.")}
+            </h2>
+          </div>
+          <p className="max-w-2xl text-sm leading-7 text-slate-500">
+            {mt(
+              "The same market opinion can produce very different account behaviour depending on whether you own an asset, use leverage, hold through a financing cut-off, or commit assets for a term.",
+            )}
+          </p>
+        </div>
+        <div className="mt-12 overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0c0e16]">
+          <div className="min-w-[820px]">
+            <div className="grid grid-cols-[.8fr_1.1fr_1fr_1.2fr_1.2fr] border-b border-white/[0.07] bg-white/[0.02] px-6 py-4 text-[9px] font-semibold uppercase tracking-widest text-slate-600">
+              <span>{mt("Route")}</span>
+              <span>{mt("Relationship")}</span>
+              <span>{mt("Direction")}</span>
+              <span>{mt("Cost context")}</span>
+              <span>{mt("Primary risk")}</span>
+            </div>
+            {overviewComparison.map((row) => (
+              <div
+                key={row.name}
+                className="grid grid-cols-[.8fr_1.1fr_1fr_1.2fr_1.2fr] border-b border-white/[0.06] px-6 py-5 text-xs last:border-0"
+              >
+                <span className="font-semibold text-white">{mt(row.name)}</span>
+                <span className="text-slate-400">{mt(row.relationship)}</span>
+                <span className="text-slate-400">{mt(row.direction)}</span>
+                <span className="text-slate-500">{mt(row.cost)}</span>
+                <span className="text-slate-500">{mt(row.primaryRisk)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const LearningSequence = () => {
+  const mt = useMarketingTranslation();
+  return (
+    <section className="border-y border-white/[0.07] bg-[#080910] py-24">
+      <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
+        <div className="grid gap-14 lg:grid-cols-[.72fr_1.28fr] lg:gap-24">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
+              {mt("Recommended sequence")}
+            </p>
+            <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] sm:text-5xl">
+              {mt("Mechanics, boundaries, execution.")}
+            </h2>
+            <p className="mt-5 text-sm leading-7 text-slate-500">
+              {mt(
+                "The curriculum moves from understanding what a trade is, to defining what the account can risk, to choosing how an instruction should behave in the market.",
+              )}
+            </p>
+          </div>
+          <div className="space-y-3">
+            {[
+              {
+                number: "01",
+                title: "Build the vocabulary",
+                text: "Identify the instrument, read both sides of a quote, and translate price movement into account impact.",
+                to: "/learn/trading-basics",
+              },
+              {
+                number: "02",
+                title: "Set the loss boundary",
+                text: "Calculate position quantity from planned loss, then test correlation and free-margin resilience.",
+                to: "/learn/risk-management",
+              },
+              {
+                number: "03",
+                title: "Choose the instruction",
+                text: "Balance execution speed against price control and understand every possible order status.",
+                to: "/learn/order-types",
+              },
+            ].map((item) => (
+              <Link
+                to={item.to}
+                key={item.number}
+                className="group grid gap-4 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5 transition hover:border-violet-400/25 sm:grid-cols-[48px_1fr_auto] sm:items-center"
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-lg bg-violet-400/[0.08] text-[9px] font-semibold text-violet-300">
+                  {mt(item.number)}
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-200">
+                    {mt(item.title)}
+                  </h3>
+                  <p className="mt-2 text-xs leading-6 text-slate-500">
+                    {mt(item.text)}
+                  </p>
+                </div>
+                <ArrowRight
+                  size={15}
+                  className="hidden text-slate-600 transition group-hover:translate-x-1 group-hover:text-violet-300 sm:block"
+                />
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const DetailPage = ({ config }: { config: DetailConfig }) => {
+  const mt = useMarketingTranslation();
   const Icon = config.icon;
   const isLearning = config.family === "learning";
   return (
@@ -1244,34 +1269,34 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
         <div className="mx-auto grid max-w-[1380px] items-center gap-14 px-5 sm:px-8 lg:grid-cols-[1fr_.85fr]">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-              {config.eyebrow}
+              {mt(config.eyebrow)}
             </p>
             <h1 className="mt-5 max-w-4xl text-5xl font-medium leading-[1.03] tracking-[-0.055em] sm:text-6xl lg:text-[68px]">
-              {config.title}
+              {mt(config.title)}
             </h1>
             <p className="mt-7 max-w-2xl text-base leading-8 text-slate-400">
-              {config.description}
+              {mt(config.description)}
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <Link
                 to={isLearning ? "/learn" : "/auth/register"}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-bold text-[#090a12] hover:bg-violet-100"
               >
-                {isLearning ? "Learning centre" : "Open an account"}{" "}
+                {mt(isLearning ? "Learning centre" : "Open an account")}{" "}
                 <ArrowRight size={15} />
               </Link>
               <Link
                 to={isLearning ? "/legal/risk-disclosure" : "/products"}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-6 py-3.5 text-sm font-semibold text-slate-300 hover:bg-white/[0.04]"
               >
-                {isLearning ? "Read risk disclosure" : "Compare products"}
+                {mt(isLearning ? "Read risk disclosure" : "Compare products")}
               </Link>
             </div>
           </div>
           <figure className="group relative overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2 shadow-[0_32px_90px_rgba(0,0,0,.4)]">
             <img
               src={config.image}
-              alt={config.imageAlt}
+              alt={mt(config.imageAlt)}
               className="aspect-[4/3] w-full rounded-xl object-cover transition duration-700 group-hover:scale-[1.02]"
             />
             <div className="absolute inset-2 rounded-xl bg-gradient-to-t from-[#080910]/70 via-transparent to-transparent" />
@@ -1287,13 +1312,13 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
           {config.highlights.map((item) => (
             <div key={item.label} className="px-4 py-7 sm:px-6">
               <p className="text-[9px] uppercase tracking-widest text-slate-600">
-                {item.label}
+                {mt(item.label)}
               </p>
               <p className="mt-2 text-sm font-semibold text-slate-200">
-                {item.value}
+                {mt(item.value)}
               </p>
               <p className="mt-2 text-[10px] leading-5 text-slate-600">
-                {item.detail}
+                {mt(item.detail)}
               </p>
             </div>
           ))}
@@ -1304,13 +1329,13 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
         <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.76fr_1.24fr] lg:gap-24">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-              {config.processEyebrow}
+              {mt(config.processEyebrow)}
             </p>
             <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] sm:text-5xl">
-              {config.sectionTitle}
+              {mt(config.sectionTitle)}
             </h2>
             <p className="mt-5 text-sm leading-7 text-slate-500">
-              {config.sectionText}
+              {mt(config.sectionText)}
             </p>
           </div>
           <div className="space-y-3">
@@ -1324,14 +1349,14 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
                 </span>
                 <div>
                   <h3 className="text-sm font-semibold text-slate-200">
-                    {step.title}
+                    {mt(step.title)}
                   </h3>
                   <p className="mt-2 text-xs leading-6 text-slate-500">
-                    {step.text}
+                    {mt(step.text)}
                   </p>
                   <p className="mt-3 flex items-center gap-2 text-[10px] font-medium text-emerald-400/80">
                     <Check size={12} />
-                    {step.outcome}
+                    {mt(step.outcome)}
                   </p>
                 </div>
               </article>
@@ -1345,14 +1370,14 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
           <div className="grid gap-10 lg:grid-cols-[.72fr_1.28fr] lg:items-end">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-                {config.anatomyEyebrow}
+                {mt(config.anatomyEyebrow)}
               </p>
               <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] sm:text-5xl">
-                {config.anatomyTitle}
+                {mt(config.anatomyTitle)}
               </h2>
             </div>
             <p className="max-w-2xl text-sm leading-7 text-slate-500">
-              {config.anatomyText}
+              {mt(config.anatomyText)}
             </p>
           </div>
           <div className="mt-12 grid gap-4 md:grid-cols-3">
@@ -1376,13 +1401,13 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
                   </span>
                 </div>
                 <p className="mt-6 text-[9px] uppercase tracking-widest text-slate-600">
-                  {item.label}
+                  {mt(item.label)}
                 </p>
                 <h3 className="mt-2 text-base font-semibold text-slate-200">
-                  {item.value}
+                  {mt(item.value)}
                 </h3>
                 <p className="mt-3 text-xs leading-6 text-slate-500">
-                  {item.detail}
+                  {mt(item.detail)}
                 </p>
               </article>
             ))}
@@ -1397,10 +1422,10 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
               <ListChecks size={19} />
             </span>
             <h2 className="mt-6 text-3xl font-medium tracking-[-0.04em] sm:text-4xl">
-              {config.checklistTitle}
+              {mt(config.checklistTitle)}
             </h2>
             <p className="mt-4 max-w-lg text-sm leading-7 text-slate-500">
-              {config.checklistText}
+              {mt(config.checklistText)}
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1411,10 +1436,10 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
               >
                 <Check size={14} className="text-emerald-400" />
                 <h3 className="mt-4 text-sm font-semibold text-slate-200">
-                  {item.title}
+                  {mt(item.title)}
                 </h3>
                 <p className="mt-2 text-xs leading-6 text-slate-500">
-                  {item.text}
+                  {mt(item.text)}
                 </p>
               </article>
             ))}
@@ -1430,10 +1455,10 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
             </span>
             <div>
               <h2 className="text-sm font-semibold text-slate-200">
-                {config.cautionTitle}
+                {mt(config.cautionTitle)}
               </h2>
               <p className="mt-2 text-xs leading-6 text-slate-500">
-                {config.caution}
+                {mt(config.caution)}
               </p>
             </div>
           </div>
@@ -1441,7 +1466,7 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
             to="/legal/risk-disclosure"
             className="inline-flex items-center gap-2 text-xs font-semibold text-violet-300"
           >
-            Read the full disclosure <ArrowUpRight size={13} />
+            {mt("Read the full disclosure")} <ArrowUpRight size={13} />
           </Link>
         </div>
       </section>
@@ -1450,20 +1475,20 @@ const DetailPage = ({ config }: { config: DetailConfig }) => {
         <div className="mx-auto grid max-w-[1380px] gap-7 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">
-              {config.nextEyebrow}
+              {mt(config.nextEyebrow)}
             </p>
             <h2 className="mt-3 max-w-3xl text-2xl font-medium tracking-tight sm:text-3xl">
-              {config.nextTitle}
+              {mt(config.nextTitle)}
             </h2>
             <p className="mt-3 max-w-2xl text-xs leading-6 text-slate-500">
-              {config.nextText}
+              {mt(config.nextText)}
             </p>
           </div>
           <Link
             to={config.nextTo}
             className="group inline-flex items-center gap-2 text-sm font-semibold text-slate-200 hover:text-white"
           >
-            {config.nextLabel}
+            {mt(config.nextLabel)}
             <ArrowRight
               size={15}
               className="transition group-hover:translate-x-1"

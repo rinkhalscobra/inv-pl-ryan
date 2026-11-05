@@ -419,6 +419,8 @@
     "activateRobot": "Aktivieren Sie den Robot, um mit dem Trading zu beginnen"
   },
   "languages": {
+    "selectLanguage": "Sprache ändern",
+    "changeFailed": "Die Sprache konnte nicht geändert werden. Bitte versuche es erneut.",
     "english": "English",
     "spanish": "Español",
     "french": "Français",

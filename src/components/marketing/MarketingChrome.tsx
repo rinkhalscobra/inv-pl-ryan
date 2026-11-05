@@ -1,3 +1,4 @@
+import { useMarketingTranslation } from "../../hooks/useMarketingTranslation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import {
@@ -10,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import BrandLogo from "../BrandLogo";
+import LanguageSwitcher from "../LanguageSwitcher";
 
 const navigation = [
   { label: "Products", to: "/products" },
@@ -69,6 +71,7 @@ const footerGroups = [
 ];
 
 export const MarketingHeader = () => {
+  const mt = useMarketingTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -83,86 +86,89 @@ export const MarketingHeader = () => {
         <div className="mx-auto flex h-8 max-w-[1380px] items-center justify-between px-5 sm:px-8">
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
-            Systems operational
+            {mt("Systems operational")}
           </span>
           <div className="flex items-center gap-5">
             <Link
               to="/security"
               className="hidden items-center gap-1.5 transition hover:text-slate-300 sm:flex"
             >
-              <ShieldCheck size={12} /> Security
+              <ShieldCheck size={12} /> {mt("Security")}
             </Link>
             <Link
               to="/support"
               className="flex items-center gap-1.5 transition hover:text-slate-300"
             >
-              <HelpCircle size={12} /> Support
+              <HelpCircle size={12} /> {mt("Support")}
             </Link>
           </div>
         </div>
       </div>
       <header className="sticky top-0 z-50 border-b border-white/[0.07] bg-[#090a12]/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-[72px] max-w-[1380px] items-center justify-between px-5 sm:px-8">
+        <div className="mx-auto flex h-[72px] max-w-[1380px] items-center justify-between gap-3 px-5 sm:px-8">
           <Link
             to="/"
             className="flex shrink-0 items-center"
-            aria-label="Atlas Market home"
+            aria-label={mt("Atlas Market home")}
           >
             <BrandLogo className="h-11 w-[142px] object-contain object-left" />
           </Link>
 
           <nav
-            className="hidden items-center gap-1 lg:flex"
-            aria-label="Main navigation"
+            className="hidden items-center gap-0.5 xl:flex"
+            aria-label={mt("Main navigation")}
           >
             {navigation.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `rounded-lg px-4 py-2.5 text-[13px] font-medium transition ${isActive ? "bg-white/[0.06] text-white" : "text-slate-400 hover:bg-white/[0.035] hover:text-white"}`
+                  `rounded-lg px-2.5 py-2.5 text-[13px] font-medium transition ${isActive ? "bg-white/[0.06] text-white" : "text-slate-400 hover:bg-white/[0.035] hover:text-white"}`
                 }
               >
-                {item.label}
+                {mt(item.label)}
               </NavLink>
             ))}
           </nav>
 
-          <div className="hidden items-center gap-2 md:flex">
-            <Link
-              to="/auth"
-              className="rounded-lg px-4 py-2.5 text-[13px] font-semibold text-slate-300 transition hover:text-white"
-            >
-              Sign in
-            </Link>
-            <Link
-              to="/auth/register"
-              className="group flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-[13px] font-bold text-[#090a12] transition hover:bg-violet-100"
-            >
-              Open account
-              <ArrowRight
-                size={15}
-                className="transition-transform group-hover:translate-x-0.5"
-              />
-            </Link>
-          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <LanguageSwitcher compact />
+            <div className="hidden items-center gap-2 md:flex">
+              <Link
+                to="/auth"
+                className="rounded-lg px-4 py-2.5 text-[13px] font-semibold text-slate-300 transition hover:text-white"
+              >
+                {mt("Sign in")}
+              </Link>
+              <Link
+                to="/auth/register"
+                className="group flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-[13px] font-bold text-[#090a12] transition hover:bg-violet-100"
+              >
+                {mt("Open account")}
+                <ArrowRight
+                  size={15}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
+              </Link>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setMenuOpen((value) => !value)}
-            className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-200 md:hidden"
-            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
-            aria-expanded={menuOpen}
-          >
-            {menuOpen ? <X size={19} /> : <Menu size={19} />}
-          </button>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((value) => !value)}
+              className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-200 xl:hidden"
+              aria-label={mt(menuOpen ? "Close navigation" : "Open navigation")}
+              aria-expanded={menuOpen}
+            >
+              {menuOpen ? <X size={19} /> : <Menu size={19} />}
+            </button>
+          </div>
         </div>
 
         {menuOpen && (
-          <div className="border-t border-white/[0.07] bg-[#090a12] px-5 pb-6 pt-4 md:hidden">
+          <div className="border-t border-white/[0.07] bg-[#090a12] px-5 pb-6 pt-4 xl:hidden">
             <nav
               className="mx-auto flex max-w-[1380px] flex-col"
-              aria-label="Mobile navigation"
+              aria-label={mt("Mobile navigation")}
             >
               {navigation.map((item) => (
                 <NavLink
@@ -170,7 +176,7 @@ export const MarketingHeader = () => {
                   to={item.to}
                   className="flex items-center justify-between border-b border-white/[0.06] py-3.5 text-sm font-medium text-slate-200"
                 >
-                  {item.label}
+                  {mt(item.label)}
                   <ChevronDown
                     size={15}
                     className="-rotate-90 text-slate-600"
@@ -182,13 +188,13 @@ export const MarketingHeader = () => {
                   to="/auth"
                   className="rounded-lg border border-white/10 px-4 py-3 text-center text-sm font-semibold text-white"
                 >
-                  Sign in
+                  {mt("Sign in")}
                 </Link>
                 <Link
                   to="/auth/register"
                   className="rounded-lg bg-white px-4 py-3 text-center text-sm font-bold text-[#090a12]"
                 >
-                  Open account
+                  {mt("Open account")}
                 </Link>
               </div>
             </nav>
@@ -199,112 +205,122 @@ export const MarketingHeader = () => {
   );
 };
 
-export const MarketingFooter = () => (
-  <footer className="border-t border-white/[0.07] bg-[#06070b]">
-    <div className="mx-auto max-w-[1380px] px-5 pb-8 pt-16 sm:px-8 lg:pt-20">
-      <div className="grid gap-12 border-b border-white/[0.08] pb-14 lg:grid-cols-[1.25fr_2fr]">
-        <div className="max-w-sm">
-          <BrandLogo className="h-12 w-[156px] object-contain object-left" />
-          <p className="mt-6 text-sm leading-6 text-slate-500">
-            A multi-market trading workspace designed for clear decisions,
-            precise execution, and complete portfolio visibility.
-          </p>
-          <div className="mt-6 grid grid-cols-3 divide-x divide-white/[0.07] border-y border-white/[0.07] py-4">
-            {[
-              ["Coverage", "Multi-asset"],
-              ["Guides", "7 detailed"],
-              ["Support", "Account-aware"],
-            ].map(([label, value]) => (
-              <div key={label} className="px-3 first:pl-0">
-                <p className="text-[8px] uppercase tracking-widest text-slate-700">
-                  {label}
-                </p>
-                <p className="mt-1.5 text-[10px] font-semibold text-slate-300">
-                  {value}
-                </p>
+export const MarketingFooter = () => {
+  const mt = useMarketingTranslation();
+  return (
+    <footer className="border-t border-white/[0.07] bg-[#06070b]">
+      <div className="mx-auto max-w-[1380px] px-5 pb-8 pt-16 sm:px-8 lg:pt-20">
+        <div className="grid gap-12 border-b border-white/[0.08] pb-14 lg:grid-cols-[1.25fr_2fr]">
+          <div className="max-w-sm">
+            <BrandLogo className="h-12 w-[156px] object-contain object-left" />
+            <p className="mt-6 text-sm leading-6 text-slate-500">
+              {mt(
+                "A multi-market trading workspace designed for clear decisions, precise execution, and complete portfolio visibility.",
+              )}
+            </p>
+            <div className="mt-6 grid grid-cols-3 divide-x divide-white/[0.07] border-y border-white/[0.07] py-4">
+              {[
+                ["Coverage", "Multi-asset"],
+                ["Guides", "7 detailed"],
+                ["Support", "Account-aware"],
+              ].map(([label, value]) => (
+                <div key={label} className="px-3 first:pl-0">
+                  <p className="text-[8px] uppercase tracking-widest text-slate-700">
+                    {mt(label)}
+                  </p>
+                  <p className="mt-1.5 text-[10px] font-semibold text-slate-300">
+                    {mt(value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <Link
+              to="/support"
+              className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-slate-300 transition hover:text-white"
+            >
+              <Headphones size={16} className="text-violet-300" />{" "}
+              {mt("Visit support centre")}
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-x-7 gap-y-10 sm:grid-cols-5">
+            {footerGroups.map((group) => (
+              <div key={group.title}>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">
+                  {mt(group.title)}
+                </h3>
+                <ul className="mt-5 space-y-3.5">
+                  {group.links.map((link) => (
+                    <li key={link.label}>
+                      <Link
+                        to={link.to}
+                        className="text-[13px] text-slate-500 transition hover:text-slate-200"
+                      >
+                        {mt(link.label)}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
-          <Link
-            to="/support"
-            className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-slate-300 transition hover:text-white"
-          >
-            <Headphones size={16} className="text-violet-300" /> Visit support
-            centre
-          </Link>
         </div>
-        <div className="grid grid-cols-2 gap-x-7 gap-y-10 sm:grid-cols-5">
-          {footerGroups.map((group) => (
-            <div key={group.title}>
-              <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">
-                {group.title}
-              </h3>
-              <ul className="mt-5 space-y-3.5">
-                {group.links.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      to={link.to}
-                      className="text-[13px] text-slate-500 transition hover:text-slate-200"
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="py-8 text-[11px] leading-5 text-slate-600">
-        <p>
-          <strong className="font-semibold text-slate-500">
-            Risk warning:
-          </strong>{" "}
-          Trading digital assets, derivatives, and leveraged products involves a
-          high degree of risk and may result in losses exceeding the amount
-          committed to a position. These products may not be suitable for every
-          investor. Consider your objectives, experience, and risk tolerance
-          before trading.
-        </p>
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <p className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-            <strong className="block text-[9px] uppercase tracking-widest text-slate-500">
-              Availability
-            </strong>
-            <span className="mt-1 block">
-              Products and instruments depend on eligibility, account status,
-              and jurisdiction.
-            </span>
-          </p>
-          <p className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-            <strong className="block text-[9px] uppercase tracking-widest text-slate-500">
-              Execution
-            </strong>
-            <span className="mt-1 block">
-              Market conditions can affect spreads, liquidity, order fills, and
-              displayed estimates.
-            </span>
-          </p>
-          <p className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-            <strong className="block text-[9px] uppercase tracking-widest text-slate-500">
-              Education
-            </strong>
-            <span className="mt-1 block">
-              Public guides explain mechanics and do not provide personalised
-              investment advice.
-            </span>
-          </p>
-        </div>
-        <div className="mt-7 flex flex-col gap-3 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Atlas Market. All rights reserved.</p>
+        <div className="py-8 text-[11px] leading-5 text-slate-600">
           <p>
-            Market data shown on public pages may be delayed or illustrative.
+            <strong className="font-semibold text-slate-500">
+              {mt("Risk warning:")}
+            </strong>{" "}
+            {mt(
+              "Trading digital assets, derivatives, and leveraged products involves a high degree of risk and may result in losses exceeding the amount committed to a position. These products may not be suitable for every investor. Consider your objectives, experience, and risk tolerance before trading.",
+            )}
           </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <p className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+              <strong className="block text-[9px] uppercase tracking-widest text-slate-500">
+                {mt("Availability")}
+              </strong>
+              <span className="mt-1 block">
+                {mt(
+                  "Products and instruments depend on eligibility, account status, and jurisdiction.",
+                )}
+              </span>
+            </p>
+            <p className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+              <strong className="block text-[9px] uppercase tracking-widest text-slate-500">
+                {mt("Execution")}
+              </strong>
+              <span className="mt-1 block">
+                {mt(
+                  "Market conditions can affect spreads, liquidity, order fills, and displayed estimates.",
+                )}
+              </span>
+            </p>
+            <p className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+              <strong className="block text-[9px] uppercase tracking-widest text-slate-500">
+                {mt("Education")}
+              </strong>
+              <span className="mt-1 block">
+                {mt(
+                  "Public guides explain mechanics and do not provide personalised investment advice.",
+                )}
+              </span>
+            </p>
+          </div>
+          <div className="mt-7 flex flex-col gap-3 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              © {new Date().getFullYear()}{" "}
+              {mt("Atlas Market. All rights reserved.")}
+            </p>
+            <p>
+              {mt(
+                "Market data shown on public pages may be delayed or illustrative.",
+              )}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  </footer>
-);
+    </footer>
+  );
+};
 
 export const MarketingLayout = ({ children }: { children: ReactNode }) => (
   <div className="landing-page min-h-screen bg-[#090a12] text-white">

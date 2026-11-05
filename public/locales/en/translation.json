@@ -419,6 +419,8 @@
     "activateRobot": "Activate the robot to start trading"
   },
   "languages": {
+    "selectLanguage": "Change language",
+    "changeFailed": "Could not change language. Please try again.",
     "english": "English",
     "spanish": "Español",
     "french": "Français", 

@@ -1,3 +1,4 @@
+import { useMarketingTranslation } from "../hooks/useMarketingTranslation";
 import { useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -49,17 +50,20 @@ const SectionIntro = ({
   eyebrow: string;
   title: string;
   children: ReactNode;
-}) => (
-  <div className="max-w-2xl">
-    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-      {eyebrow}
-    </p>
-    <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] text-white sm:text-5xl">
-      {title}
-    </h2>
-    <div className="mt-5 text-sm leading-7 text-slate-500">{children}</div>
-  </div>
-);
+}) => {
+  const mt = useMarketingTranslation();
+  return (
+    <div className="max-w-2xl">
+      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
+        {mt(eyebrow)}
+      </p>
+      <h2 className="mt-4 text-3xl font-medium tracking-[-0.04em] text-white sm:text-5xl">
+        {mt(title)}
+      </h2>
+      <div className="mt-5 text-sm leading-7 text-slate-500">{children}</div>
+    </div>
+  );
+};
 
 const PageHero = ({
   eyebrow,
@@ -75,48 +79,52 @@ const PageHero = ({
   aside?: ReactNode;
   primary: { label: string; to: string };
   secondary: { label: string; to: string };
-}) => (
-  <section className="relative isolate overflow-hidden border-b border-white/[0.07] py-20 sm:py-28">
-    <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_18%_15%,rgba(124,58,237,.15),transparent_29%),radial-gradient(circle_at_82%_5%,rgba(37,99,235,.09),transparent_25%),linear-gradient(180deg,#0c0d18,#090a12)]" />
-    <div className="landing-grid absolute inset-0 -z-10 opacity-25" />
-    <div
-      className={`mx-auto grid max-w-[1380px] items-center gap-14 px-5 sm:px-8 ${aside ? "lg:grid-cols-[.85fr_1.15fr]" : ""}`}
-    >
-      <div className={aside ? "" : "max-w-4xl"}>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-          {eyebrow}
-        </p>
-        <h1 className="mt-5 text-5xl font-medium leading-[1.03] tracking-[-0.055em] text-white sm:text-6xl lg:text-[72px]">
-          {title}
-        </h1>
-        <p className="mt-7 max-w-2xl text-base leading-8 text-slate-400">
-          {description}
-        </p>
-        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-          <Link
-            to={primary.to}
-            className="group inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-bold text-[#090a12] hover:bg-violet-100"
-          >
-            {primary.label}{" "}
-            <ArrowRight
-              size={16}
-              className="transition group-hover:translate-x-0.5"
-            />
-          </Link>
-          <Link
-            to={secondary.to}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-6 py-3.5 text-sm font-semibold text-slate-200 hover:bg-white/[0.06]"
-          >
-            {secondary.label}
-          </Link>
+}) => {
+  const mt = useMarketingTranslation();
+  return (
+    <section className="relative isolate overflow-hidden border-b border-white/[0.07] py-20 sm:py-28">
+      <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_18%_15%,rgba(124,58,237,.15),transparent_29%),radial-gradient(circle_at_82%_5%,rgba(37,99,235,.09),transparent_25%),linear-gradient(180deg,#0c0d18,#090a12)]" />
+      <div className="landing-grid absolute inset-0 -z-10 opacity-25" />
+      <div
+        className={`mx-auto grid max-w-[1380px] items-center gap-14 px-5 sm:px-8 ${aside ? "lg:grid-cols-[.85fr_1.15fr]" : ""}`}
+      >
+        <div className={aside ? "" : "max-w-4xl"}>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
+            {mt(eyebrow)}
+          </p>
+          <h1 className="mt-5 text-5xl font-medium leading-[1.03] tracking-[-0.055em] text-white sm:text-6xl lg:text-[72px]">
+            {mt(title)}
+          </h1>
+          <p className="mt-7 max-w-2xl text-base leading-8 text-slate-400">
+            {mt(description)}
+          </p>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <Link
+              to={primary.to}
+              className="group inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-bold text-[#090a12] hover:bg-violet-100"
+            >
+              {mt(primary.label)}{" "}
+              <ArrowRight
+                size={16}
+                className="transition group-hover:translate-x-0.5"
+              />
+            </Link>
+            <Link
+              to={secondary.to}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-6 py-3.5 text-sm font-semibold text-slate-200 hover:bg-white/[0.06]"
+            >
+              {mt(secondary.label)}
+            </Link>
+          </div>
         </div>
+        {mt(aside)}
       </div>
-      {aside}
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const PlatformPage = () => {
+  const mt = useMarketingTranslation();
   const tools = [
     {
       icon: LineChart,
@@ -159,7 +167,7 @@ const PlatformPage = () => {
     <>
       <PageHero
         eyebrow="Atlas platform"
-        title="A trading workspace without the noise."
+        title={mt("A trading workspace without the noise.")}
         description="Built to keep research, execution, and portfolio management connected—whether you are checking one market or managing several positions."
         primary={{
           label: "Explore workspace tools",
@@ -170,16 +178,16 @@ const PlatformPage = () => {
           <div className="relative overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2 shadow-[0_35px_90px_rgba(0,0,0,.4)]">
             <img
               src="/atlas-trading-professional.jpg"
-              alt="Professional trading workspace"
+              alt={mt("Professional trading workspace")}
               className="aspect-[16/10] w-full rounded-xl object-cover"
             />
             <div className="absolute inset-2 rounded-xl bg-gradient-to-t from-[#080910]/80 via-transparent to-transparent" />
             <div className="absolute bottom-7 left-7">
               <p className="text-xs font-semibold text-white">
-                Designed around decisions
+                {mt("Designed around decisions")}
               </p>
               <p className="mt-1 text-[9px] text-slate-400">
-                Research · Execute · Monitor
+                {mt("Research · Execute · Monitor")}
               </p>
             </div>
           </div>
@@ -189,11 +197,12 @@ const PlatformPage = () => {
         <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
           <SectionIntro
             eyebrow="Workspace essentials"
-            title="The tools you need, arranged around the trade."
+            title={mt("The tools you need, arranged around the trade.")}
           >
             <p>
-              A consistent interface across market categories means less time
-              relearning navigation and more time understanding the position.
+              {mt(
+                "A consistent interface across market categories means less time relearning navigation and more time understanding the position.",
+              )}
             </p>
           </SectionIntro>
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -206,11 +215,13 @@ const PlatformPage = () => {
                   <Icon size={18} />
                 </span>
                 <h3 className="mt-6 text-sm font-semibold text-white">
-                  {title}
+                  {mt(title)}
                 </h3>
-                <p className="mt-3 text-xs leading-6 text-slate-500">{text}</p>
+                <p className="mt-3 text-xs leading-6 text-slate-500">
+                  {mt(text)}
+                </p>
                 <p className="mt-5 border-t border-white/[0.06] pt-4 text-[9px] font-medium text-violet-300/70">
-                  {output}
+                  {mt(output)}
                 </p>
               </article>
             ))}
@@ -223,12 +234,12 @@ const PlatformPage = () => {
             <div className="flex items-center justify-between border-b border-white/[0.07] pb-5">
               <div>
                 <p className="text-[9px] uppercase tracking-widest text-slate-600">
-                  Account overview
+                  {mt("Account overview")}
                 </p>
                 <p className="mt-2 text-2xl font-semibold">$82,430.18</p>
               </div>
               <span className="rounded-md bg-emerald-400/10 px-2 py-1 text-[9px] font-semibold text-emerald-400">
-                +3.2% MTD
+                {mt("+3.2% MTD")}
               </span>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -242,25 +253,25 @@ const PlatformPage = () => {
                   key={label}
                   className="rounded-xl border border-white/[0.06] bg-black/10 p-4"
                 >
-                  <p className="text-[9px] text-slate-600">{label}</p>
+                  <p className="text-[9px] text-slate-600">{mt(label)}</p>
                   <p className="mt-2 text-sm font-semibold text-slate-200">
-                    {value}
+                    {mt(value)}
                   </p>
                 </div>
               ))}
             </div>
             <p className="mt-4 text-center text-[8px] text-slate-700">
-              Illustrative account values
+              {mt("Illustrative account values")}
             </p>
           </div>
           <SectionIntro
             eyebrow="Portfolio first"
-            title="See the account, not just the order."
+            title={mt("See the account, not just the order.")}
           >
             <p>
-              Balances, positions, working orders, and longer-term allocations
-              all affect the same portfolio. Atlas keeps that relationship
-              visible so decisions are made with fuller context.
+              {mt(
+                "Balances, positions, working orders, and longer-term allocations all affect the same portfolio. Atlas keeps that relationship visible so decisions are made with fuller context.",
+              )}
             </p>
             <ul className="mt-7 space-y-3">
               {[
@@ -273,7 +284,7 @@ const PlatformPage = () => {
                   className="flex items-center gap-3 text-xs text-slate-400"
                 >
                   <Check size={14} className="text-emerald-400" />
-                  {item}
+                  {mt(item)}
                 </li>
               ))}
             </ul>
@@ -286,12 +297,12 @@ const PlatformPage = () => {
             <div>
               <CircleDollarSign size={26} className="text-violet-300" />
               <h2 className="mt-6 text-3xl font-medium tracking-[-0.04em]">
-                Put eligible assets to work.
+                {mt("Put eligible assets to work.")}
               </h2>
               <p className="mt-4 max-w-xl text-sm leading-7 text-slate-500">
-                Compare available staking durations, review the applicable
-                terms, and follow allocations alongside the rest of your
-                portfolio.
+                {mt(
+                  "Compare available staking durations, review the applicable terms, and follow allocations alongside the rest of your portfolio.",
+                )}
               </p>
             </div>
             <div className="grid gap-3">
@@ -305,7 +316,7 @@ const PlatformPage = () => {
                   className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-black/10 p-4 text-xs text-slate-300"
                 >
                   <Check size={14} className="text-emerald-400" />
-                  {item}
+                  {mt(item)}
                 </div>
               ))}
             </div>
@@ -316,11 +327,12 @@ const PlatformPage = () => {
         <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
           <SectionIntro
             eyebrow="A complete decision loop"
-            title="One workflow from discovery to review."
+            title={mt("One workflow from discovery to review.")}
           >
             <p>
-              The interface keeps each stage connected while giving every stage
-              its own information hierarchy, controls, and record.
+              {mt(
+                "The interface keeps each stage connected while giving every stage its own information hierarchy, controls, and record.",
+              )}
             </p>
           </SectionIntro>
           <div className="mt-12 grid gap-4 lg:grid-cols-4">
@@ -355,16 +367,16 @@ const PlatformPage = () => {
                 className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6"
               >
                 <span className="text-[9px] font-semibold text-violet-300">
-                  {item.number}
+                  {mt(item.number)}
                 </span>
                 <h3 className="mt-5 text-base font-semibold text-white">
-                  {item.title}
+                  {mt(item.title)}
                 </h3>
                 <p className="mt-3 text-xs leading-6 text-slate-500">
-                  {item.text}
+                  {mt(item.text)}
                 </p>
                 <p className="mt-5 border-t border-white/[0.06] pt-4 text-[9px] font-medium text-emerald-400/75">
-                  {item.detail}
+                  {mt(item.detail)}
                 </p>
               </article>
             ))}
@@ -376,6 +388,7 @@ const PlatformPage = () => {
 };
 
 const MarketsPage = () => {
+  const mt = useMarketingTranslation();
   const categories = [
     {
       id: "crypto",
@@ -418,7 +431,7 @@ const MarketsPage = () => {
     <>
       <PageHero
         eyebrow="Atlas markets"
-        title="More ways to express a market view."
+        title={mt("More ways to express a market view.")}
         description="Move across digital assets and selected global markets from one account—with consistent tools, clearer product context, and portfolio-wide visibility."
         primary={{ label: "Compare product routes", to: "/products" }}
         secondary={{ label: "Read market risks", to: "/legal/risk-disclosure" }}
@@ -427,7 +440,9 @@ const MarketsPage = () => {
             <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2">
               <img
                 src="/atlas-market-analysts.jpg"
-                alt="Global markets analysts reviewing multi-asset research"
+                alt={mt(
+                  "Global markets analysts reviewing multi-asset research",
+                )}
                 className="aspect-[16/9] w-full rounded-xl object-cover"
               />
             </figure>
@@ -443,10 +458,10 @@ const MarketsPage = () => {
                   className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4"
                 >
                   <p className="text-[8px] uppercase tracking-widest text-slate-600">
-                    {label}
+                    {mt(label)}
                   </p>
                   <p className="mt-2 text-xs font-semibold text-slate-200">
-                    {value}
+                    {mt(value)}
                   </p>
                 </div>
               ))}
@@ -468,14 +483,14 @@ const MarketsPage = () => {
                     <Icon size={21} />
                   </span>
                   <p className="mt-7 text-[9px] font-semibold uppercase tracking-[0.17em] text-slate-600">
-                    {eyebrow}
+                    {mt(eyebrow)}
                   </p>
                   <h2 className="mt-3 text-3xl font-medium tracking-[-0.04em]">
-                    {title}
+                    {mt(title)}
                   </h2>
                 </div>
                 <div>
-                  <p className="text-sm leading-7 text-slate-400">{text}</p>
+                  <p className="text-sm leading-7 text-slate-400">{mt(text)}</p>
                   <div className="mt-7 grid gap-3 sm:grid-cols-3">
                     {features.map((feature) => (
                       <div
@@ -483,7 +498,7 @@ const MarketsPage = () => {
                         className="rounded-xl border border-white/[0.06] bg-black/10 p-4 text-[11px] leading-5 text-slate-400"
                       >
                         <Check size={13} className="mb-3 text-emerald-400" />
-                        {feature}
+                        {mt(feature)}
                       </div>
                     ))}
                   </div>
@@ -491,7 +506,8 @@ const MarketsPage = () => {
                     to="/auth/register"
                     className="mt-7 inline-flex items-center gap-2 text-xs font-semibold text-violet-300"
                   >
-                    Explore {title.toLowerCase()} <ArrowUpRight size={13} />
+                    {mt("Explore")} {title.toLowerCase()}{" "}
+                    <ArrowUpRight size={13} />
                   </Link>
                 </div>
               </article>
@@ -504,12 +520,12 @@ const MarketsPage = () => {
           <div className="grid gap-14 lg:grid-cols-[.72fr_1.28fr] lg:gap-24">
             <SectionIntro
               eyebrow="Research by market"
-              title="Follow the driver behind the symbol."
+              title={mt("Follow the driver behind the symbol.")}
             >
               <p>
-                Market categories respond to different information. A useful
-                research process starts with the economic mechanism most likely
-                to move the instrument.
+                {mt(
+                  "Market categories respond to different information. A useful research process starts with the economic mechanism most likely to move the instrument.",
+                )}
               </p>
             </SectionIntro>
             <div className="space-y-3">
@@ -549,14 +565,14 @@ const MarketsPage = () => {
                 >
                   <div>
                     <p className="text-xs font-semibold text-slate-200">
-                      {item.market}
+                      {mt(item.market)}
                     </p>
                     <p className="mt-2 text-[9px] uppercase tracking-widest text-violet-300/70">
-                      {item.driver}
+                      {mt(item.driver)}
                     </p>
                   </div>
                   <p className="text-xs leading-6 text-slate-500">
-                    {item.review}
+                    {mt(item.review)}
                   </p>
                 </article>
               ))}
@@ -568,19 +584,18 @@ const MarketsPage = () => {
         <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-2 lg:items-center">
           <SectionIntro
             eyebrow="Know the product"
-            title="Different markets. Different risk."
+            title={mt("Different markets. Different risk.")}
           >
             <p>
-              Spot assets, derivatives, and contracts for difference do not
-              behave the same way. Leverage magnifies both gains and losses,
-              funding and overnight costs may apply, and available instruments
-              can vary.
+              {mt(
+                "Spot assets, derivatives, and contracts for difference do not behave the same way. Leverage magnifies both gains and losses, funding and overnight costs may apply, and available instruments can vary.",
+              )}
             </p>
             <Link
               to="/legal/risk-disclosure"
               className="mt-7 inline-flex items-center gap-2 text-xs font-semibold text-violet-300"
             >
-              Read the risk disclosure <ArrowRight size={13} />
+              {mt("Read the risk disclosure")} <ArrowRight size={13} />
             </Link>
           </SectionIntro>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -594,9 +609,11 @@ const MarketsPage = () => {
                 key={title}
                 className="rounded-xl border border-white/[0.08] bg-[#0d0f17] p-5"
               >
-                <p className="text-xs font-semibold text-slate-200">{title}</p>
+                <p className="text-xs font-semibold text-slate-200">
+                  {mt(title)}
+                </p>
                 <p className="mt-2 text-[10px] leading-5 text-slate-600">
-                  {text}
+                  {mt(text)}
                 </p>
               </div>
             ))}
@@ -607,212 +624,228 @@ const MarketsPage = () => {
   );
 };
 
-const FeesPage = () => (
-  <>
-    <PageHero
-      eyebrow="Pricing and conditions"
-      title="Trading costs, explained clearly."
-      description="Understand the cost categories that can apply before you place a trade. Actual spreads, financing, and product terms can vary by instrument and market conditions."
-      primary={{ label: "Compare cost categories", to: "/fees#costs" }}
-      secondary={{
-        label: "Review risk disclosure",
-        to: "/legal/risk-disclosure",
-      }}
-      aside={
-        <div>
-          <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2">
-            <img
-              src="/atlas-portfolio-professional.jpg"
-              alt="Investor reviewing portfolio costs and market activity"
-              className="aspect-[16/9] w-full rounded-xl object-cover"
-            />
-          </figure>
-          <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5">
-            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-              Pricing principles
+const FeesPage = () => {
+  const mt = useMarketingTranslation();
+  return (
+    <>
+      <PageHero
+        eyebrow="Pricing and conditions"
+        title={mt("Trading costs, explained clearly.")}
+        description="Understand the cost categories that can apply before you place a trade. Actual spreads, financing, and product terms can vary by instrument and market conditions."
+        primary={{ label: "Compare cost categories", to: "/fees#costs" }}
+        secondary={{
+          label: "Review risk disclosure",
+          to: "/legal/risk-disclosure",
+        }}
+        aside={
+          <div>
+            <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2">
+              <img
+                src="/atlas-portfolio-professional.jpg"
+                alt={mt(
+                  "Investor reviewing portfolio costs and market activity",
+                )}
+                className="aspect-[16/9] w-full rounded-xl object-cover"
+              />
+            </figure>
+            <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                {mt("Pricing principles")}
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {[
+                  "Costs shown before confirmation",
+                  "Product-specific spread context",
+                  "Clear overnight financing terms",
+                  "No public-page price guarantees",
+                ].map((item) => (
+                  <div
+                    key={item}
+                    className="flex items-center gap-2 text-[10px] text-slate-300"
+                  >
+                    <Check size={12} className="shrink-0 text-emerald-400" />
+                    {mt(item)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        }
+      />
+      <section id="costs" className="scroll-mt-28 py-24 sm:py-28">
+        <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
+          <SectionIntro
+            eyebrow="Cost structure"
+            title={mt("Know what can affect the trade.")}
+          >
+            <p>
+              {mt(
+                "Different products use different pricing models. Review the instrument detail and order summary for the conditions that apply to your position.",
+              )}
             </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {[
-                "Costs shown before confirmation",
-                "Product-specific spread context",
-                "Clear overnight financing terms",
-                "No public-page price guarantees",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center gap-2 text-[10px] text-slate-300"
-                >
-                  <Check size={12} className="shrink-0 text-emerald-400" />
-                  {item}
-                </div>
-              ))}
-            </div>
+          </SectionIntro>
+          <div className="mt-12 grid gap-4 md:grid-cols-3">
+            {[
+              {
+                icon: BarChart3,
+                title: "Spread",
+                text: "The difference between the available buy and sell price. Spreads can widen when markets are volatile or liquidity is limited.",
+              },
+              {
+                icon: Clock3,
+                title: "Overnight financing",
+                text: "A financing or swap adjustment may apply when a leveraged position remains open across the relevant daily cut-off.",
+              },
+              {
+                icon: CircleDollarSign,
+                title: "Product charges",
+                text: "Some funding, withdrawal, conversion, or earning products may carry product-specific network or service costs.",
+              },
+            ].map(({ icon: Icon, title, text }) => (
+              <article
+                key={title}
+                className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-7"
+              >
+                <Icon size={20} className="text-violet-300" />
+                <h2 className="mt-7 text-base font-semibold">{mt(title)}</h2>
+                <p className="mt-3 text-xs leading-6 text-slate-500">
+                  {mt(text)}
+                </p>
+              </article>
+            ))}
           </div>
         </div>
-      }
-    />
-    <section id="costs" className="scroll-mt-28 py-24 sm:py-28">
-      <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
-        <SectionIntro
-          eyebrow="Cost structure"
-          title="Know what can affect the trade."
-        >
-          <p>
-            Different products use different pricing models. Review the
-            instrument detail and order summary for the conditions that apply to
-            your position.
-          </p>
-        </SectionIntro>
-        <div className="mt-12 grid gap-4 md:grid-cols-3">
-          {[
-            {
-              icon: BarChart3,
-              title: "Spread",
-              text: "The difference between the available buy and sell price. Spreads can widen when markets are volatile or liquidity is limited.",
-            },
-            {
-              icon: Clock3,
-              title: "Overnight financing",
-              text: "A financing or swap adjustment may apply when a leveraged position remains open across the relevant daily cut-off.",
-            },
-            {
-              icon: CircleDollarSign,
-              title: "Product charges",
-              text: "Some funding, withdrawal, conversion, or earning products may carry product-specific network or service costs.",
-            },
-          ].map(({ icon: Icon, title, text }) => (
-            <article
-              key={title}
-              className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-7"
-            >
-              <Icon size={20} className="text-violet-300" />
-              <h2 className="mt-7 text-base font-semibold">{title}</h2>
-              <p className="mt-3 text-xs leading-6 text-slate-500">{text}</p>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-    <section className="border-y border-white/[0.07] bg-[#080910] py-24">
-      <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
-        <SectionIntro
-          eyebrow="By product"
-          title="Pricing depends on how you access the market."
-        >
-          <p>
-            This overview is a guide to the main cost categories, not a live
-            quote. The order ticket and instrument detail provide the relevant
-            trading information.
-          </p>
-        </SectionIntro>
-        <div className="mt-12 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0e16]">
-          <div className="grid grid-cols-[1fr_1fr_1fr] border-b border-white/[0.07] bg-white/[0.02] px-5 py-4 text-[9px] font-semibold uppercase tracking-widest text-slate-600">
-            <span>Product</span>
-            <span>Primary cost</span>
-            <span>May also apply</span>
-          </div>
-          {[
-            ["Crypto spot", "Quoted spread", "Network or conversion costs"],
-            ["Crypto futures", "Spread", "Funding and liquidation risk"],
-            ["Global CFDs", "Spread", "Overnight financing"],
-            ["Staking", "Product terms", "Lock-up and asset risk"],
-          ].map((row) => (
-            <div
-              key={row[0]}
-              className="grid grid-cols-[1fr_1fr_1fr] border-b border-white/[0.06] px-5 py-5 text-[10px] last:border-0 sm:text-xs"
-            >
-              <span className="font-semibold text-slate-200">{row[0]}</span>
-              <span className="text-slate-400">{row[1]}</span>
-              <span className="text-slate-500">{row[2]}</span>
+      </section>
+      <section className="border-y border-white/[0.07] bg-[#080910] py-24">
+        <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
+          <SectionIntro
+            eyebrow="By product"
+            title={mt("Pricing depends on how you access the market.")}
+          >
+            <p>
+              {mt(
+                "This overview is a guide to the main cost categories, not a live quote. The order ticket and instrument detail provide the relevant trading information.",
+              )}
+            </p>
+          </SectionIntro>
+          <div className="mt-12 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0e16]">
+            <div className="grid grid-cols-[1fr_1fr_1fr] border-b border-white/[0.07] bg-white/[0.02] px-5 py-4 text-[9px] font-semibold uppercase tracking-widest text-slate-600">
+              <span>{mt("Product")}</span>
+              <span>{mt("Primary cost")}</span>
+              <span>{mt("May also apply")}</span>
             </div>
-          ))}
-        </div>
-        <div className="mt-6 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-5 text-xs leading-6 text-amber-100/60">
-          Market conditions can change quickly. Displayed prices and cost
-          estimates may change before an order is executed, particularly during
-          volatile or illiquid periods.
-        </div>
-      </div>
-    </section>
-    <section className="py-24">
-      <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.78fr_1.22fr] lg:gap-24">
-        <SectionIntro
-          eyebrow="Worked cost review"
-          title="Read the route from quote to net result."
-        >
-          <p>
-            This illustrative walkthrough shows where cost information enters a
-            leveraged position. It deliberately avoids presenting a fixed rate
-            because live conditions are instrument specific.
-          </p>
-        </SectionIntro>
-        <div className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6 sm:p-8">
-          <div className="grid grid-cols-[42px_1fr_auto] gap-4 border-b border-white/[0.07] pb-5 text-[9px] font-semibold uppercase tracking-widest text-slate-600">
-            <span>Step</span>
-            <span>Question</span>
-            <span>Evidence</span>
+            {[
+              ["Crypto spot", "Quoted spread", "Network or conversion costs"],
+              ["Crypto futures", "Spread", "Funding and liquidation risk"],
+              ["Global CFDs", "Spread", "Overnight financing"],
+              ["Staking", "Product terms", "Lock-up and asset risk"],
+            ].map((row) => (
+              <div
+                key={row[0]}
+                className="grid grid-cols-[1fr_1fr_1fr] border-b border-white/[0.06] px-5 py-5 text-[10px] last:border-0 sm:text-xs"
+              >
+                <span className="font-semibold text-slate-200">
+                  {mt(row[0])}
+                </span>
+                <span className="text-slate-400">{mt(row[1])}</span>
+                <span className="text-slate-500">{mt(row[2])}</span>
+              </div>
+            ))}
           </div>
-          {[
-            ["01", "What is the entry cost?", "Compare executable bid and ask"],
-            [
-              "02",
-              "How large is the economic exposure?",
-              "Multiply quantity by contract value",
-            ],
-            [
-              "03",
-              "Will the position cross a daily cut-off?",
-              "Read financing time and direction",
-            ],
-            [
-              "04",
-              "What changes at exit?",
-              "Recheck spread, conversion, and fill price",
-            ],
-          ].map((row) => (
-            <div
-              key={row[0]}
-              className="grid grid-cols-[42px_1fr_auto] gap-4 border-b border-white/[0.06] py-5 text-xs last:border-0"
-            >
-              <span className="font-semibold text-violet-300">{row[0]}</span>
-              <span className="font-medium text-slate-200">{row[1]}</span>
-              <span className="max-w-[230px] text-right text-slate-500">
-                {row[2]}
-              </span>
+          <div className="mt-6 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-5 text-xs leading-6 text-amber-100/60">
+            {mt(
+              "Market conditions can change quickly. Displayed prices and cost estimates may change before an order is executed, particularly during volatile or illiquid periods.",
+            )}
+          </div>
+        </div>
+      </section>
+      <section className="py-24">
+        <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.78fr_1.22fr] lg:gap-24">
+          <SectionIntro
+            eyebrow="Worked cost review"
+            title={mt("Read the route from quote to net result.")}
+          >
+            <p>
+              {mt(
+                "This illustrative walkthrough shows where cost information enters a leveraged position. It deliberately avoids presenting a fixed rate because live conditions are instrument specific.",
+              )}
+            </p>
+          </SectionIntro>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6 sm:p-8">
+            <div className="grid grid-cols-[42px_1fr_auto] gap-4 border-b border-white/[0.07] pb-5 text-[9px] font-semibold uppercase tracking-widest text-slate-600">
+              <span>{mt("Step")}</span>
+              <span>{mt("Question")}</span>
+              <span>{mt("Evidence")}</span>
             </div>
-          ))}
-          <p className="mt-5 rounded-lg bg-white/[0.025] p-4 text-[10px] leading-5 text-slate-600">
-            Net result = realised price movement − spread impact − applicable
-            financing − product or conversion charges. Actual components vary by
-            product.
-          </p>
+            {[
+              [
+                "01",
+                "What is the entry cost?",
+                "Compare executable bid and ask",
+              ],
+              [
+                "02",
+                "How large is the economic exposure?",
+                "Multiply quantity by contract value",
+              ],
+              [
+                "03",
+                "Will the position cross a daily cut-off?",
+                "Read financing time and direction",
+              ],
+              [
+                "04",
+                "What changes at exit?",
+                "Recheck spread, conversion, and fill price",
+              ],
+            ].map((row) => (
+              <div
+                key={row[0]}
+                className="grid grid-cols-[42px_1fr_auto] gap-4 border-b border-white/[0.06] py-5 text-xs last:border-0"
+              >
+                <span className="font-semibold text-violet-300">
+                  {mt(row[0])}
+                </span>
+                <span className="font-medium text-slate-200">{mt(row[1])}</span>
+                <span className="max-w-[230px] text-right text-slate-500">
+                  {mt(row[2])}
+                </span>
+              </div>
+            ))}
+            <p className="mt-5 rounded-lg bg-white/[0.025] p-4 text-[10px] leading-5 text-slate-600">
+              {mt(
+                "Net result = realised price movement − spread impact − applicable financing − product or conversion charges. Actual components vary by product.",
+              )}
+            </p>
+          </div>
         </div>
-      </div>
-    </section>
-    <section className="border-t border-white/[0.07] bg-[#080910] py-24">
-      <div className="mx-auto grid max-w-[1380px] items-center gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto]">
-        <div>
-          <h2 className="text-3xl font-medium tracking-[-0.04em]">
-            Review the full order before you confirm.
-          </h2>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
-            Instrument, side, size, price type, margin, holding horizon, account
-            currency, and applicable costs all affect the result. Take time to
-            review each field.
-          </p>
+      </section>
+      <section className="border-t border-white/[0.07] bg-[#080910] py-24">
+        <div className="mx-auto grid max-w-[1380px] items-center gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto]">
+          <div>
+            <h2 className="text-3xl font-medium tracking-[-0.04em]">
+              {mt("Review the full order before you confirm.")}
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
+              {mt(
+                "Instrument, side, size, price type, margin, holding horizon, account currency, and applicable costs all affect the result. Take time to review each field.",
+              )}
+            </p>
+          </div>
+          <Link
+            to="/auth/register"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-bold text-[#090a12] hover:bg-violet-100"
+          >
+            {mt("Open an account")} <ArrowRight size={15} />
+          </Link>
         </div>
-        <Link
-          to="/auth/register"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-bold text-[#090a12] hover:bg-violet-100"
-        >
-          Open an account <ArrowRight size={15} />
-        </Link>
-      </div>
-    </section>
-  </>
-);
+      </section>
+    </>
+  );
+};
 
 const SecurityPage = () => {
+  const mt = useMarketingTranslation();
   const safeguards = [
     {
       icon: LockKeyhole,
@@ -849,7 +882,7 @@ const SecurityPage = () => {
     <>
       <PageHero
         eyebrow="Security at Atlas"
-        title="Confidence begins with control."
+        title={mt("Confidence begins with control.")}
         description="Security is more than a login screen. Atlas combines account safeguards, verification workflows, activity visibility, and trading risk tools across the client experience."
         primary={{
           label: "Review account safeguards",
@@ -860,7 +893,9 @@ const SecurityPage = () => {
           <figure className="relative overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2 shadow-[0_32px_90px_rgba(0,0,0,.4)]">
             <img
               src="/atlas-security-operations.jpg"
-              alt="Financial technology security and support professionals reviewing account activity"
+              alt={mt(
+                "Financial technology security and support professionals reviewing account activity",
+              )}
               className="aspect-[16/10] w-full rounded-xl object-cover"
             />
             <div className="absolute inset-2 rounded-xl bg-gradient-to-t from-[#080910]/75 via-transparent to-transparent" />
@@ -874,12 +909,12 @@ const SecurityPage = () => {
         <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
           <SectionIntro
             eyebrow="Layered safeguards"
-            title="Protection across the account lifecycle."
+            title={mt("Protection across the account lifecycle.")}
           >
             <p>
-              Every security control serves a different purpose. Together, they
-              create clearer boundaries around access, activity, and trading
-              decisions.
+              {mt(
+                "Every security control serves a different purpose. Together, they create clearer boundaries around access, activity, and trading decisions.",
+              )}
             </p>
           </SectionIntro>
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -889,8 +924,10 @@ const SecurityPage = () => {
                 className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6"
               >
                 <Icon size={20} className="text-emerald-400" />
-                <h3 className="mt-6 text-sm font-semibold">{title}</h3>
-                <p className="mt-3 text-xs leading-6 text-slate-500">{text}</p>
+                <h3 className="mt-6 text-sm font-semibold">{mt(title)}</h3>
+                <p className="mt-3 text-xs leading-6 text-slate-500">
+                  {mt(text)}
+                </p>
               </article>
             ))}
           </div>
@@ -900,12 +937,12 @@ const SecurityPage = () => {
         <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.8fr_1.2fr]">
           <SectionIntro
             eyebrow="Your role"
-            title="Good security is a shared practice."
+            title={mt("Good security is a shared practice.")}
           >
             <p>
-              Use a unique password, protect access to your email, review
-              account activity regularly, and contact support if something looks
-              unfamiliar.
+              {mt(
+                "Use a unique password, protect access to your email, review account activity regularly, and contact support if something looks unfamiliar.",
+              )}
             </p>
           </SectionIntro>
           <div className="space-y-3">
@@ -922,7 +959,7 @@ const SecurityPage = () => {
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-violet-400/[0.08] text-[9px] font-semibold text-violet-300">
                   0{index + 1}
                 </span>
-                <p className="text-xs text-slate-300">{item}</p>
+                <p className="text-xs text-slate-300">{mt(item)}</p>
               </div>
             ))}
           </div>
@@ -933,19 +970,18 @@ const SecurityPage = () => {
           <div className="grid gap-10 lg:grid-cols-[.7fr_1.3fr] lg:items-end">
             <SectionIntro
               eyebrow="If something looks wrong"
-              title="Contain first. Investigate second."
+              title={mt("Contain first. Investigate second.")}
             >
               <p>
-                Fast reporting gives the support and security workflow better
-                information to protect access, review activity, and document the
-                incident.
+                {mt(
+                  "Fast reporting gives the support and security workflow better information to protect access, review activity, and document the incident.",
+                )}
               </p>
             </SectionIntro>
             <p className="max-w-2xl text-sm leading-7 text-slate-500">
-              Do not continue approving prompts or repeat a transfer while
-              trying to diagnose an issue. Preserve timestamps, transaction
-              identifiers, and the exact messages shown without sharing
-              credentials.
+              {mt(
+                "Do not continue approving prompts or repeat a transfer while trying to diagnose an issue. Preserve timestamps, transaction identifiers, and the exact messages shown without sharing credentials.",
+              )}
             </p>
           </div>
           <div className="mt-12 grid gap-4 md:grid-cols-3">
@@ -971,10 +1007,12 @@ const SecurityPage = () => {
                 className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6"
               >
                 <p className="text-[9px] font-semibold uppercase tracking-widest text-emerald-400/70">
-                  {meta}
+                  {mt(meta)}
                 </p>
-                <h3 className="mt-5 text-base font-semibold">{title}</h3>
-                <p className="mt-3 text-xs leading-6 text-slate-500">{text}</p>
+                <h3 className="mt-5 text-base font-semibold">{mt(title)}</h3>
+                <p className="mt-3 text-xs leading-6 text-slate-500">
+                  {mt(text)}
+                </p>
               </article>
             ))}
           </div>
@@ -984,338 +1022,357 @@ const SecurityPage = () => {
   );
 };
 
-const CompanyPage = () => (
-  <>
-    <PageHero
-      eyebrow="About Atlas"
-      title="Built for clearer market participation."
-      description="Atlas Market brings multi-asset access, modern execution tools, and portfolio visibility into one considered experience."
-      primary={{ label: "Read our approach", to: "/company#approach" }}
-      secondary={{ label: "See the platform", to: "/platform" }}
-      aside={
-        <div className="overflow-hidden rounded-2xl border border-white/[0.09] p-2">
-          <img
-            src="/atlas-market-team.jpg"
-            alt="Market professionals collaborating"
-            className="aspect-[16/10] w-full rounded-xl object-cover"
-          />
-        </div>
-      }
-    />
-    <section id="approach" className="scroll-mt-28 py-24">
-      <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
-        <SectionIntro
-          eyebrow="Our approach"
-          title="Complex markets. A more coherent experience."
-        >
-          <p>
-            Trading products can be sophisticated without the product experience
-            becoming confusing. Our approach is to surface the information that
-            matters, preserve context between actions, and be direct about risk.
-          </p>
-        </SectionIntro>
-        <div className="mt-12 grid gap-4 md:grid-cols-3">
-          {[
-            {
-              icon: Target,
-              title: "Clarity over clutter",
-              text: "Interfaces should make price, exposure, order state, and account impact easier to understand.",
-            },
-            {
-              icon: Layers3,
-              title: "One connected account",
-              text: "Market activity, balances, and portfolio history should tell one consistent story.",
-            },
-            {
-              icon: Sparkles,
-              title: "Useful innovation",
-              text: "Automation and new product features should solve a real user problem, not add novelty.",
-            },
-          ].map(({ icon: Icon, title, text }) => (
-            <article
-              key={title}
-              className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-7"
-            >
-              <Icon size={20} className="text-violet-300" />
-              <h3 className="mt-7 text-base font-semibold">{title}</h3>
-              <p className="mt-3 text-xs leading-6 text-slate-500">{text}</p>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-    <section className="border-y border-white/[0.07] bg-[#080910] py-24">
-      <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-2 lg:items-center">
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            ["Multi-asset", "Market access"],
-            ["Integrated", "Portfolio view"],
-            ["Structured", "Risk controls"],
-            ["Human", "Support access"],
-          ].map(([value, label]) => (
-            <div
-              key={label}
-              className="rounded-xl border border-white/[0.08] bg-[#0c0e16] p-6"
-            >
-              <p className="text-lg font-semibold text-white">{value}</p>
-              <p className="mt-2 text-[10px] uppercase tracking-widest text-slate-600">
-                {label}
-              </p>
-            </div>
-          ))}
-        </div>
-        <SectionIntro
-          eyebrow="What we are building"
-          title="A platform designed to earn attention."
-        >
-          <p>
-            Serious market tools should feel dependable, direct, and respectful
-            of the user’s time. Atlas is developed around that standard—from the
-            first market search to the complete account history.
-          </p>
-        </SectionIntro>
-      </div>
-    </section>
-    <section className="py-24">
-      <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.75fr_1.25fr] lg:gap-24">
-        <SectionIntro
-          eyebrow="Product principles"
-          title="Standards that shape each release."
-        >
-          <p>
-            A serious trading experience is built through repeated operational
-            choices: what information appears first, which actions require
-            confirmation, and how the final account record is preserved.
-          </p>
-        </SectionIntro>
-        <div className="space-y-3">
-          {[
-            {
-              title: "Explain the economic effect",
-              text: "Product copy and ticket fields should describe ownership, leverage, margin, duration, and cost in terms that connect directly to the account.",
-            },
-            {
-              title: "Preserve decision context",
-              text: "Research, order details, position state, and history should remain connected so a user can reconstruct why an action was taken.",
-            },
-            {
-              title: "Design the exception path",
-              text: "Rejected orders, unavailable markets, verification delays, and support escalation deserve the same care as the ideal workflow.",
-            },
-            {
-              title: "Keep risk visible",
-              text: "Warnings should appear at the relevant decision—not only in a distant document—and should avoid implying that controls guarantee outcomes.",
-            },
-          ].map((item, index) => (
-            <article
-              key={item.title}
-              className="grid gap-4 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5 sm:grid-cols-[42px_1fr]"
-            >
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-400/[0.08] text-[9px] font-semibold text-violet-300">
-                0{index + 1}
-              </span>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-200">
-                  {item.title}
-                </h3>
-                <p className="mt-2 text-xs leading-6 text-slate-500">
-                  {item.text}
-                </p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  </>
-);
-
-const SupportPage = () => (
-  <>
-    <PageHero
-      eyebrow="Atlas support"
-      title="Answers when you need them."
-      description="Find guidance on accounts, funding, trading products, portfolio activity, and security—or reach the support team for account-specific help."
-      primary={{ label: "Browse help categories", to: "/support#topics" }}
-      secondary={{ label: "Contact support", to: "/support#contact" }}
-      aside={
-        <div>
-          <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2">
+const CompanyPage = () => {
+  const mt = useMarketingTranslation();
+  return (
+    <>
+      <PageHero
+        eyebrow="About Atlas"
+        title={mt("Built for clearer market participation.")}
+        description="Atlas Market brings multi-asset access, modern execution tools, and portfolio visibility into one considered experience."
+        primary={{ label: "Read our approach", to: "/company#approach" }}
+        secondary={{ label: "See the platform", to: "/platform" }}
+        aside={
+          <div className="overflow-hidden rounded-2xl border border-white/[0.09] p-2">
             <img
-              src="/atlas-client-support.jpg"
-              alt="Client support specialist assisting with an account request"
-              className="aspect-[16/9] w-full rounded-xl object-cover"
+              src="/atlas-market-team.jpg"
+              alt={mt("Market professionals collaborating")}
+              className="aspect-[16/10] w-full rounded-xl object-cover"
             />
-          </figure>
-          <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-4">
-            <div className="flex items-center gap-3 rounded-lg border border-white/[0.08] bg-[#090a12] px-4 py-3 text-slate-600">
-              <Search size={15} />
-              <span className="text-[10px]">Search help topics</span>
-            </div>
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {["Account", "Funding", "Trading", "Security"].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-lg border border-white/[0.06] p-2 text-center text-[8px] text-slate-400"
-                >
-                  {item}
-                </div>
-              ))}
-            </div>
+          </div>
+        }
+      />
+      <section id="approach" className="scroll-mt-28 py-24">
+        <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
+          <SectionIntro
+            eyebrow="Our approach"
+            title={mt("Complex markets. A more coherent experience.")}
+          >
+            <p>
+              {mt(
+                "Trading products can be sophisticated without the product experience becoming confusing. Our approach is to surface the information that matters, preserve context between actions, and be direct about risk.",
+              )}
+            </p>
+          </SectionIntro>
+          <div className="mt-12 grid gap-4 md:grid-cols-3">
+            {[
+              {
+                icon: Target,
+                title: "Clarity over clutter",
+                text: "Interfaces should make price, exposure, order state, and account impact easier to understand.",
+              },
+              {
+                icon: Layers3,
+                title: "One connected account",
+                text: "Market activity, balances, and portfolio history should tell one consistent story.",
+              },
+              {
+                icon: Sparkles,
+                title: "Useful innovation",
+                text: "Automation and new product features should solve a real user problem, not add novelty.",
+              },
+            ].map(({ icon: Icon, title, text }) => (
+              <article
+                key={title}
+                className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-7"
+              >
+                <Icon size={20} className="text-violet-300" />
+                <h3 className="mt-7 text-base font-semibold">{mt(title)}</h3>
+                <p className="mt-3 text-xs leading-6 text-slate-500">
+                  {mt(text)}
+                </p>
+              </article>
+            ))}
           </div>
         </div>
-      }
-    />
-    <section id="topics" className="scroll-mt-28 py-24">
-      <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              icon: UserCheck,
-              title: "Account access",
-              text: "Resolve registration, sign-in, verification, recovery, and profile-maintenance questions.",
-              topics: ["Login", "Verification", "Profile"],
-            },
-            {
-              icon: Landmark,
-              title: "Funding & wallet",
-              text: "Trace balance changes, network deposits, withdrawal reviews, and transaction status.",
-              topics: ["Deposits", "Withdrawals", "History"],
-            },
-            {
-              icon: LineChart,
-              title: "Trading help",
-              text: "Understand product mechanics, order states, margin fields, and position-management actions.",
-              topics: ["Orders", "Margin", "Positions"],
-            },
-            {
-              icon: ShieldCheck,
-              title: "Security",
-              text: "Report unfamiliar access, protect a session, and follow the controlled recovery process.",
-              topics: ["Sessions", "Reports", "Recovery"],
-            },
-          ].map(({ icon: Icon, title, text, topics }) => (
-            <div
-              key={title}
-              className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6"
-            >
-              <Icon size={20} className="text-violet-300" />
-              <h2 className="mt-6 text-sm font-semibold">{title}</h2>
-              <p className="mt-3 text-xs leading-6 text-slate-500">{text}</p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                {topics.map((topic) => (
-                  <span
-                    key={topic}
-                    className="rounded-md border border-white/[0.07] bg-white/[0.025] px-2 py-1 text-[8px] font-medium text-slate-500"
+      </section>
+      <section className="border-y border-white/[0.07] bg-[#080910] py-24">
+        <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-2 lg:items-center">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ["Multi-asset", "Market access"],
+              ["Integrated", "Portfolio view"],
+              ["Structured", "Risk controls"],
+              ["Human", "Support access"],
+            ].map(([value, label]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-white/[0.08] bg-[#0c0e16] p-6"
+              >
+                <p className="text-lg font-semibold text-white">{mt(value)}</p>
+                <p className="mt-2 text-[10px] uppercase tracking-widest text-slate-600">
+                  {mt(label)}
+                </p>
+              </div>
+            ))}
+          </div>
+          <SectionIntro
+            eyebrow="What we are building"
+            title={mt("A platform designed to earn attention.")}
+          >
+            <p>
+              {mt(
+                "Serious market tools should feel dependable, direct, and respectful of the user’s time. Atlas is developed around that standard—from the first market search to the complete account history.",
+              )}
+            </p>
+          </SectionIntro>
+        </div>
+      </section>
+      <section className="py-24">
+        <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.75fr_1.25fr] lg:gap-24">
+          <SectionIntro
+            eyebrow="Product principles"
+            title={mt("Standards that shape each release.")}
+          >
+            <p>
+              {mt(
+                "A serious trading experience is built through repeated operational choices: what information appears first, which actions require confirmation, and how the final account record is preserved.",
+              )}
+            </p>
+          </SectionIntro>
+          <div className="space-y-3">
+            {[
+              {
+                title: "Explain the economic effect",
+                text: "Product copy and ticket fields should describe ownership, leverage, margin, duration, and cost in terms that connect directly to the account.",
+              },
+              {
+                title: "Preserve decision context",
+                text: "Research, order details, position state, and history should remain connected so a user can reconstruct why an action was taken.",
+              },
+              {
+                title: "Design the exception path",
+                text: "Rejected orders, unavailable markets, verification delays, and support escalation deserve the same care as the ideal workflow.",
+              },
+              {
+                title: "Keep risk visible",
+                text: "Warnings should appear at the relevant decision—not only in a distant document—and should avoid implying that controls guarantee outcomes.",
+              },
+            ].map((item, index) => (
+              <article
+                key={item.title}
+                className="grid gap-4 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5 sm:grid-cols-[42px_1fr]"
+              >
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-400/[0.08] text-[9px] font-semibold text-violet-300">
+                  0{index + 1}
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-200">
+                    {mt(item.title)}
+                  </h3>
+                  <p className="mt-2 text-xs leading-6 text-slate-500">
+                    {mt(item.text)}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+};
+
+const SupportPage = () => {
+  const mt = useMarketingTranslation();
+  return (
+    <>
+      <PageHero
+        eyebrow="Atlas support"
+        title={mt("Answers when you need them.")}
+        description="Find guidance on accounts, funding, trading products, portfolio activity, and security—or reach the support team for account-specific help."
+        primary={{ label: "Browse help categories", to: "/support#topics" }}
+        secondary={{ label: "Contact support", to: "/support#contact" }}
+        aside={
+          <div>
+            <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2">
+              <img
+                src="/atlas-client-support.jpg"
+                alt={mt(
+                  "Client support specialist assisting with an account request",
+                )}
+                className="aspect-[16/9] w-full rounded-xl object-cover"
+              />
+            </figure>
+            <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#0c0e16] p-4">
+              <div className="flex items-center gap-3 rounded-lg border border-white/[0.08] bg-[#090a12] px-4 py-3 text-slate-600">
+                <Search size={15} />
+                <span className="text-[10px]">{mt("Search help topics")}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {["Account", "Funding", "Trading", "Security"].map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-lg border border-white/[0.06] p-2 text-center text-[8px] text-slate-400"
                   >
-                    {topic}
-                  </span>
+                    {mt(item)}
+                  </div>
                 ))}
               </div>
             </div>
-          ))}
+          </div>
+        }
+      />
+      <section id="topics" className="scroll-mt-28 py-24">
+        <div className="mx-auto max-w-[1380px] px-5 sm:px-8">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                icon: UserCheck,
+                title: "Account access",
+                text: "Resolve registration, sign-in, verification, recovery, and profile-maintenance questions.",
+                topics: ["Login", "Verification", "Profile"],
+              },
+              {
+                icon: Landmark,
+                title: "Funding & wallet",
+                text: "Trace balance changes, network deposits, withdrawal reviews, and transaction status.",
+                topics: ["Deposits", "Withdrawals", "History"],
+              },
+              {
+                icon: LineChart,
+                title: "Trading help",
+                text: "Understand product mechanics, order states, margin fields, and position-management actions.",
+                topics: ["Orders", "Margin", "Positions"],
+              },
+              {
+                icon: ShieldCheck,
+                title: "Security",
+                text: "Report unfamiliar access, protect a session, and follow the controlled recovery process.",
+                topics: ["Sessions", "Reports", "Recovery"],
+              },
+            ].map(({ icon: Icon, title, text, topics }) => (
+              <div
+                key={title}
+                className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6"
+              >
+                <Icon size={20} className="text-violet-300" />
+                <h2 className="mt-6 text-sm font-semibold">{mt(title)}</h2>
+                <p className="mt-3 text-xs leading-6 text-slate-500">
+                  {mt(text)}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {topics.map((topic) => (
+                    <span
+                      key={topic}
+                      className="rounded-md border border-white/[0.07] bg-white/[0.025] px-2 py-1 text-[8px] font-medium text-slate-500"
+                    >
+                      {mt(topic)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-    </section>
-    <section className="border-t border-white/[0.07] bg-[#080910] py-24">
-      <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.72fr_1.28fr] lg:gap-24">
-        <SectionIntro
-          eyebrow="Prepare the request"
-          title="Details that shorten the investigation."
-        >
-          <p>
-            Provide the smallest complete set of non-sensitive facts. A precise
-            timeline and reference number are more useful than repeatedly
-            opening new requests.
-          </p>
-        </SectionIntro>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {[
-            {
-              title: "Account or profile issue",
-              text: "Include the affected workflow, exact error message, local time, device type, and the last step that completed successfully.",
-            },
-            {
-              title: "Deposit or withdrawal",
-              text: "Provide asset, network, amount, transaction identifier, destination status, and the time the transaction was submitted.",
-            },
-            {
-              title: "Order or position",
-              text: "Include instrument, product, order identifier, side, requested size, order type, and the status currently displayed.",
-            },
-            {
-              title: "Suspicious activity",
-              text: "State what you do not recognise, when you first noticed it, and which access-protection actions you have already completed.",
-            },
-          ].map((item) => (
-            <article
-              key={item.title}
-              className="rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5"
-            >
-              <h3 className="text-sm font-semibold text-slate-200">
-                {item.title}
+      </section>
+      <section className="border-t border-white/[0.07] bg-[#080910] py-24">
+        <div className="mx-auto grid max-w-[1380px] gap-14 px-5 sm:px-8 lg:grid-cols-[.72fr_1.28fr] lg:gap-24">
+          <SectionIntro
+            eyebrow="Prepare the request"
+            title={mt("Details that shorten the investigation.")}
+          >
+            <p>
+              {mt(
+                "Provide the smallest complete set of non-sensitive facts. A precise timeline and reference number are more useful than repeatedly opening new requests.",
+              )}
+            </p>
+          </SectionIntro>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[
+              {
+                title: "Account or profile issue",
+                text: "Include the affected workflow, exact error message, local time, device type, and the last step that completed successfully.",
+              },
+              {
+                title: "Deposit or withdrawal",
+                text: "Provide asset, network, amount, transaction identifier, destination status, and the time the transaction was submitted.",
+              },
+              {
+                title: "Order or position",
+                text: "Include instrument, product, order identifier, side, requested size, order type, and the status currently displayed.",
+              },
+              {
+                title: "Suspicious activity",
+                text: "State what you do not recognise, when you first noticed it, and which access-protection actions you have already completed.",
+              },
+            ].map((item) => (
+              <article
+                key={item.title}
+                className="rounded-xl border border-white/[0.08] bg-[#0c0e16] p-5"
+              >
+                <h3 className="text-sm font-semibold text-slate-200">
+                  {mt(item.title)}
+                </h3>
+                <p className="mt-3 text-xs leading-6 text-slate-500">
+                  {mt(item.text)}
+                </p>
+              </article>
+            ))}
+            <div className="sm:col-span-2 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-5 text-xs leading-6 text-amber-100/60">
+              {mt(
+                "Never send a password, one-time code, recovery phrase, private key, or full payment-card details. Atlas support does not need these secrets to investigate an account request.",
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+      <section
+        id="contact"
+        className="scroll-mt-28 border-y border-white/[0.07] bg-[#080910] py-24"
+      >
+        <div className="mx-auto grid max-w-[1380px] gap-12 px-5 sm:px-8 lg:grid-cols-[.8fr_1.2fr]">
+          <SectionIntro
+            eyebrow="Contact support"
+            title={mt("Need account-specific help?")}
+          >
+            <p>
+              {mt(
+                "For your security, do not include passwords, recovery credentials, or full payment details in a support request.",
+              )}
+            </p>
+          </SectionIntro>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6">
+              <Headphones size={20} className="text-emerald-400" />
+              <h3 className="mt-6 text-sm font-semibold">
+                {mt("Client support")}
               </h3>
-              <p className="mt-3 text-xs leading-6 text-slate-500">
-                {item.text}
+              <p className="mt-2 text-xs leading-6 text-slate-500">
+                {mt(
+                  "Sign in to access account-aware assistance and keep your request connected to your profile.",
+                )}
               </p>
-            </article>
-          ))}
-          <div className="sm:col-span-2 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-5 text-xs leading-6 text-amber-100/60">
-            Never send a password, one-time code, recovery phrase, private key,
-            or full payment-card details. Atlas support does not need these
-            secrets to investigate an account request.
+              <Link
+                to="/auth"
+                className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-violet-300"
+              >
+                {mt("Sign in")} <ArrowRight size={13} />
+              </Link>
+            </div>
+            <div className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6">
+              <Mail size={20} className="text-emerald-400" />
+              <h3 className="mt-6 text-sm font-semibold">
+                {mt("General enquiries")}
+              </h3>
+              <p className="mt-2 text-xs leading-6 text-slate-500">
+                {mt(
+                  "Use the support channel available in the platform for questions that are not tied to an active order.",
+                )}
+              </p>
+              <Link
+                to="/auth/register"
+                className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-violet-300"
+              >
+                {mt("Create account")} <ArrowRight size={13} />
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
-    <section
-      id="contact"
-      className="scroll-mt-28 border-y border-white/[0.07] bg-[#080910] py-24"
-    >
-      <div className="mx-auto grid max-w-[1380px] gap-12 px-5 sm:px-8 lg:grid-cols-[.8fr_1.2fr]">
-        <SectionIntro
-          eyebrow="Contact support"
-          title="Need account-specific help?"
-        >
-          <p>
-            For your security, do not include passwords, recovery credentials,
-            or full payment details in a support request.
-          </p>
-        </SectionIntro>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6">
-            <Headphones size={20} className="text-emerald-400" />
-            <h3 className="mt-6 text-sm font-semibold">Client support</h3>
-            <p className="mt-2 text-xs leading-6 text-slate-500">
-              Sign in to access account-aware assistance and keep your request
-              connected to your profile.
-            </p>
-            <Link
-              to="/auth"
-              className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-violet-300"
-            >
-              Sign in <ArrowRight size={13} />
-            </Link>
-          </div>
-          <div className="rounded-2xl border border-white/[0.08] bg-[#0c0e16] p-6">
-            <Mail size={20} className="text-emerald-400" />
-            <h3 className="mt-6 text-sm font-semibold">General enquiries</h3>
-            <p className="mt-2 text-xs leading-6 text-slate-500">
-              Use the support channel available in the platform for questions
-              that are not tied to an active order.
-            </p>
-            <Link
-              to="/auth/register"
-              className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-violet-300"
-            >
-              Create account <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </div>
-    </section>
-  </>
-);
+      </section>
+    </>
+  );
+};
 
 const legalCopy = {
   risk: {
@@ -1438,6 +1495,7 @@ const legalCopy = {
 };
 
 const LegalPage = ({ type }: { type: "risk" | "privacy" | "terms" }) => {
+  const mt = useMarketingTranslation();
   const copy = legalCopy[type];
   const image =
     type === "risk"
@@ -1457,22 +1515,22 @@ const LegalPage = ({ type }: { type: "risk" | "privacy" | "terms" }) => {
         <div className="mx-auto grid max-w-[1180px] items-center gap-12 px-5 sm:px-8 lg:grid-cols-[.9fr_1.1fr]">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-              {copy.eyebrow}
+              {mt(copy.eyebrow)}
             </p>
             <h1 className="mt-5 text-4xl font-medium tracking-[-0.045em] sm:text-6xl">
-              {copy.title}
+              {mt(copy.title)}
             </h1>
             <p className="mt-6 max-w-2xl text-sm leading-7 text-slate-400">
-              {copy.intro}
+              {mt(copy.intro)}
             </p>
             <p className="mt-5 text-[10px] text-slate-600">
-              Last updated: 28 September 2026
+              {mt("Last updated: 28 September 2026")}
             </p>
           </div>
           <figure className="overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0c0e16] p-2">
             <img
               src={image}
-              alt={imageAlt}
+              alt={mt(imageAlt)}
               className="aspect-[16/9] w-full rounded-xl object-cover"
             />
           </figure>
@@ -1483,10 +1541,10 @@ const LegalPage = ({ type }: { type: "risk" | "privacy" | "terms" }) => {
           {copy.summary.map(([label, value]) => (
             <div key={label} className="px-5 py-6">
               <p className="text-[9px] uppercase tracking-widest text-slate-600">
-                {label}
+                {mt(label)}
               </p>
               <p className="mt-2 text-xs font-semibold text-slate-200">
-                {value}
+                {mt(value)}
               </p>
             </div>
           ))}
@@ -1505,26 +1563,28 @@ const LegalPage = ({ type }: { type: "risk" | "privacy" | "terms" }) => {
                 </span>
                 <div>
                   <h2 className="text-lg font-semibold text-slate-100">
-                    {title}
+                    {mt(title)}
                   </h2>
                   <p className="mt-3 text-sm leading-7 text-slate-500">
-                    {text}
+                    {mt(text)}
                   </p>
                 </div>
               </article>
             ))}
           </div>
           <div className="mt-12 rounded-xl border border-violet-400/15 bg-violet-400/[0.05] p-5 text-xs leading-6 text-slate-400">
-            {copy.notice}
+            {mt(copy.notice)}
             <Link
               to="/support#contact"
               className="mt-4 flex items-center gap-2 font-semibold text-violet-300"
             >
-              {type === "privacy"
-                ? "Submit a privacy question"
-                : type === "terms"
-                  ? "Ask about account conditions"
-                  : "Clarify product risk"}
+              {mt(
+                type === "privacy"
+                  ? "Submit a privacy question"
+                  : type === "terms"
+                    ? "Ask about account conditions"
+                    : "Clarify product risk",
+              )}
               <ArrowRight size={13} />
             </Link>
           </div>

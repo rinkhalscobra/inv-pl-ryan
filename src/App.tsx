@@ -636,7 +636,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                         <div className="futures-terminal-grid min-h-0 flex-1 bg-[#252a33]">
                           <section className="futures-chart-panel min-w-0 overflow-hidden bg-[#0b0e11]">
                             <div className="h-[360px] sm:h-[440px] xl:h-full">
-                              <CfdTwelveDataChart key={selectedPair} selectedPair={selectedPair} market="crypto" />
+                              <CfdTwelveDataChart selectedPair={selectedPair} market="crypto" />
                             </div>
                           </section>
 
@@ -700,7 +700,7 @@ const handleUpdatePassword = async (newPassword: string) => {
                         <div className="cfd-terminal-grid min-h-0 flex-1 bg-[#252a33]">
                           <section className="cfd-chart-panel min-w-0 overflow-hidden bg-[#0b0e11]">
                             <div className="h-[360px] sm:h-[440px] xl:h-full">
-                              <CfdTwelveDataChart key={selectedPair} selectedPair={selectedPair} />
+                              <CfdTwelveDataChart selectedPair={selectedPair} />
                             </div>
                           </section>
                           <div className="cfd-depth-panel min-h-0 overflow-hidden bg-[#0b0e11]">

@@ -169,6 +169,9 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
       if (refreshError) throw refreshError;
       if (refreshResult?.success !== true) throw new Error('CFD quote refresh failed');
       await loadDatabaseFallback(instrument?.symbol);
+      if (instrument) {
+        window.dispatchEvent(new CustomEvent('twelve-cfd-history-updated', { detail: { symbol: instrument.symbol } }));
+      }
     } catch {
       if (instrument) lastSelectedRefreshRef.current.set(instrument.symbol, Date.now() - SELECTED_QUOTE_INTERVAL_MS + 30_000);
       else lastRefreshRequestRef.current = Date.now() - PRICE_REFRESH_INTERVAL_MS + 30_000;

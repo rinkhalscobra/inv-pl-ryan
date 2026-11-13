@@ -72,17 +72,20 @@ export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', 
 
     void load(true);
     const onHistoryUpdated = (event: Event) => {
-      if (market === 'crypto' && (event as CustomEvent<{ symbol: string }>).detail?.symbol === selectedPair) void load();
+      if ((event as CustomEvent<{ symbol: string }>).detail?.symbol === selectedPair) void load();
     };
-    const refresh = () => { if (!document.hidden) void load(); };
-    window.addEventListener('twelve-crypto-history-updated', onHistoryUpdated);
+    const historyUpdatedEvent = market === 'crypto' ? 'twelve-crypto-history-updated' : 'twelve-cfd-history-updated';
+    const refresh = () => { if (!document.hidden && navigator.onLine) void load(); };
+    window.addEventListener(historyUpdatedEvent, onHistoryUpdated);
+    window.addEventListener('focus', refresh);
     window.addEventListener('online', refresh);
     document.addEventListener('visibilitychange', refresh);
-    const timer = window.setInterval(refresh, 20_000);
+    const timer = window.setInterval(refresh, 60_000);
     return () => {
       controller.abort();
       window.clearInterval(timer);
-      window.removeEventListener('twelve-crypto-history-updated', onHistoryUpdated);
+      window.removeEventListener(historyUpdatedEvent, onHistoryUpdated);
+      window.removeEventListener('focus', refresh);
       window.removeEventListener('online', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };

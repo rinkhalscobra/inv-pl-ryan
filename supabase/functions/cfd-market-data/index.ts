@@ -107,7 +107,7 @@ const fetchTwelveBatch = async (symbols: string[], apiKey: string): Promise<Reco
 const refreshCandles = async (admin: ReturnType<typeof createClient>, instrument: RequestedInstrument) => {
   const cacheKey = `candles:${instrument.symbol}`;
   const { data: claimed, error: claimError } = await admin.rpc("claim_cfd_quote_refresh", {
-    p_cache_key: cacheKey, p_interval_seconds: 240, p_force: false,
+    p_cache_key: cacheKey, p_interval_seconds: SELECTED_CACHE_MS / 1000, p_force: false,
   });
   if (claimError) throw claimError;
   if (!claimed) return;
@@ -146,7 +146,7 @@ const refreshCandles = async (admin: ReturnType<typeof createClient>, instrument
     success = true;
   } finally {
     const { error } = await admin.rpc("finish_cfd_quote_refresh", {
-      p_cache_key: cacheKey, p_interval_seconds: 240, p_success: success,
+      p_cache_key: cacheKey, p_interval_seconds: SELECTED_CACHE_MS / 1000, p_success: success,
     });
     if (error) console.warn("Candle refresh lease could not be released", error);
   }

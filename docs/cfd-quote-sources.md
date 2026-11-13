@@ -11,6 +11,13 @@ database refresh lease is anchored to the **start** of each request, with five
 seconds of scheduling room, so a one-minute timer does not miss every second
 tick. Source timestamps, rather than database write times, determine freshness.
 
+The chart defaults to one-minute Japanese candles and offers visible Candles and
+Line controls. Chart type and timeframe are saved in the browser. Both the
+selected market's provider candle cache and the browser's history poll refresh
+every minute. After a selected CFD refresh completes, the browser also reloads
+history so the chart includes the newly stored OHLC bars. Background tabs pause
+polling and catch up when they become active again, without resetting chart zoom.
+
 The selected CFD quote can be used for orders while its source timestamp is
 less than three minutes old. The order form, Edge Function, and database
 processing guard use the same limit. Older prices remain visible for reference

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CandlestickChart, LineChart, RefreshCw } from 'lucide-react';
 import {
   AreaSeries, CandlestickSeries, ColorType, createChart,
   type IChartApi, type ISeriesApi, type UTCTimestamp,
@@ -113,14 +114,18 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
           </span>
           {market === 'crypto' && <span className="text-slate-500">USDT reference</span>}
         </div>
-        <label className="flex items-center gap-2 text-slate-400">
-          Chart type
-          <select aria-label="Chart type" value={chartType} onChange={event => setChartType(event.target.value as ChartType)}
-            className="rounded border border-[#353d49] bg-[#151b24] px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-400">
-            <option value="candlesticks">Japanese candlesticks</option>
-            <option value="line">Line</option>
-          </select>
-        </label>
+        <div role="group" aria-label="Chart type" className="flex items-center gap-1 rounded border border-[#353d49] bg-[#151b24] p-1">
+          {(['candlesticks', 'line'] as const).map(type => {
+            const Icon = type === 'candlesticks' ? CandlestickChart : LineChart;
+            return <button key={type} type="button" aria-pressed={chartType === type}
+              onClick={() => setChartType(type)}
+              className={`flex items-center gap-1.5 rounded px-2 py-1.5 font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 ${chartType === type
+                ? 'bg-violet-500/20 text-violet-300' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}`}>
+              <Icon aria-hidden="true" size={14} />
+              {type === 'candlesticks' ? 'Candles' : 'Line'}
+            </button>;
+          })}
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#252a33] px-3 py-2 text-xs">
         <div role="group" aria-label="Chart timeframe" className="flex flex-wrap items-center gap-1">
@@ -134,6 +139,9 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
           ))}
         </div>
         <span className="text-[10px] text-slate-500">UTC</span>
+        <span className="ml-auto flex items-center gap-1 text-[10px] text-slate-400" title="Chart history refreshes every minute while this tab is active">
+          <RefreshCw aria-hidden="true" size={11} /> Auto-refresh 1m
+        </span>
         {loading && <span role="status" className="text-[10px] text-slate-500">Loading history…</span>}
       </div>
       <div className="flex min-h-7 flex-wrap items-center gap-x-3 px-3 py-1 font-mono text-[10px] tabular-nums text-slate-400" aria-label="Candle prices">

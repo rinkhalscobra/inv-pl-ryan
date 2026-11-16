@@ -1,6 +1,6 @@
 ﻿import AppSelect from './AppSelect';
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, ArrowUpRight, Bitcoin, CheckCircle, Copy, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Bitcoin, Clock, Copy, X } from 'lucide-react';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 
 interface Props {
@@ -53,16 +53,16 @@ const CryptoWithdrawalModal: React.FC<Props> = ({ isOpen, onClose, btcBalance, c
     try {
       setTransactionId(await onWithdraw(value, address.trim(), network));
       setStep('success');
-    } catch (err: any) {
-      setError(err?.message || 'Withdrawal failed.'); setStep('form');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Withdrawal failed.'); setStep('form');
     } finally { setLoading(false); }
   };
 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
     <div className="app-surface-primary max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl p-5 shadow-2xl sm:p-6">
       <div className="mb-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/20"><Bitcoin size={21} className="text-orange-400" /></div><h2 className="text-xl font-semibold text-white">{step === 'form' ? 'Withdraw Bitcoin' : step === 'confirmation' ? 'Confirm Withdrawal' : 'Withdrawal Initiated'}</h2></div>
-        <button onClick={onClose} aria-label="Close withdrawal" title="Close" className="text-slate-400 hover:text-white"><X size={20} /></button>
+        <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/20"><Bitcoin size={21} className="text-orange-400" /></div><h2 className="text-xl font-semibold text-white">{step === 'form' ? 'Withdraw Bitcoin' : step === 'confirmation' ? 'Confirm Withdrawal' : 'Withdrawal Pending Review'}</h2></div>
+        <button onClick={onClose} disabled={loading} aria-label="Close withdrawal" title="Close" className="text-slate-400 hover:text-white disabled:opacity-40"><X size={20} /></button>
       </div>
       {error && <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><span>{error}</span></div>}
 
@@ -78,7 +78,7 @@ const CryptoWithdrawalModal: React.FC<Props> = ({ isOpen, onClose, btcBalance, c
 
       {step === 'confirmation' && <div className="space-y-5"><div className="app-surface-muted space-y-3 rounded-xl p-4 text-sm"><div className="text-center"><div className="text-slate-400">Withdrawal amount</div><div className="text-2xl font-bold text-white">{value.toFixed(8)} BTC</div><div className="text-slate-400">{currentBtcPrice > 0 ? `Approx. ${formatFiat(value * currentBtcPrice)}` : 'Live fiat price unavailable'}</div></div><div className="flex justify-between"><span className="text-slate-400">Network</span><span>{network}</span></div><div className="flex justify-between gap-4"><span className="text-slate-400">Recipient</span><span className="break-all text-right font-mono text-xs">{address}</span></div><div className="flex justify-between"><span className="text-slate-400">Recipient receives</span><span>{receives.toFixed(8)} BTC</span></div></div><div className="flex gap-3"><button onClick={() => setStep('form')} disabled={loading} className="app-action-soft flex-1 rounded-xl py-3 text-white">Back</button><button onClick={confirm} disabled={loading} className="flex-1 rounded-xl bg-red-600 py-3 font-semibold text-white disabled:bg-slate-700">{loading ? 'Submitting...' : 'Confirm'}</button></div></div>}
 
-      {step === 'success' && <div className="space-y-5 text-center"><CheckCircle size={52} className="mx-auto text-green-400" /><div><h3 className="text-xl font-semibold text-white">Request submitted</h3><p className="mt-2 text-sm text-slate-300">Your BTC is reserved and the request is visible in transaction history.</p></div>{transactionId && <div className="app-surface-muted rounded-xl p-4 text-left"><div className="text-xs text-slate-400">Transaction reference</div><div className="mt-1 flex items-center justify-between gap-2"><span className="break-all font-mono text-xs text-white">{transactionId}</span><button onClick={() => navigator.clipboard.writeText(transactionId)} aria-label="Copy transaction reference" title="Copy" className="shrink-0 text-slate-400"><Copy size={16} /></button></div></div>}<button onClick={onClose} className="app-action-soft w-full rounded-xl py-3 text-white">Close</button></div>}
+      {step === 'success' && <div className="space-y-5 text-center"><Clock size={52} className="mx-auto text-amber-400" /><div><h3 className="text-xl font-semibold text-white">Pending review</h3><p className="mt-2 text-sm text-slate-300">Your withdrawal is pending approval. Your BTC is reserved during review and will be returned to your available balance if the request is rejected.</p></div>{transactionId && <div className="app-surface-muted rounded-xl p-4 text-left"><div className="text-xs text-slate-400">Transaction reference</div><div className="mt-1 flex items-center justify-between gap-2"><span className="break-all font-mono text-xs text-white">{transactionId}</span><button onClick={() => navigator.clipboard.writeText(transactionId)} aria-label="Copy transaction reference" title="Copy" className="shrink-0 text-slate-400"><Copy size={16} /></button></div></div>}<button onClick={onClose} className="app-action-soft w-full rounded-xl py-3 text-white">Close</button></div>}
     </div>
   </div>;
 };

@@ -3,7 +3,7 @@ export type CrmRecordForm = Record<string, string | boolean>;
 
 const immutableFields = new Set(['id', 'user_id', 'referrer_id', 'referred_user_id', 'created_at', 'updated_at']);
 const walletLedgerFields = new Set(['balance_effect', 'balance_processed_at', 'balance_reversed_at', 'tickets_processed']);
-const processedWalletFields = new Set(['type', 'amount', 'currency', 'withdrawal_details']);
+const processedWalletFields = new Set(['type', 'amount', 'currency', 'withdrawal_details', 'deposit_details']);
 
 export function isCrmRecordFieldReadOnly(table: string, field: string, row: CrmRecord): boolean {
   return immutableFields.has(field) || (table === 'transactions' && (

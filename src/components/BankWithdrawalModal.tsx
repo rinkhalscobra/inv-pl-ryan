@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, CreditCard, ArrowUpRight, AlertTriangle, CheckCircle, Copy, ExternalLink, Building, User, Landmark } from 'lucide-react';
+import { X, CreditCard, ArrowUpRight, AlertTriangle, CheckCircle, Clock, Copy, ExternalLink, Building, User, Landmark } from 'lucide-react';
 
 interface BankWithdrawalModalProps {
   isOpen: boolean;
@@ -110,11 +110,11 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
         beneficiaryName
       });
       
-      setSuccess(`Bank withdrawal of ${formatAmount(parseFloat(amount))} initiated successfully`);
+      setSuccess(`Bank withdrawal of ${formatAmount(parseFloat(amount))} submitted for approval`);
       setTransactionId(newTransactionId);
       setStep('success');
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during withdrawal');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred during withdrawal');
       setStep('form');
     } finally {
       setLoading(false);
@@ -147,11 +147,12 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
             <h2 className="min-w-0 text-lg sm:text-xl font-semibold text-white">
               {step === 'form' ? 'Bank Withdrawal' : 
                step === 'confirmation' ? 'Confirm Withdrawal' : 
-               'Withdrawal Initiated'}
+               'Withdrawal Pending Review'}
             </h2>
           </div>
           <button
             onClick={onClose}
+            disabled={loading}
             className="shrink-0 text-slate-400 hover:text-white transition-colors"
           >
             <X size={20} />
@@ -382,12 +383,12 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
         {step === 'success' && (
           <div className="space-y-6">
             <div className="text-center py-3 sm:py-4">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
-                <CheckCircle size={28} className="text-green-400" />
+              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                <Clock size={28} className="text-amber-400" />
               </div>
-              <h3 className="text-lg sm:text-xl font-semibold text-white mb-2 sm:mb-3">Withdrawal Initiated</h3>
+              <h3 className="text-lg sm:text-xl font-semibold text-white mb-2 sm:mb-3">Withdrawal Pending Review</h3>
               <p className="text-slate-300 text-sm sm:text-base mb-4 sm:mb-6">
-                Your bank withdrawal request has been submitted and is being processed. This may take 1-3 business days to complete.
+                Your bank withdrawal request is pending approval. The amount is reserved while your request is reviewed. If it is rejected, the funds will be returned to your available balance.
               </p>
             </div>
 
@@ -423,7 +424,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Status</span>
-                  <span className="text-amber-400 text-right">Processing</span>
+                  <span className="text-amber-400 text-right">Pending review</span>
                 </div>
               </div>
             </div>

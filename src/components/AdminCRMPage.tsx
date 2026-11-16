@@ -1,4 +1,5 @@
 import AppSelect from './AppSelect';
+import CRMFundingPanel from './CRMFundingPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -1121,7 +1122,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     { key: 'robot', label: 'Robot', icon: Bot },
     { key: 'staking', label: 'Staking', icon: Landmark },
     { key: 'wheel', label: 'Spin Wheel', icon: Gift },
-    { key: 'deposits', label: 'Deposits', icon: CreditCard },
+    { key: 'deposits', label: 'Deposits & withdrawals', icon: CreditCard },
     { key: 'referrals', label: 'Referrals', icon: Users },
     { key: 'support', label: 'Support', icon: Headphones },
     { key: 'notifications', label: 'Notifications', icon: Bell },
@@ -1584,6 +1585,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
                 {tab === 'deposits' && (
                   <div className="space-y-5">
+                    <CRMFundingPanel key={selectedUserId} userId={selectedUserId!} auditReason={reason} onReviewed={() => {
+                      void supabase.rpc('admin_get_user_workspace', { p_target_user_id: selectedUserId }).then(({ data, error }) => {
+                        if (!error && data) setWorkspace(current => current?.profile.id === data.profile?.id ? { ...current, ...data } : current);
+                      });
+                    }} />
                     <section className={`${panelClass} p-5`}>
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div><h3 className="flex items-center gap-2 font-semibold text-white"><CreditCard size={18} className="text-emerald-300" />Add wallet deposit</h3><p className="mt-1 text-xs text-slate-400">Credit this client immediately and create a completed, audited deposit transaction.</p></div>

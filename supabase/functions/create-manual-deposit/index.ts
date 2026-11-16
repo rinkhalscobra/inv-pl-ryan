@@ -23,43 +23,31 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "Please sign in to continue" }, 401);
     }
 
-    const supabaseAdmin = createClient(
+    const supabaseUser = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } },
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { auth: { persistSession: false }, global: { headers: { Authorization: authorization } } },
     );
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(authorization.slice(7));
+    const { data: { user }, error: authError } = await supabaseUser.auth.getUser(authorization.slice(7));
     if (authError || !user) {
       return jsonResponse({ success: false, error: "Please sign in to continue" }, 401);
     }
 
     const body = await req.json().catch(() => ({}));
     const amount = Number(body.amount);
-    const currency = String(body.currency || "EUR").toUpperCase();
-    if (!["EUR", "USD"].includes(currency)) {
-      return jsonResponse({ success: false, error: "Only EUR and USD fiat deposits are supported" }, 400);
-    }
-    if (!Number.isFinite(amount) || amount < 10 || amount > 1_000_000) {
-      const symbol = currency === "EUR" ? "€" : "$";
-      return jsonResponse({ success: false, error: `Deposit amount must be between ${symbol}10 and ${symbol}1,000,000` }, 400);
-    }
-
-    const { data: transaction, error: insertError } = await supabaseAdmin
-      .from("transactions")
-      .insert({
-        user_id: user.id,
-        type: "deposit",
-        amount,
-        currency,
-        status: "pending",
-        description: `Manual ${currency} bank deposit request - awaiting CRM review`,
-      })
-      .select("id, amount, currency, status, created_at")
-      .single();
+    const method = String(body.method || "bank");
+    const currency = String(body.currency || (method === "btc" ? "BTC" : "EUR")).toUpperCase();
+    if (!Number.isFinite(amount)) return jsonResponse({ success: false, error: "Enter a valid deposit amount" }, 400);
+    const { data: transaction, error: insertError } = await supabaseUser.rpc("request_manual_deposit", {
+      p_method: method,
+      p_amount: amount,
+      p_currency: currency,
+      p_request_id: body.request_id || crypto.randomUUID(),
+    });
 
     if (insertError) {
       console.error("Failed to create manual deposit", insertError);
-      return jsonResponse({ success: false, error: "Unable to submit the deposit request" }, 500);
+      return jsonResponse({ success: false, error: insertError.message }, 400);
     }
 
     return jsonResponse({

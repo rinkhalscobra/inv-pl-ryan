@@ -22,7 +22,6 @@ import {
   BarChart3,
   Euro
 } from 'lucide-react';
-import NowPaymentsDeposit from './NowPaymentsDeposit';
 import BankWithdrawalModal from './BankWithdrawalModal';
 import CryptoWithdrawalModal from './CryptoWithdrawalModal';
 import CryptoHoldings from './CryptoHoldings';
@@ -34,6 +33,7 @@ import { WalletBreakdown } from '../hooks/useWalletBreakdown';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 import ManualDepositRequest from './ManualDepositRequest';
+import { fundingStatusLabel, type DepositMethod } from '../lib/funding';
 
 interface WalletPageProps {
   usdtBalance: number;
@@ -47,15 +47,6 @@ interface WalletPageProps {
   userStakes: DatabaseUserStake[];
   calculateCurrentEarnings: (stake: DatabaseUserStake) => number;
   walletBreakdown: WalletBreakdown & { refreshBreakdown: () => Promise<void> };
-}
-
-interface BankTransferDetails {
-  bank_name?: string | null;
-  account_number?: string | null;
-  routing_number?: string | null;
-  swift_code?: string | null;
-  beneficiary_name?: string | null;
-  iban?: string | null;
 }
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -93,7 +84,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   };
   // State for wallet operations
   const [activeTab, setActiveTab] = useState('overview');
-  const [depositMethod, setDepositMethod] = useState<'bank_transfer' | 'nowpayments' | 'btc_direct'>('bank_transfer');
+  const [depositMethod, setDepositMethod] = useState<DepositMethod>('bank');
   const [showBalance, setShowBalance] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [showBankWithdrawalModal, setShowBankWithdrawalModal] = useState(false);
@@ -102,11 +93,6 @@ const WalletPage: React.FC<WalletPageProps> = ({
   
   const actualBtcPrice = getBybitPrice('BTCUSDT');
   const wsGetPrice = useCallback((symbol: string): number => getBybitPrice(symbol), [getBybitPrice]);
-
-  // State for bank transfer details
-  const [bankDetails, setBankDetails] = useState<BankTransferDetails | null>(null);
-  const [loadingBankDetails, setLoadingBankDetails] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Get user ID from Supabase auth
   const [userId, setUserId] = useState<string | null>(null);
@@ -127,36 +113,6 @@ const WalletPage: React.FC<WalletPageProps> = ({
     const timeout = window.setTimeout(() => setMessage(null), 5000);
     return () => window.clearTimeout(timeout);
   }, [message]);
-
-  // Fetch bank details when bank transfer tab is active
-  const fetchBankDetails = useCallback(async () => {
-    if (!userId) return;
-    setLoadingBankDetails(true);
-    setError(null);
-    try {
-      const { data, error } = await supabase
-        .from('client_bank_details')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 means "no rows found"
-        throw error;
-      }
-      setBankDetails(data);
-    } catch (err: unknown) {
-      setError(errorMessage(err, 'Failed to load bank details.'));
-      setBankDetails(null);
-    } finally {
-      setLoadingBankDetails(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    if (activeTab === 'deposit' && depositMethod === 'bank_transfer') {
-      fetchBankDetails();
-    }
-  }, [activeTab, depositMethod, fetchBankDetails]);
 
   // Reserve funds and create the request together in the database.
   const handleBankWithdrawalSubmit = async (amount: number, bankDetails: {
@@ -179,8 +135,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
       const transactionId = typeof data === 'string' ? data : data?.transaction_id;
       if (!transactionId) throw new Error('The withdrawal request did not return a transaction reference.');
       await walletBreakdownData.refreshBreakdown();
-      setMessage({ type: 'success', text: 'Bank withdrawal initiated successfully' });
-      setShowBankWithdrawalModal(false);
+      setMessage({ type: 'success', text: 'Bank withdrawal submitted - pending approval.' });
       return transactionId;
     } catch (error: unknown) {
       console.error('Error processing bank withdrawal:', error);
@@ -202,8 +157,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
       const transactionId = typeof data === 'string' ? data : data?.transaction_id;
       if (!transactionId) throw new Error('The withdrawal request did not return a transaction reference.');
       await walletBreakdownData.refreshBreakdown();
-      setMessage({ type: 'success', text: 'BTC withdrawal initiated successfully' });
-      setShowCryptoWithdrawalModal(false);
+      setMessage({ type: 'success', text: 'BTC withdrawal submitted - pending approval.' });
       return transactionId;
     } catch (error: unknown) {
       console.error('Error processing crypto withdrawal:', error);
@@ -446,7 +400,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mt-4">
                   <button
-                    onClick={() => { setFiatCurrency('EUR'); setDepositMethod('bank_transfer'); setActiveTab('deposit'); }}
+                    onClick={() => { setFiatCurrency('EUR'); setDepositMethod('bank'); setActiveTab('deposit'); }}
                     className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 md:gap-2 md:text-sm"
                   >
                     <ArrowDownLeft size={16} />
@@ -473,7 +427,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                   {showBalance ? `Spendable cash: ${formatUsd(walletBreakdownData.usdAvailableBalance)}` : '••••••'}
                 </div>
                 <div className="mt-4 flex flex-col gap-3 md:flex-row">
-                  <button onClick={() => { setFiatCurrency('USD'); setDepositMethod('bank_transfer'); setActiveTab('deposit'); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500"><ArrowDownLeft size={16} />Deposit</button>
+                  <button onClick={() => { setFiatCurrency('USD'); setDepositMethod('bank'); setActiveTab('deposit'); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500"><ArrowDownLeft size={16} />Deposit</button>
                   <button onClick={() => { setFiatCurrency('USD'); setShowBankWithdrawalModal(true); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20"><ArrowUpRight size={16} />Withdraw</button>
                 </div>
               </div>
@@ -491,7 +445,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mt-4">
                   <button
-                    onClick={() => { setDepositMethod('btc_direct'); setActiveTab('deposit'); }}
+                    onClick={() => { setDepositMethod('btc'); setActiveTab('deposit'); }}
                     className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 md:gap-2 md:text-sm"
                   >
                     <ArrowDownLeft size={16} />
@@ -611,7 +565,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                       <div className="flex items-center gap-1">
                         {getStatusIcon(transaction.status)}
                         <span className={`text-xs ${getStatusColor(transaction.status)}`}>
-                          {transaction.status}
+                          {['deposit', 'nowpayments_deposit', 'withdrawal'].includes(transaction.type) ? fundingStatusLabel(transaction) : transaction.status}
                         </span>
                       </div>
                     </div>
@@ -676,143 +630,57 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 </div>
 
                 <div className="space-y-6">
-                  <div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-white">
-                    <Euro size={18} className="text-emerald-400" />
-                    <span className="font-medium">Deposit value is entered in Euro (EUR)</span>
-                  </div>
+                  <p className="text-sm leading-6 text-slate-400">Choose a payment method and enter your amount. Your request will remain pending until it has been reviewed and approved.</p>
 
                   {/* Deposit Method Selector */}
                   <div className="mb-6">
                     <label className="block text-slate-400 text-sm mb-3">Select Deposit Method</label>
                     <div className="grid grid-cols-3 gap-3">
                       <button
-                        onClick={() => setDepositMethod('btc_direct')}
+                        onClick={() => setDepositMethod('btc')}
                         className={`py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                          depositMethod === 'btc_direct'
+                          depositMethod === 'btc'
                             ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 transform scale-105'
                             : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white border border-slate-600/30'
                         }`}
                       >
-                        <Bitcoin size={18} className={depositMethod === 'btc_direct' ? 'text-white' : 'text-orange-400'} />
+                        <Bitcoin size={18} className={depositMethod === 'btc' ? 'text-white' : 'text-orange-400'} />
                         Pay with BTC
                       </button>
                       <button
-                        onClick={() => setDepositMethod('nowpayments')}
+                        onClick={() => setDepositMethod('crypto')}
                         className={`py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                          depositMethod === 'nowpayments'
+                          depositMethod === 'crypto'
                             ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25 transform scale-105'
                             : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white border border-slate-600/30'
                         }`}
                       >
-                        <Card size={18} className={depositMethod === 'nowpayments' ? 'text-white' : 'text-slate-400'} />
+                        <Card size={18} className={depositMethod === 'crypto' ? 'text-white' : 'text-slate-400'} />
                         Crypto
                       </button>
                       <button
-                        onClick={() => setDepositMethod('bank_transfer')}
+                        onClick={() => setDepositMethod('bank')}
                         className={`py-3 px-4 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                          depositMethod === 'bank_transfer'
+                          depositMethod === 'bank'
                             ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg shadow-green-500/25 transform scale-105'
                             : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white border border-slate-600/30'
                         }`}
                       >
-                        <Banknote size={18} className={depositMethod === 'bank_transfer' ? 'text-white' : 'text-slate-400'} />
+                        <Banknote size={18} className={depositMethod === 'bank' ? 'text-white' : 'text-slate-400'} />
                         Bank
                       </button>
                     </div>
                   </div>
 
-                  {depositMethod === 'btc_direct' ? (
-                    userId ? (
-                      <NowPaymentsDeposit
-                        userId={userId}
-                        fixedPayCurrency="BTC"
-                        buttonLabel="Get BTC Deposit Address"
-                        onSuccess={() => {
-                          setMessage({ type: 'success', text: 'Crypto payment credited to your EUR balance.' });
-                        }}
-                      />
-                    ) : (
-                      <div className="text-center py-8 text-slate-500">
-                        <p>Loading user information...</p>
-                      </div>
-                    )
-                  ) : depositMethod === 'nowpayments' ? (
-                    userId ? (
-                      <NowPaymentsDeposit
-                        userId={userId}
-                        onSuccess={() => {
-                          setDepositMethod('bank_transfer');
-                        }}
-                      />
-                    ) : (
-                      <div className="text-center py-8 text-slate-500">
-                        <p>Loading user information...</p>
-                      </div>
-                    )
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="app-surface-muted rounded-xl p-6">
-                        <h3 className="text-lg font-semibold text-white mb-4">Bank Transfer Details</h3>
-                        {loadingBankDetails ? (
-                          <div className="text-center py-8 text-slate-500">
-                            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                            Loading bank details...
-                          </div>
-                        ) : error ? (
-                          <div className="text-center py-8 text-red-400">
-                            <AlertTriangle size={24} className="mx-auto mb-2" />
-                            {error}
-                          </div>
-                        ) : bankDetails ? (
-                          <div className="space-y-3">
-                            <div>
-                              <div className="text-sm text-slate-400">Bank Name</div>
-                              <div className="text-white font-medium">{bankDetails.bank_name || 'Not Yet Available'}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-slate-400">Account Number</div>
-                              <div className="text-white font-medium">{bankDetails.account_number || 'Not Yet Available'}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-slate-400">Routing Number</div>
-                              <div className="text-white font-medium">{bankDetails.routing_number || 'Not Yet Available'}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-slate-400">SWIFT/BIC Code</div>
-                              <div className="text-white font-medium">{bankDetails.swift_code || 'Not Yet Available'}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-slate-400">Beneficiary Name</div>
-                              <div className="text-white font-medium">{bankDetails.beneficiary_name || 'Not Yet Available'}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-slate-400">IBAN</div>
-                              <div className="break-all text-white font-medium">{bankDetails.iban || 'Not Yet Available'}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-slate-400">Currency</div>
-                              <div className="text-white font-medium">{fiatCurrency}</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-slate-500">
-                            <Banknote size={48} className="mx-auto mb-4 opacity-50" />
-                            <p className="mb-2">Bank transfer details are not yet available for your account.</p>
-                            <p className="text-sm">Please contact support for assistance.</p>
-                          </div>
-                        )}
-                      </div>
-
-                      <ManualDepositRequest
-                        key={fiatCurrency}
-                        defaultCurrency={fiatCurrency}
-                        onSubmitted={() => setMessage({
-                          type: 'success',
-                          text: `${fiatCurrency} bank deposit request submitted for CRM review.`,
-                        })}
-                      />
-                    </div>
-                  )}
+                  {userId ? (
+                    <ManualDepositRequest
+                      key={`${userId}-${depositMethod}-${fiatCurrency}`}
+                      userId={userId}
+                      method={depositMethod}
+                      defaultCurrency={fiatCurrency}
+                      onSubmitted={() => setMessage({ type: 'success', text: 'Deposit request submitted - pending approval.' })}
+                    />
+                  ) : <p className="py-8 text-center text-slate-400">Loading your account...</p>}
                 </div>
               </div>
             </div>
@@ -824,14 +692,14 @@ const WalletPage: React.FC<WalletPageProps> = ({
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-2">About Deposits</h3>
                   <p className="text-slate-300 text-sm mb-4">
-                    All deposits are processed securely. For bank transfers, please ensure the beneficiary name matches your registered account name to avoid delays.
+                    Payment details are provided by your account manager. Follow the instructions for your selected method and keep your payment reference for review.
                   </p>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="app-surface-muted rounded-lg p-3">
                       <div className="text-slate-400 mb-1">Processing Time</div>
                       <ul className="text-slate-300 space-y-1">
-                        <li>• Crypto: Instant (after confirmations)</li>
-                        <li>• Bank Transfer: 1-3 business days</li>
+                        <li>• All methods: Pending approval</li>
+                        <li>• Balance credited after review</li>
                       </ul>
                     </div>
                     <div className="app-surface-muted rounded-lg p-3">
@@ -884,7 +752,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
                     <div className="flex items-center gap-1">
                       {getStatusIcon(transaction.status)}
                       <span className={`text-sm ${getStatusColor(transaction.status)}`}>
-                        {transaction.status}
+                        {['deposit', 'nowpayments_deposit', 'withdrawal'].includes(transaction.type) ? fundingStatusLabel(transaction) : transaction.status}
                       </span>
                     </div>
                   </div>

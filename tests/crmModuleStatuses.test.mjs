@@ -65,10 +65,15 @@ before(async () => {
     CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
       SELECT current_setting('request.jwt.claim.role', true)
     $$;
-    CREATE TABLE public.users(id uuid PRIMARY KEY,company_id uuid,is_admin boolean DEFAULT false);
+    CREATE TABLE public.crm_companies(id uuid PRIMARY KEY);
+    INSERT INTO public.crm_companies VALUES ('${company}'),('${otherCompany}');
+    CREATE TABLE public.users(id uuid PRIMARY KEY,company_id uuid,is_admin boolean DEFAULT false,kyc_status text DEFAULT 'verified');
     CREATE TABLE crm_private.admin_ip_allowlist(address inet,access_scope text,company_id uuid);
     INSERT INTO crm_private.admin_ip_allowlist VALUES ('192.0.2.1','company','${company}');
-    INSERT INTO public.users VALUES ('${admin}','${company}',true),('${client}','${company}',false),('${otherClient}','${otherCompany}',false);
+    INSERT INTO public.users(id,company_id,is_admin) VALUES ('${admin}','${company}',true),('${client}','${company}',false),('${otherClient}','${otherCompany}',false);
+    CREATE TABLE public.client_bank_details(user_id uuid,bank_name text,account_number text,routing_number text,swift_code text,beneficiary_name text,iban text,currency text);
+    CREATE TABLE public.futures_positions(user_id uuid,margin numeric,is_open boolean);
+    CREATE TABLE public.futures_orders(user_id uuid,reserved_margin numeric,status text);
     CREATE TABLE public.balances(user_id uuid PRIMARY KEY,usdt_balance numeric NOT NULL DEFAULT 1000 CHECK(usdt_balance>=0),
       usd_balance numeric NOT NULL DEFAULT 1000 CHECK(usd_balance>=0),btc_balance numeric NOT NULL DEFAULT 1000 CHECK(btc_balance>=0),updated_at timestamptz);
     INSERT INTO public.balances(user_id) VALUES ('${client}'),('${otherClient}');
@@ -93,8 +98,13 @@ before(async () => {
     await db.exec(sqlFunction(scope, name));
   }
   await db.exec(await migration('20261028160000_edit_crm_module_statuses'));
+  await db.exec(await migration('20261116120000_manual_funding_requests'));
   await db.exec(`CREATE TRIGGER apply_wallet_transaction_balance_trigger BEFORE INSERT OR UPDATE OR DELETE ON public.transactions
     FOR EACH ROW EXECUTE FUNCTION public.apply_wallet_transaction_balance()`);
+  await db.exec(`ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY "Users can view own transactions" ON public.transactions FOR SELECT TO authenticated USING(auth.uid()=user_id);
+    GRANT USAGE ON SCHEMA public,auth TO authenticated;
+    GRANT SELECT,INSERT,UPDATE,DELETE ON public.transactions TO authenticated;`);
 });
 beforeEach(async () => { await db.exec('BEGIN'); await login(); });
 afterEach(async () => { await db.exec('ROLLBACK'); });
@@ -252,4 +262,203 @@ test('client forms submit only changed business fields, preserving metadata and 
 
 test('anonymous access to the new metadata endpoint is denied', async () => {
   assert.equal((await db.query("SELECT has_function_privilege('anon','public.admin_get_module_edit_options(text)','EXECUTE') AS allowed")).rows[0].allowed, false);
+});
+
+async function saveInstructions(method, details, scope = 'shared', target = client) {
+  return (await db.query('SELECT public.admin_save_deposit_payment_instructions($1,$2,$3,$4,$5) AS result',
+    [target, method, scope, details, 'Payment details configured'])).rows[0].result;
+}
+async function instructions(method) {
+  return (await db.query('SELECT public.get_deposit_payment_instructions($1) AS result', [method])).rows[0].result;
+}
+async function requestDeposit(method = 'bank', amount = 100, currency = 'EUR', id = randomUUID()) {
+  return (await db.query('SELECT public.request_manual_deposit($1,$2,$3,$4) AS result', [method, amount, currency, id])).rows[0].result;
+}
+async function reviewFunding(id, decision = 'approve', target = client, reason = 'Payment verified') {
+  return (await db.query('SELECT public.admin_review_funding_request($1,$2,$3,$4) AS result', [target, id, decision, reason])).rows[0].result;
+}
+
+test('shared instructions apply to all company clients and client overrides take precedence for each method', async () => {
+  const second = randomUUID();
+  await db.query('INSERT INTO public.users(id,company_id) VALUES($1,$2)', [second, company]);
+  for (const method of ['btc', 'crypto', 'bank']) {
+    await login();
+    await saveInstructions(method, { wallet_address: 'shared', instructions: 'Shared payment instructions' });
+    await saveInstructions(method, { wallet_address: 'client-specific' }, 'client');
+    await login(client);
+    assert.equal((await instructions(method)).details.wallet_address, 'client-specific');
+    await login(second);
+    assert.equal((await instructions(method)).details.wallet_address, 'shared');
+    await login(otherClient);
+    assert.deepEqual((await instructions(method)).details, {});
+    await login();
+    await saveInstructions(method, null, 'client');
+    await login(client);
+    assert.equal((await instructions(method)).details.wallet_address, 'shared');
+  }
+});
+
+test('existing client bank instructions remain available before new instructions are saved', async () => {
+  await db.query("INSERT INTO public.client_bank_details(user_id,bank_name,iban,currency) VALUES($1,'Existing Bank','DE123','EUR')", [client]);
+  await login(client);
+  assert.equal((await instructions('bank')).details.iban, 'DE123');
+});
+
+test('all three deposit methods start pending, retain their instructions, and credit only their own wallet on approval', async () => {
+  for (const [method, amount, currency, asset, expected] of [
+    ['btc', 0.01, 'BTC', 'BTC', 1000.01], ['crypto', 100, 'USD', 'USD', 1100], ['bank', 100, 'EUR', 'USDT', 1110],
+  ]) {
+    await db.exec('SAVEPOINT method');
+    await saveInstructions(method, { wallet_address: 'original-destination' });
+    await login(client);
+    const row = await requestDeposit(method, amount, currency);
+    assert.equal(row.status, 'pending');
+    assert.equal(row.user_id, client);
+    assert.equal(row.deposit_details.method, method);
+    assert.equal(row.deposit_details.instructions.wallet_address, 'original-destination');
+    assert.equal(await wallet(asset), 1000);
+    await login();
+    await saveInstructions(method, { wallet_address: 'changed-destination' });
+    const result = await reviewFunding(row.id);
+    assert.equal(result.status, 'completed');
+    assert.equal(result.deposit_details.instructions.wallet_address, 'original-destination');
+    assert.equal(await wallet(asset), expected);
+    await reviewFunding(row.id);
+    assert.equal(await wallet(asset), expected, 'retry must not double-credit the wallet');
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM public.admin_action_logs WHERE action='update_transactions'")).rows[0].n, 1);
+    await rejects(() => reviewFunding(row.id, 'reject'), /already been reviewed/);
+    await db.exec('ROLLBACK TO SAVEPOINT method; RELEASE SAVEPOINT method');
+  }
+});
+
+test('rejected deposits never credit funds; duplicate submissions return the original request', async () => {
+  await login(client);
+  const id = randomUUID();
+  const first = await requestDeposit('bank', 100, 'EUR', id);
+  assert.equal((await requestDeposit('bank', 100, 'EUR', id)).id, first.id);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM public.transactions')).rows[0].n, 1);
+  await rejects(() => requestDeposit('bank', 200, 'EUR', id), /reference already used/);
+  await login();
+  assert.equal((await reviewFunding(id, 'reject')).status, 'failed');
+  await reviewFunding(id, 'reject');
+  assert.equal(await wallet(), 1000);
+  await rejects(() => reviewFunding(id, 'approve'), /already been reviewed/);
+});
+
+test('BTC deposit reversal, reopening and deletion affect BTC without altering fiat balances', async () => {
+  await login(client);
+  const row = await requestDeposit('btc', 0.1, 'BTC');
+  await login();
+  await reviewFunding(row.id);
+  assert.equal(await wallet('BTC'), 1000.1);
+  await edit(row.id, { status: 'failed' });
+  assert.equal(await wallet('BTC'), 1000);
+  await edit(row.id, { status: 'completed' });
+  assert.equal(await wallet('BTC'), 1000.1);
+  await db.query('DELETE FROM public.transactions WHERE id=$1', [row.id]);
+  assert.equal(await wallet('BTC'), 1000);
+  assert.equal(await wallet(), 1000);
+  assert.equal(await wallet('USD'), 1000);
+});
+
+async function requestWithdrawal(currency) {
+  if (currency === 'BTC') return (await db.query("SELECT public.request_btc_withdrawal(0.01,'bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq','BTC') AS result")).rows[0].result;
+  return (await db.query("SELECT public.request_fiat_withdrawal($1,100,'Test Bank','12345678','12345','Test Client') AS result", [currency])).rows[0].result;
+}
+
+test('real EUR, USD and BTC withdrawal RPCs reserve pending funds and approve without a second debit', async () => {
+  for (const currency of ['EUR', 'USD', 'BTC']) {
+    await db.exec('SAVEPOINT currency');
+    await login(client);
+    const row = await requestWithdrawal(currency);
+    const asset = currency === 'EUR' ? 'USDT' : currency;
+    const expected = currency === 'EUR' ? 890 : currency === 'USD' ? 900 : 999.99;
+    assert.equal(row.status, 'pending');
+    assert.equal(await wallet(asset), expected);
+    await login();
+    assert.equal((await reviewFunding(row.transaction_id)).status, 'completed');
+    await reviewFunding(row.transaction_id);
+    assert.equal(await wallet(asset), expected);
+    await db.exec('ROLLBACK TO SAVEPOINT currency; RELEASE SAVEPOINT currency');
+  }
+});
+
+test('rejecting EUR, USD and BTC pending withdrawals refunds their exact reservations only once', async () => {
+  for (const currency of ['EUR', 'USD', 'BTC']) {
+    await db.exec('SAVEPOINT currency');
+    await login(client);
+    const row = await requestWithdrawal(currency);
+    await login();
+    assert.equal((await reviewFunding(row.transaction_id, 'reject')).status, 'failed');
+    await reviewFunding(row.transaction_id, 'reject');
+    assert.equal(await wallet(currency === 'EUR' ? 'USDT' : currency), 1000);
+    await db.exec('ROLLBACK TO SAVEPOINT currency; RELEASE SAVEPOINT currency');
+  }
+});
+
+test('deposit creation and review reject anonymous, cross-company, wrong-client and unaudited access', async () => {
+  await login(client);
+  const row = await requestDeposit();
+  await rejects(() => reviewFunding(row.id), /Administrator access required/);
+  await rejects(() => saveInstructions('btc', { wallet_address: 'unauthorized' }), /Administrator access required/);
+  await login();
+  await rejects(() => reviewFunding(row.id, 'approve', otherClient), /Account belongs to another company/);
+  await rejects(() => saveInstructions('btc', {}, 'shared', otherClient), /Account belongs to another company/);
+  const wrongOwner = await withdrawal('USD', otherClient);
+  await rejects(() => reviewFunding(wrongOwner), /not found for this client/);
+  await rejects(() => reviewFunding(row.id, 'approve', client, ''), /reason is required/);
+  await login('');
+  await rejects(() => requestDeposit(), /Authentication required/);
+  for (const signature of ['request_manual_deposit(text,numeric,text,uuid)', 'get_deposit_payment_instructions(text)',
+    'admin_save_deposit_payment_instructions(uuid,text,text,jsonb,text)', 'admin_review_funding_request(uuid,uuid,text,text)']) {
+    assert.equal((await db.query("SELECT has_function_privilege('anon',$1,'EXECUTE') AS allowed", [`public.${signature}`])).rows[0].allowed, false);
+  }
+});
+
+test('funding queue includes every pending request even when there are more than 50 newer completed records', async () => {
+  await login(client);
+  const row = await requestDeposit();
+  await db.query("UPDATE public.transactions SET created_at=now()-interval '1 year' WHERE id=$1", [row.id]);
+  await db.query("INSERT INTO public.transactions(user_id,type,amount,currency,status) SELECT $1,'deposit',10,'USD','completed' FROM generate_series(1,60)", [client]);
+  await login();
+  const result = (await db.query('SELECT public.admin_get_funding_requests($1) AS result', [client])).rows[0].result;
+  assert.equal(result[0].id, row.id);
+  assert.equal(result.length, 51);
+  assert.ok(result.every(item => item.user_id === client));
+});
+
+test('database policies prevent clients from inserting, settling, deleting or relabeling funding transactions', async () => {
+  await login(client);
+  const row = await requestDeposit();
+  await db.exec('SET LOCAL ROLE authenticated');
+  assert.equal((await db.query("UPDATE public.transactions SET status='completed' WHERE id=$1 RETURNING id", [row.id])).rows.length, 0);
+  assert.equal((await db.query('DELETE FROM public.transactions WHERE id=$1 RETURNING id', [row.id])).rows.length, 0);
+  await rejects(() => db.query("INSERT INTO public.transactions(user_id,type,amount,currency,status) VALUES($1,'withdrawal',-100,'USD','completed')", [client]), /row-level security/);
+  const regular = randomUUID();
+  await db.query("INSERT INTO public.transactions(id,user_id,type,amount,status) VALUES($1,$2,'trade',0,'pending')", [regular, client]);
+  await rejects(() => db.query("UPDATE public.transactions SET type='deposit' WHERE id=$1", [regular]), /row-level security/);
+  await rejects(() => db.query('SELECT * FROM public.deposit_payment_instructions'), /permission denied/);
+  assert.equal((await db.query('SELECT * FROM public.transactions WHERE user_id=$1', [otherClient])).rows.length, 0);
+  // The authenticated RPC remains available even though direct INSERT is denied.
+  const allowed = await requestDeposit('crypto', 100, 'USD');
+  assert.equal(allowed.status, 'pending');
+  await db.exec('RESET ROLE');
+});
+
+test('funding inputs reject non-finite values, unsupported methods, invalid precision and invalid destination data', async () => {
+  await login(client);
+  for (const amount of [NaN, Infinity, -Infinity, -1, 0, 9, 1000001, 10.001]) {
+    await rejects(() => requestDeposit('bank', amount, 'EUR'), /Invalid deposit amount|Invalid amount precision/);
+  }
+  await rejects(() => requestDeposit('card', 100, 'EUR'), /Unsupported deposit method/);
+  await rejects(() => requestDeposit('btc', 100, 'EUR'), /Unsupported deposit currency/);
+  await rejects(() => requestDeposit('crypto', 0.01, 'BTC'), /Unsupported deposit currency/);
+  for (const amount of ['NaN', 'Infinity', '-Infinity', '100.001']) {
+    await rejects(() => db.query("SELECT public.request_fiat_withdrawal('EUR',$1,'Bank','123','123','Client')", [amount]), /Withdrawal amount/);
+    await rejects(() => db.query("SELECT public.request_btc_withdrawal($1,'bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq','BTC')", [amount === '100.001' ? '0.001000001' : amount]), /Minimum BTC withdrawal/);
+  }
+  await rejects(() => db.query("SELECT public.request_btc_withdrawal(0.01,'not-a-valid-bitcoin-address','BTC')"), /valid BTC destination/);
+  await login();
+  await rejects(() => saveInstructions('btc', { wallet_address: 123 }), /must contain text/);
+  await rejects(() => saveInstructions('btc', { instructions: 'x'.repeat(4001) }), /must contain text/);
 });

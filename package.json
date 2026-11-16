@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:bulk-leads": "node --experimental-strip-types --test tests/bulkLeadActions.test.ts",
-    "test:chart": "node --experimental-strip-types --test tests/chartCandles.test.ts",
+    "test:chart": "node --experimental-strip-types --test tests/chartCandles.test.ts tests/chartViewport.test.ts",
     "test:market-refresh": "node --test tests/marketRefresh.test.mjs",
     "test:crm-trading": "node --experimental-strip-types --test tests/crmTrading.test.mjs",
     "test:client-access": "node --test tests/scopedClientAccess.test.mjs",

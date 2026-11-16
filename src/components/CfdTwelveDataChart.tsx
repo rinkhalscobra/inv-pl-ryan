@@ -9,6 +9,7 @@ import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useChartHistory } from '../hooks/useChartHistory';
 import { aggregateCandles, CHART_TIMEFRAMES, type ChartCandle } from '../lib/chartCandles';
+import { ChartViewport } from '../lib/chartViewport';
 
 type ChartType = 'candlesticks' | 'line';
 const readPreference = (key: string) => {
@@ -27,7 +28,7 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<'Area'> | null>(null);
   const barsRef = useRef<ChartCandle[]>([]);
-  const fittedViewRef = useRef('');
+  const viewportRef = useRef(new ChartViewport());
   const { candles, loading, error } = useChartHistory(selectedPair, market, minutes);
   const { getMarketDataBySymbol } = useMarketData();
   const { getCryptoDataBySymbol } = useBybitData();
@@ -51,6 +52,7 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const viewport = viewportRef.current;
     const chart = createChart(containerRef.current, {
       autoSize: true,
       layout: { background: { type: ColorType.Solid, color: '#0b0e11' }, textColor: '#aab5c5', fontSize: 10, attributionLogo: true },
@@ -76,7 +78,7 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
       chartRef.current = null;
       candleSeriesRef.current = null;
       lineSeriesRef.current = null;
-      fittedViewRef.current = '';
+      viewport.reset();
     };
   }, []);
 
@@ -97,10 +99,10 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
     lineSeries.setData(bars.map(bar => ({ time: bar.time as UTCTimestamp, value: bar.close })));
     chart.applyOptions({ timeScale: { timeVisible: minutes < 1440 } });
     const view = `${market}:${selectedPair}:${minutes}`;
-    // A refresh preserves the trader's zoom and scroll position.
-    if (bars.length && (fittedViewRef.current !== view || loading)) {
-      chart.timeScale().fitContent();
-      fittedViewRef.current = view;
+    const initialRange = viewportRef.current.rangeFor(view, bars.length, loading);
+    if (initialRange) {
+      chart.priceScale('right').applyOptions({ autoScale: true });
+      chart.timeScale().setVisibleLogicalRange(initialRange);
     }
   }, [bars, chartType, market, selectedPair, minutes, pricePrecision, rising, loading]);
 
@@ -152,7 +154,9 @@ export default function CfdTwelveDataChart({ selectedPair, market = 'cfd' }: { s
           ))}
         </>}
       </div>
-      <div className="relative min-h-0 flex-1" role="img" aria-label={`${selectedPair} ${timeframeLabel} ${chartType === 'candlesticks' ? 'Japanese candlestick' : 'line'} chart`}>
+      <div className="relative min-h-0 flex-1" role="img" aria-label={`${selectedPair} ${timeframeLabel} ${chartType === 'candlesticks' ? 'Japanese candlestick' : 'line'} chart`}
+        onPointerDownCapture={() => viewportRef.current.preserve()}
+        onWheelCapture={() => viewportRef.current.preserve()}>
         <div ref={containerRef} className="absolute inset-0" />
         {!bars.length && <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-slate-500">
           {loading ? 'Loading chart history…' : error || 'Chart history will appear when market data is available.'}

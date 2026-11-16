@@ -7,8 +7,10 @@ const historyCache = new Map<string, { candles: MarketCandle[]; exhausted: boole
 
 export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', minutes: number) {
   const cacheKey = `${market}:${selectedPair}`;
+  const requestKey = `${cacheKey}:${minutes}`;
   const [history, setHistory] = useState<{ key: string; candles: MarketCandle[] }>({ key: cacheKey, candles: [] });
   const [loading, setLoading] = useState(true);
+  const [settledRequestKey, setSettledRequestKey] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,6 +74,7 @@ export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', 
       } finally {
         inFlight = false;
         if (!controller.signal.aborted) {
+          setSettledRequestKey(`${cacheKey}:${minutes}`);
           setLoading(false);
           if (refreshPending) { refreshPending = false; void load(); }
         }
@@ -99,5 +102,5 @@ export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', 
     };
   }, [selectedPair, market, minutes]);
 
-  return { candles: history.key === cacheKey ? history.candles : [], loading, error };
+  return { candles: history.key === cacheKey ? history.candles : [], loading: loading || settledRequestKey !== requestKey, error };
 }

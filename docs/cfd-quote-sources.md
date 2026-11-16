@@ -23,6 +23,13 @@ during an existing history request trigger another read when that request
 finishes. Background tabs pause
 polling and catch up when they become active again, without resetting chart zoom.
 
+Both CFD and Futures initialise their chart view again after history finishes
+loading. A quote-only or sparse cache uses at least 60 bar slots so one candle
+cannot fill the screen; later history backfills are framed automatically until
+the initial view is populated. Dragging or zooming preserves the chosen view
+through subsequent updates and Candles/Line changes. Switching the market,
+symbol or timeframe starts a fresh view with automatic price scaling.
+
 The selected CFD quote can be used for orders while its source timestamp is
 less than three minutes old. The order form, Edge Function, and database
 processing guard use the same limit. Older prices remain visible for reference
@@ -40,7 +47,8 @@ for the next frontend publication.
 
 Run `npm run test:market-refresh` to check the one-minute schedules, concurrent
 refresh protection, cooldowns and failure retries. `npm run test:chart` checks
-OHLC aggregation and live quote handling.
+OHLC aggregation, live quote handling, delayed history, sparse-cache backfills
+and preservation of manual chart views.
 
 For diagnostics, compare `timestamp` and `updated_at` in `cfd_market_quotes`,
 then inspect `cfd_quote_sync_runs` and `cfd_quote_refresh_state`. A recent

@@ -1,5 +1,6 @@
 import AppSelect from './AppSelect';
 import CRMFundingPanel from './CRMFundingPanel';
+import CRMOpenPositionForm from './CRMOpenPositionForm';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -134,6 +135,7 @@ interface UserWorkspace {
 
 interface AdminCRMPageProps {
   isAdmin: boolean;
+  clientManagement?: boolean;
 }
 
 const emptyStats: CRMStats = {
@@ -362,10 +364,11 @@ const RecordSection: React.FC<{
   );
 };
 
-const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
+const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin, clientManagement = false }) => {
   const navigate = useNavigate();
   const { accountId } = useParams<{ accountId?: string }>();
   const focusedAccountId = accountId || null;
+  const canManageClient = isAdmin || (clientManagement && Boolean(focusedAccountId));
   const { convertEurToUsd, convertUsdToEur, formatEur } = useFiatCurrency();
   const formatBaseAsEur = (value: number) => formatEur(convertUsdToEur(value));
   const convertUsdToEurRef = useRef(convertUsdToEur);
@@ -375,6 +378,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const [search, setSearch] = useState('');
   const [kycFilter, setKycFilter] = useState<'pending' | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(focusedAccountId);
+  const currentWorkspaceUserId = useRef(focusedAccountId || selectedUserId);
+  currentWorkspaceUserId.current = focusedAccountId || selectedUserId;
   type AccountRole = 'client' | 'workflow_manager' | 'desk_manager' | 'agent' | 'retention_manager' | 'retention' | 'admin';
   const [accountRole, setAccountRole] = useState<AccountRole>('client');
   const [workspace, setWorkspace] = useState<UserWorkspace | null>(null);
@@ -425,6 +430,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   );
 
   useEffect(() => {
+    if (!isAdmin) return;
     void Promise.all([supabase.rpc('crm_admin_list_companies'), supabase.rpc('crm_admin_network_context')]).then(([companyResult, contextResult]) => {
       const next = (companyResult.data as CrmCompany[] | null) || [];
       setCompanies(next);
@@ -432,7 +438,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       const selected = next.some(company => company.id === companyId) ? companyId : next[0]?.id || '';
       if (selected) { setCompanyId(selected); setSelectedCrmCompanyId(selected); }
     });
-  }, [companyId]);
+  }, [companyId, isAdmin]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setPresenceNow(Date.now()), 10_000);
@@ -545,12 +551,13 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   }, [activeCompany]);
 
   const loadUsers = useCallback(async (query = '') => {
-    if (!isAdmin) return;
     if (focusedAccountId) {
+      if (currentWorkspaceUserId.current !== focusedAccountId) return;
       setSelectedUserId(focusedAccountId);
       setLoadingUsers(false);
       return;
     }
+    if (!isAdmin) return;
     setLoadingUsers(true);
     const { data, error } = await supabase.rpc('admin_get_users', {
       p_search: query.trim() || null,
@@ -574,6 +581,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   }, [companyId, focusedAccountId, isAdmin, kycFilter, showError]);
 
   const loadWorkspace = useCallback(async (userId: string) => {
+    if (currentWorkspaceUserId.current !== userId) return;
     const requestId = ++workspaceRequestId.current;
     setLoadingWorkspace(true);
     setWorkspace(null);
@@ -593,7 +601,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         supabase.rpc('admin_get_account_role', { p_target_user_id: userId }),
         supabase.rpc('admin_get_user_wheel_grants', { p_target_user_id: userId })
       ]);
-      if (requestId !== workspaceRequestId.current) return;
+      if (requestId !== workspaceRequestId.current || currentWorkspaceUserId.current !== userId) return;
       if (error || !data) {
         const detail = errorText(error || new Error('The customer workspace returned no data'));
         setWorkspaceError(detail);
@@ -664,12 +672,12 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       setLoadingWorkspace(false);
       setKycDocumentUrls({ id: asText(profile.document_id_path), selfie: asText(profile.document_selfie_path) });
     } catch (error) {
-      if (requestId !== workspaceRequestId.current) return;
+      if (requestId !== workspaceRequestId.current || currentWorkspaceUserId.current !== userId) return;
       const detail = errorText(error);
       setWorkspaceError(detail);
       setMessage({ type: 'error', text: `Customer workspace: ${detail}` });
     } finally {
-      if (requestId === workspaceRequestId.current) setLoadingWorkspace(false);
+      if (requestId === workspaceRequestId.current && currentWorkspaceUserId.current === userId) setLoadingWorkspace(false);
     }
   }, []);
 
@@ -731,6 +739,8 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   useEffect(() => {
     setNewPassword('');
     setDeleteConfirmation('');
+    setEditingRecord(null);
+    setShowCurrentPassword(false);
     if (selectedUserId) void loadWorkspace(selectedUserId);
     else { workspaceRequestId.current += 1; setWorkspace(null); setWorkspaceError(null); setTaxSubmission(null); setClientOnboarding(null); setKycDocumentUrls({}); setLoadingWorkspace(false); }
   }, [loadWorkspace, selectedUserId]);
@@ -786,7 +796,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
   const saveProfile = () => runMutation('profile', async () => {
     const changes = {
-      ...profileForm,
+      ...Object.fromEntries(Object.entries(profileForm).filter(([key]) => isAdmin || key !== 'is_admin')),
       total_referral_earnings: convertEurToUsd(Number(profileForm.total_referral_earnings || 0))
     };
     const { error } = await supabase.rpc('admin_update_user_profile', {
@@ -918,7 +928,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
   const invokeAdminUserAction = async (body: Record<string, unknown>) => {
     const callWithToken = async (accessToken: string) => {
       const { data, error } = await supabase.functions.invoke('admin-user-management', {
-        body: { ...body, company_id: companyId || null },
+        body: { ...body, company_id: workspace?.profile.company_id || companyId || null },
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (error) {
@@ -1017,6 +1027,10 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
       setSelectedUserId(null);
       setDeleteConfirmation('');
       setMessage({ type: 'success', text: `${targetEmail} and all associated account data were deleted.` });
+      if (focusedAccountId) {
+        navigate(isAdmin ? '/admin/clients' : '/crm', { replace: true });
+        return;
+      }
       await loadUsers(search);
     } catch (error) {
       showError(error);
@@ -1041,14 +1055,14 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     setLoadingRecordOptions(true);
     setRecordOptions({});
     setRecordOptionsError(null);
-    void supabase.rpc('admin_get_module_edit_options', { p_table_name: editingRecord.table }).then(({ data, error }) => {
+    void supabase.rpc('crm_get_client_module_edit_options', { p_target_user_id: selectedUserId, p_table_name: editingRecord.table }).then(({ data, error }) => {
       if (!active) return;
       if (error) setRecordOptionsError(errorText(error));
       else setRecordOptions((data as Record<string, string[]> | null) || {});
       setLoadingRecordOptions(false);
     });
     return () => { active = false; };
-  }, [editingRecord]);
+  }, [editingRecord, selectedUserId]);
 
   const openRecordEditor = (table: string, title: string, row: JsonRow) => {
     setLoadingRecordOptions(true);
@@ -1096,7 +1110,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
     }, `${title} record deleted`);
   };
 
-  if (!isAdmin) {
+  if (!canManageClient) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center p-6">
         <div className={`${panelClass} max-w-md p-8 text-center`}>
@@ -1163,7 +1177,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <button onClick={() => navigate(focusedAccountId ? '/admin/hierarchy' : '/dashboard')} className="rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-slate-400 transition hover:border-purple-500/50 hover:text-white" aria-label={focusedAccountId ? 'Back to team hierarchy' : 'Back to trading platform'}>
+              <button onClick={() => navigate(!isAdmin ? '/crm' : focusedAccountId ? '/admin/hierarchy' : '/dashboard')} className="rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-slate-400 transition hover:border-purple-500/50 hover:text-white" aria-label={!isAdmin ? 'Back to my clients' : focusedAccountId ? 'Back to team hierarchy' : 'Back to trading platform'}>
                 <ArrowLeft size={22} />
               </button>
               <div className="rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 p-2.5 shadow-lg shadow-purple-500/20">
@@ -1176,11 +1190,11 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isPlatformNetwork && companies.length > 0 && <select value={companyId} onChange={event => { setCompanyId(event.target.value); setSelectedCrmCompanyId(event.target.value); navigate('/admin/clients'); }} className="rounded-xl border border-violet-400/30 bg-[#111827] px-3 py-2.5 text-sm font-semibold text-violet-100 outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select>}
-            <button type="button" onClick={() => navigate('/admin/clients')} aria-current={!focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${!focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />Clients</button>
-            <button onClick={() => navigate('/admin/hierarchy')} aria-current={focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />Team hierarchy</button>
-            <button onClick={() => navigate('/admin/leads')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Lead inbox</button>
-            <button onClick={() => navigate('/admin/ip-access')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><ShieldCheck size={16} />IP access</button>
+            {isAdmin && isPlatformNetwork && companies.length > 0 && <select value={companyId} onChange={event => { setCompanyId(event.target.value); setSelectedCrmCompanyId(event.target.value); navigate('/admin/clients'); }} className="rounded-xl border border-violet-400/30 bg-[#111827] px-3 py-2.5 text-sm font-semibold text-violet-100 outline-none focus:border-violet-400">{companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select>}
+            <button type="button" onClick={() => navigate(isAdmin ? '/admin/clients' : '/crm')} aria-current={!focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${!focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />{isAdmin ? 'Clients' : 'My clients'}</button>
+            {isAdmin && <button onClick={() => navigate('/admin/hierarchy')} aria-current={focusedAccountId ? 'page' : undefined} className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${focusedAccountId ? 'border-violet-400/60 bg-violet-500 text-white shadow-lg shadow-violet-500/15' : 'border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20'}`}><Users size={16} />Team hierarchy</button>}
+            {isAdmin && <button onClick={() => navigate('/admin/leads')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><Users size={16} />Lead inbox</button>}
+            {isAdmin && <button onClick={() => navigate('/admin/ip-access')} className="flex items-center justify-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-200 hover:bg-violet-500/20"><ShieldCheck size={16} />IP access</button>}
             <button onClick={() => void refreshAll()} className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 hover:border-purple-500/50 hover:text-white">
               <RefreshCw size={16} className={loadingUsers || loadingWorkspace ? 'animate-spin' : ''} /> Refresh CRM
             </button>
@@ -1294,7 +1308,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                 <p className="max-w-xl text-sm text-slate-400">{workspaceError}</p>
                 <button type="button" onClick={() => void loadWorkspace(selectedUserId)} className="mt-2 rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-white hover:border-violet-400">Try again</button>
               </div>
-            ) : loadingWorkspace || !workspace || !profile ? (
+            ) : loadingWorkspace || !workspace || !profile || profile.id !== selectedUserId || (focusedAccountId && selectedUserId !== focusedAccountId) ? (
               <div className={`${panelClass} flex min-h-[420px] items-center justify-center gap-2 text-slate-400`}><Loader2 className="animate-spin" />Loading customer workspace</div>
             ) : (
               <>
@@ -1313,7 +1327,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                       <div><div className="text-xs text-slate-500">USD</div><div className="font-semibold text-white">{formatUsd(workspace.balance.usd_balance)}</div></div>
                       <div><div className="text-xs text-slate-500">Robot</div><div className="font-semibold text-white">{formatBaseAsEur(asNumber(workspace.robot.allocated_balance))}</div></div>
                       <div><div className="text-xs text-slate-500">KYC</div><div className="font-semibold capitalize text-white">{asText(profile.kyc_status).replaceAll('_', ' ')}</div></div>
-                      <div className="min-w-[130px] text-left">
+                      {isAdmin && <div className="min-w-[130px] text-left">
                         <div className="text-xs text-slate-500">Access role</div>
                         <AppSelect value={accountRole} disabled={saving === 'access-role'} onChange={event => void changeClientRole(event.target.value as AccountRole)} aria-label={`Change access role for ${displayName(profile)}`} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-xs font-semibold text-white outline-none hover:border-violet-400 disabled:opacity-50">
                           <option value="client">Client</option>
@@ -1324,7 +1338,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                           <option value="retention">Retention</option>
                           <option value="admin">Admin</option>
                         </AppSelect>
-                      </div>
+                      </div>}
                     </div>
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-800 pt-4">
@@ -1387,7 +1401,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
                         </div>
                         <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-400">Client documents<div className="mt-1 text-sm font-semibold text-white">{clientOnboarding?.documents?.length || 0} files</div></div>
                         <div className="flex items-end rounded-xl border border-slate-700 p-3 sm:col-span-2">
-                          <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.is_admin)} onChange={event => setProfileForm(current => ({ ...current, is_admin: event.target.checked }))} />Administrator</label>
+                          {isAdmin && <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={Boolean(profileForm.is_admin)} onChange={event => setProfileForm(current => ({ ...current, is_admin: event.target.checked }))} />Administrator</label>}
                         </div>
                       </div>
                     </section>
@@ -1505,6 +1519,10 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
                 {tab === 'futures' && (
                   <div className="space-y-5">
+                    <CRMOpenPositionForm key={`${selectedUserId}-futures`} clientId={selectedUserId!} clientName={`${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email} market="futures" auditReason={reason} onOpened={() => {
+                      setMessage({ type: 'success', text: `Futures position opened for ${profile.email}.` });
+                      void refreshAll();
+                    }} />
                     {managedSection('Crypto futures positions', 'futures_positions', cryptoRows(workspace.futures_positions))}
                     {managedSection('Crypto futures orders', 'futures_orders', cryptoRows(workspace.futures_orders))}
                     {managedSection('Crypto futures history', 'futures_position_history', cryptoRows(workspace.futures_history))}
@@ -1514,6 +1532,10 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
                 {tab === 'cfd' && (
                   <div className="space-y-5">
+                    <CRMOpenPositionForm key={`${selectedUserId}-cfd`} clientId={selectedUserId!} clientName={`${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email} market="cfd" auditReason={reason} onOpened={() => {
+                      setMessage({ type: 'success', text: `CFD position opened for ${profile.email}.` });
+                      void refreshAll();
+                    }} />
                     {managedSection('CFD positions', 'futures_positions', cfdRows(workspace.futures_positions))}
                     {managedSection('CFD orders', 'futures_orders', cfdRows(workspace.futures_orders))}
                     {managedSection('CFD position history', 'futures_position_history', cfdRows(workspace.futures_history))}
@@ -1585,7 +1607,7 @@ const AdminCRMPage: React.FC<AdminCRMPageProps> = ({ isAdmin }) => {
 
                 {tab === 'deposits' && (
                   <div className="space-y-5">
-                    <CRMFundingPanel key={selectedUserId} userId={selectedUserId!} auditReason={reason} onReviewed={() => {
+                    <CRMFundingPanel allowSharedInstructions={isAdmin} key={selectedUserId} userId={selectedUserId!} auditReason={reason} onReviewed={() => {
                       void supabase.rpc('admin_get_user_workspace', { p_target_user_id: selectedUserId }).then(({ data, error }) => {
                         if (!error && data) setWorkspace(current => current?.profile.id === data.profile?.id ? { ...current, ...data } : current);
                       });

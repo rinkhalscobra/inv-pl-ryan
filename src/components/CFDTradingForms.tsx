@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { AlertTriangle, CheckCircle, Plus, Edit2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { CFD_INSTRUMENTS } from '../constants/tradingPairs';
+import { getCfdLotSize as getLotSize } from '../lib/cfdLots';
 import { CFD_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { getInstrumentTypeFromSymbol } from '../constants/tradingTiers';
@@ -162,34 +163,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     ? priceIsUsd ? convertDisplayToUsd(parsedLimitPrice) : parsedLimitPrice
     : livePairPrice;
 
-const getLotSize = (symbol: string): number => {
-  const instrument = CFD_INSTRUMENTS.find(item => item.symbol === symbol);
 
-  if (instrument && instrument.type === 'forex') {
-    return 100000;
-  } else if (instrument && instrument.type === 'commodity') {
-    switch (symbol) {
-      case 'XAG/USD': return 5000;
-      case 'XAUUSD':
-      case 'XAU/USD': return 100;
-      case 'XPTUSD':
-      case 'XPT/USD': return 100;
-      case 'XPDUSD':
-      case 'XPD/USD': return 100;
-      case 'NATGAS/USD': return 10000;
-      case 'BCO/USD': return 1000;
-      case 'WTICO/USD': return 1000;
-      case 'CORN/USD': return 5000;
-      case 'WHEAT/USD': return 5000;
-      case 'SUGAR/USD': return 112000;
-      default: return 1;
-    }
-  } else if (instrument && instrument.type === 'stock') {
-    return 100;
-  }
-
-  return 1;
-};
 
 
   // Calculate amount from percentage for long positions

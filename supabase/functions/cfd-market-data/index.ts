@@ -43,7 +43,7 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.
   headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "private, max-age=5" },
 });
 const SELECTED_CACHE_MS = 60 * 1000;
-const CATALOG_CACHE_MS = 4 * 60 * 1000;
+const CATALOG_CACHE_MS = 60 * 1000;
 const MAX_INSTRUMENTS = 220;
 const TWELVE_BATCH_SIZE = 20;
 const activeRefreshes = new Map<string, Promise<{ updated: number; sources: string[] }>>();

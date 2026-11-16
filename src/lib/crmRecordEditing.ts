@@ -1,7 +1,7 @@
 export type CrmRecord = Record<string, unknown>;
 export type CrmRecordForm = Record<string, string | boolean>;
 
-const immutableFields = new Set(['id', 'user_id', 'referrer_id', 'referred_user_id', 'created_at', 'updated_at']);
+const immutableFields = new Set(['id', 'user_id', 'referrer_id', 'referred_user_id', 'company_id', 'created_at', 'updated_at']);
 const walletLedgerFields = new Set(['balance_effect', 'balance_processed_at', 'balance_reversed_at', 'tickets_processed']);
 const processedWalletFields = new Set(['type', 'amount', 'currency', 'withdrawal_details', 'deposit_details']);
 

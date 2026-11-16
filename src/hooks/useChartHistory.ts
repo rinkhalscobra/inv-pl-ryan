@@ -19,6 +19,7 @@ export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', 
     setLoading(true);
     setError(null);
     let inFlight = false;
+    let refreshPending = false;
 
     const fetchPage = async (limit: number, before?: string) => {
       let query = supabase.from(market === 'crypto' ? 'crypto_market_candles' : 'cfd_market_candles')
@@ -35,7 +36,11 @@ export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', 
     };
 
     const load = async (expandHistory = false) => {
-      if (inFlight || controller.signal.aborted) return;
+      if (controller.signal.aborted) return;
+      // A provider update can arrive while the minute poll is still reading
+      // the previous candles. Read again after it completes instead of losing
+      // that update until the next timer tick.
+      if (inFlight) { refreshPending = true; return; }
       inFlight = true;
       try {
         const targetRows = Math.min(180 * minutes + minutes, MAX_HISTORY_ROWS);
@@ -66,7 +71,10 @@ export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', 
         if (!controller.signal.aborted) setError('Chart history could not be refreshed. Try again shortly.');
       } finally {
         inFlight = false;
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          if (refreshPending) { refreshPending = false; void load(); }
+        }
       }
     };
 

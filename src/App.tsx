@@ -885,6 +885,17 @@ const handleUpdatePassword = async (newPassword: string) => {
               ) : <Navigate to="/auth" replace />
             } />
 
+            <Route path="/crm/clients/:accountId" element={
+              authLoading || (user && dbLoading) ? (
+                <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>
+              ) : user ? (
+                isAdmin ? <AdminIpGate><AdminCRMPage isAdmin /></AdminIpGate> :
+                  (['workflow_manager', 'desk_manager', 'agent', 'retention_manager', 'retention'] as const).some(role => role === crmRole)
+                    ? <CRMNetworkGate><AdminCRMPage isAdmin={false} clientManagement /></CRMNetworkGate>
+                    : <Navigate to="/dashboard" replace />
+              ) : <Navigate to="/auth" replace />
+            } />
+
             <Route path="/crm/leads" element={
               authLoading || (user && dbLoading) ? (
                 <div className="flex min-h-screen items-center justify-center app-page-bg text-slate-400">Verifying CRM access...</div>

@@ -51,7 +51,7 @@ const FREE_PRICE_INSTRUMENTS = CFD_INSTRUMENTS
   .filter(instrument => instrument.active && instrument.tradable !== false)
   .map(instrument => ({ symbol: instrument.symbol, type: instrument.type }));
 const FREE_PRICE_SYMBOLS = new Set(FREE_PRICE_INSTRUMENTS.map(instrument => instrument.symbol));
-const PRICE_REFRESH_INTERVAL_MS = 4 * 60 * 1000;
+const PRICE_REFRESH_INTERVAL_MS = 60 * 1000;
 const SELECTED_QUOTE_INTERVAL_MS = 60 * 1000;
 const quoteTime = (item: MarketDataItem) => Date.parse(item.timestamp || '') || 0;
 

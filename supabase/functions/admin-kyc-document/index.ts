@@ -25,23 +25,21 @@ Deno.serve(async request => {
   if (!token) return errorResponse("Authentication required", 401);
   const { data: actor, error: authError } = await admin.auth.getUser(token);
   if (authError || !actor.user) return errorResponse("Invalid administrator session", 401);
-  const { data: profile, error: profileError } = await admin.from("users")
-    .select("is_admin").eq("id", actor.user.id).single();
-  if (profileError || profile?.is_admin !== true) return errorResponse("Administrator access required", 403);
   const body = await request.json().catch(() => ({})) as { path?: string };
   const path = body.path?.trim() || "";
   if (!path || path.length > 500 || path.startsWith("/") || path.includes("..") || path.includes("\\")) {
     return errorResponse("Invalid document path", 400);
   }
   const targetUserId = path.split("/")[0];
-  const { data: target } = await admin.from("users").select("company_id").eq("id", targetUserId).maybeSingle();
-  if (!target?.company_id) return errorResponse("Document account is unavailable", 404);
-  const { data: actorContext, error: contextError } = await admin.rpc("crm_service_actor_context", {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUserId)) {
+    return errorResponse("Invalid document account", 400);
+  }
+  const { data: canManage, error: contextError } = await admin.rpc("crm_service_can_manage_account", {
     p_actor_id: actor.user.id,
+    p_target_user_id: targetUserId,
     p_ip: clientIp,
-    p_requested_company_id: target.company_id,
   });
-  if (contextError || actorContext?.company_id !== target.company_id) return errorResponse("Document belongs to another company", 403);
+  if (contextError || canManage !== true) return errorResponse("Client is outside your CRM access", 403);
   const { data: document, error } = await admin.storage.from("kyc-documents").download(path);
   if (error || !document) return errorResponse("Document unavailable", 404);
   const safeTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);

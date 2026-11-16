@@ -7,7 +7,7 @@ double_confirm_changes = false
 enable_confirmations = false
 
 [functions.admin-user-management]
-# The function verifies the bearer token and database admin role itself. Keeping
+# The function verifies the bearer token and scoped CRM permissions itself. Keeping
 # gateway verification off ensures unauthenticated browser OPTIONS preflight works.
 verify_jwt = false
 

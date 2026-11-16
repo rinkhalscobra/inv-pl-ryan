@@ -8,6 +8,7 @@ interface Props {
   userId: string;
   auditReason: string;
   onReviewed: () => void;
+  allowSharedInstructions?: boolean;
 }
 interface InstructionSettings {
   shared: PaymentInstructions[];
@@ -17,7 +18,7 @@ const fieldClass = 'w-full rounded-xl border border-slate-700 bg-slate-950/70 px
 const panelClass = 'rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5';
 const problemText = (problem: unknown) => problem && typeof problem === 'object' && 'message' in problem ? String(problem.message) : 'Unable to complete this action.';
 
-export default function CRMFundingPanel({ userId, auditReason, onReviewed }: Props) {
+export default function CRMFundingPanel({ userId, auditReason, onReviewed, allowSharedInstructions = false }: Props) {
   const [settings, setSettings] = useState<InstructionSettings>({ shared: [], client: [] });
   const [scope, setScope] = useState<'client' | 'shared'>('client');
   const [method, setMethod] = useState<DepositMethod>('btc');
@@ -115,7 +116,7 @@ export default function CRMFundingPanel({ userId, auditReason, onReviewed }: Pro
     <section className={panelClass}>
       <h3 className="font-semibold text-white">Deposit payment instructions</h3>
       <p className="mt-1 text-xs leading-5 text-slate-400">Set wallet addresses, bank details and any additional instructions. Client overrides take priority over shared company details. Existing requests retain the instructions recorded when they were submitted.</p>
-      <div className="my-4 grid gap-4 sm:grid-cols-2"><label className="text-xs text-slate-400">Payment method<AppSelect value={method} disabled={busy !== null} onChange={event => setMethod(event.target.value as DepositMethod)} className={`${fieldClass} mt-1.5`}>{Object.entries(depositMethodLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</AppSelect></label><label className="text-xs text-slate-400">Apply to<AppSelect value={scope} disabled={busy !== null} onChange={event => setScope(event.target.value as 'client' | 'shared')} className={`${fieldClass} mt-1.5`}><option value="client">This client only</option><option value="shared">All clients in this company</option></AppSelect></label></div>
+      <div className="my-4 grid gap-4 sm:grid-cols-2"><label className="text-xs text-slate-400">Payment method<AppSelect value={method} disabled={busy !== null} onChange={event => setMethod(event.target.value as DepositMethod)} className={`${fieldClass} mt-1.5`}>{Object.entries(depositMethodLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</AppSelect></label><label className="text-xs text-slate-400">Apply to<AppSelect value={scope} disabled={busy !== null} onChange={event => setScope(event.target.value as 'client' | 'shared')} className={`${fieldClass} mt-1.5`}><option value="client">This client only</option>{allowSharedInstructions && <option value="shared">All clients in this company</option>}</AppSelect></label></div>
       {loadingSettings ? <p className="text-sm text-slate-400">Loading payment settings…</p> : settingsError ? <p role="alert" className="text-sm text-red-300">{settingsError}</p> : <>
         <p className="mb-4 text-xs text-slate-400">{scope === 'shared' ? 'Shared details apply to clients without an override for this method.' : hasOverride ? 'This client has custom instructions for this method.' : 'This client uses shared details. Saving creates a client override.'}</p>
         <div className="grid gap-4 sm:grid-cols-2">{instructionFields[method].map(field => <label key={field.key} className="text-xs text-slate-400">{field.label}<input value={draft[field.key] || ''} maxLength={4000} onChange={event => setDraft(current => ({ ...current, [field.key]: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>)}</div>

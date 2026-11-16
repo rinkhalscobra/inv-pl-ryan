@@ -62,7 +62,7 @@ const fetchQuotes = async (symbols: string[], key: string): Promise<Record<strin
 const refreshCandles = async (admin: ReturnType<typeof createClient>, item: Mapping, usdtUsd: number, key: string) => {
   const cacheKey = `candles:${item.symbol}`;
   const { data: claimed, error: claimError } = await admin.rpc("claim_crypto_quote_refresh", {
-    p_cache_key: cacheKey, p_interval_seconds: 240, p_force: false,
+    p_cache_key: cacheKey, p_interval_seconds: 60, p_force: false,
   });
   if (claimError) throw claimError;
   if (!claimed) return;
@@ -90,7 +90,7 @@ const refreshCandles = async (admin: ReturnType<typeof createClient>, item: Mapp
     }
     success = true;
   } finally {
-    await admin.rpc("finish_crypto_quote_refresh", { p_cache_key: cacheKey, p_interval_seconds: 240, p_success: success });
+    await admin.rpc("finish_crypto_quote_refresh", { p_cache_key: cacheKey, p_interval_seconds: 60, p_success: success });
   }
 };
 const refresh = async (admin: ReturnType<typeof createClient>, selected: Mapping[]) => {
@@ -192,7 +192,7 @@ Deno.serve(async request => {
     if (!scheduled && body.action !== "sync_selected") return json({ error: "Invalid action" }, 400);
     const items = selected ? [bySymbol.get(selected)].filter((item): item is Mapping => Boolean(item)) : mappings;
     if (!items.length) return json({ error: "Unsupported Twelve Data crypto symbol" }, 400);
-    const interval = selected ? 60 : 240, cacheKey = selected ? `selected:${selected}` : "catalog";
+    const interval = 60, cacheKey = selected ? `selected:${selected}` : "catalog";
     const { data: claimed, error: claimError } = await admin.rpc("claim_crypto_quote_refresh", {
       p_cache_key: cacheKey, p_interval_seconds: interval, p_force: Boolean(selected) && body.force === true,
     });

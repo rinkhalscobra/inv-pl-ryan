@@ -41,7 +41,7 @@ Deno.serve(async (request: Request) => {
       .select("id, is_admin")
       .eq("id", actorId)
       .single();
-    if (actorProfileError || actorProfile?.is_admin !== true) return json({ error: "Administrator access required" }, 403);
+    if (actorProfileError || !actorProfile) return json({ error: "CRM account required" }, 403);
 
     const body = await request.json().catch(() => ({})) as {
       action?: string;
@@ -61,7 +61,22 @@ Deno.serve(async (request: Request) => {
       reason?: string;
       company_id?: string | null;
     };
-    const requestedCompanyId = body.company_id || null;
+    const clientAction = body.action === "set_password" || body.action === "delete_user";
+    if (actorProfile.is_admin !== true && !clientAction) return json({ error: "Administrator access required" }, 403);
+    let requestedCompanyId = body.company_id || null;
+    if (clientAction) {
+      const targetId = body.target_user_id?.trim() || "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)) {
+        return json({ error: "A valid target user is required" }, 400);
+      }
+      const { data: canManage, error: accessError } = await admin.rpc("crm_service_can_manage_account", {
+        p_actor_id: actorId, p_target_user_id: targetId, p_ip: clientIp,
+      });
+      if (accessError || canManage !== true) return json({ error: "Client is outside your CRM access" }, 403);
+      const { data: target } = await admin.from("users").select("company_id").eq("id", targetId).maybeSingle();
+      if (!target?.company_id) return json({ error: "Client account is unavailable" }, 404);
+      requestedCompanyId = target.company_id;
+    }
     const { data: actorContext, error: contextError } = await admin.rpc("crm_service_actor_context", {
       p_actor_id: actorId,
       p_ip: clientIp,
@@ -297,6 +312,7 @@ Deno.serve(async (request: Request) => {
       const { error: auditError } = await admin.from("admin_action_logs").insert({
         admin_user_id: actorId,
         target_user_id: targetUserId,
+        company_id: companyId,
         action: "auth_password_reset",
         before_data: { email: targetProfile.email, user_id: targetUserId },
         after_data: { password_changed: true },
@@ -342,6 +358,7 @@ Deno.serve(async (request: Request) => {
       const { error: auditError } = await admin.from("admin_action_logs").insert({
         admin_user_id: actorId,
         target_user_id: null,
+        company_id: companyId,
         action: "auth_user_deleted",
         before_data: targetProfile,
         after_data: { deleted_user_id: targetUserId, database_cleanup: "cascade" },

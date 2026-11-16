@@ -88,17 +88,13 @@ export function useChartHistory(selectedPair: string, market: 'cfd' | 'crypto', 
     const historyUpdatedEvent = market === 'crypto' ? 'twelve-crypto-history-updated' : 'twelve-cfd-history-updated';
     const refresh = () => { if (!document.hidden && navigator.onLine) void load(); };
     window.addEventListener(historyUpdatedEvent, onHistoryUpdated);
-    window.addEventListener('focus', refresh);
     window.addEventListener('online', refresh);
-    document.addEventListener('visibilitychange', refresh);
     const timer = window.setInterval(refresh, 60_000);
     return () => {
       controller.abort();
       window.clearInterval(timer);
       window.removeEventListener(historyUpdatedEvent, onHistoryUpdated);
-      window.removeEventListener('focus', refresh);
       window.removeEventListener('online', refresh);
-      document.removeEventListener('visibilitychange', refresh);
     };
   }, [selectedPair, market, minutes]);
 

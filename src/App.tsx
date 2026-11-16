@@ -145,14 +145,10 @@ function AppContent() {
     };
     refreshSelected();
     const selectedTimer = window.setInterval(refreshSelected, 60 * 1000);
-    window.addEventListener('focus', refreshSelected);
     window.addEventListener('online', refreshSelected);
-    document.addEventListener('visibilitychange', refreshSelected);
     return () => {
       window.clearInterval(selectedTimer);
-      window.removeEventListener('focus', refreshSelected);
       window.removeEventListener('online', refreshSelected);
-      document.removeEventListener('visibilitychange', refreshSelected);
     };
   }, [refreshQuotes, selectedPair, tradingMode, user]);
 
@@ -163,14 +159,10 @@ function AppContent() {
     };
     refreshSelected();
     const timer = window.setInterval(refreshSelected, 60_000);
-    window.addEventListener('focus', refreshSelected);
     window.addEventListener('online', refreshSelected);
-    document.addEventListener('visibilitychange', refreshSelected);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener('focus', refreshSelected);
       window.removeEventListener('online', refreshSelected);
-      document.removeEventListener('visibilitychange', refreshSelected);
     };
   }, [refreshCryptoQuote, selectedPair, tradingMode, user]);
 
@@ -361,14 +353,10 @@ const handleUpdatePassword = async (newPassword: string) => {
     const catchUp = () => {
       if (!document.hidden) refreshAccount();
     };
-    window.addEventListener('focus', catchUp);
     window.addEventListener('online', catchUp);
-    document.addEventListener('visibilitychange', catchUp);
     return () => {
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-      window.removeEventListener('focus', catchUp);
       window.removeEventListener('online', catchUp);
-      document.removeEventListener('visibilitychange', catchUp);
       void supabase.removeChannel(channel);
     };
   }, [fetchActivePositions, fetchOpenOrders, user]);

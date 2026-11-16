@@ -35,14 +35,20 @@ export const useAuth = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       setSession(initialSession);
-      setUser(initialSession?.user ?? null);
+      setUser(current => current?.id === initialSession?.user.id ? current : initialSession?.user ?? null);
       syncClientPresence(initialSession?.user.id ?? null, initialSession?.access_token);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
-      setUser(nextSession?.user ?? null);
+      setUser(current => {
+        const nextUser = nextSession?.user ?? null;
+        // Supabase can re-emit SIGNED_IN when the browser regains focus. A new
+        // User object for the same account must not restart every data hook.
+        const backgroundSession = event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION';
+        return backgroundSession && current?.id === nextUser?.id ? current : nextUser;
+      });
       syncClientPresence(nextSession?.user.id ?? null, nextSession?.access_token);
       setLoading(false);
     });

@@ -47,11 +47,9 @@ export default function ManualDepositRequest({ userId, method, onSubmitted, defa
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` }, () => void refresh())
       .subscribe();
     const timer = window.setInterval(() => void refresh(), 15_000);
-    window.addEventListener('focus', refresh);
     return () => {
       active = false;
       window.clearInterval(timer);
-      window.removeEventListener('focus', refresh);
       void supabase.removeChannel(channel);
     };
   }, [userId, method]);

@@ -466,17 +466,13 @@ export const useDatabase = () => {
       if (document.hidden) return;
       void Promise.all([fetchBalances(), fetchTransactions(), fetchUserStakes(), fetchRobotState(), fetchUserProfile()]);
     };
-    window.addEventListener('focus', catchUp);
     window.addEventListener('online', catchUp);
-    document.addEventListener('visibilitychange', catchUp);
     const roleRefresh = window.setInterval(() => {
       if (!document.hidden) void fetchUserProfile();
     }, 30000);
 
     return () => {
-      window.removeEventListener('focus', catchUp);
       window.removeEventListener('online', catchUp);
-      document.removeEventListener('visibilitychange', catchUp);
       window.clearInterval(roleRefresh);
       void supabase.removeChannel(channel);
     };

@@ -136,14 +136,10 @@ export const useWalletBreakdown = (
     const catchUp = () => {
       if (!document.hidden) queueRefresh();
     };
-    window.addEventListener('focus', catchUp);
-    document.addEventListener('visibilitychange', catchUp);
     window.addEventListener('online', catchUp);
 
     return () => {
       if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current);
-      window.removeEventListener('focus', catchUp);
-      document.removeEventListener('visibilitychange', catchUp);
       window.removeEventListener('online', catchUp);
       void supabase.removeChannel(channel);
     };

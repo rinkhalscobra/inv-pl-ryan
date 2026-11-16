@@ -20,8 +20,10 @@ selected market's provider candle cache and the browser's history poll refresh
 every minute. After a selected CFD refresh completes, the browser also reloads
 history so the chart includes the newly stored OHLC bars. Updates received
 during an existing history request trigger another read when that request
-finishes. Background tabs pause
-polling and catch up when they become active again, without resetting chart zoom.
+finishes. Background tabs pause polling and resume on the existing timer
+schedule. Switching browser tabs or returning to the website does not trigger
+an extra refresh of charts, quotes, account data or client forms. Login token
+renewals keep the same account identity so they do not reinitialise the workspace.
 
 Both CFD and Futures initialise their chart view again after history finishes
 loading. A quote-only or sparse cache uses at least 60 bar slots so one candle
@@ -49,6 +51,9 @@ Run `npm run test:market-refresh` to check the one-minute schedules, concurrent
 refresh protection, cooldowns and failure retries. `npm run test:chart` checks
 OHLC aggregation, live quote handling, delayed history, sparse-cache backfills
 and preservation of manual chart views.
+`npm run test:session` checks that returning-tab session events preserve the
+workspace identity while refreshed tokens, profile edits, account changes and
+sign-out still take effect.
 
 For diagnostics, compare `timestamp` and `updated_at` in `cfd_market_quotes`,
 then inspect `cfd_quote_sync_runs` and `cfd_quote_refresh_state`. A recent

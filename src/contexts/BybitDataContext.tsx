@@ -104,21 +104,12 @@ export const BybitDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => { void loadQuotes(); }, [loadQuotes]);
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        window.setTimeout(() => void loadQuotes(), 0);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [loadQuotes]);
-  useEffect(() => {
     const timer = window.setInterval(() => {
       if (!document.hidden && navigator.onLine) void loadQuotes();
     }, 30_000);
-    const onFocus = () => { if (!document.hidden) void loadQuotes(); };
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('online', onFocus);
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); window.removeEventListener('online', onFocus); };
+    const handleOnline = () => { if (!document.hidden) void loadQuotes(); };
+    window.addEventListener('online', handleOnline);
+    return () => { window.clearInterval(timer); window.removeEventListener('online', handleOnline); };
   }, [loadQuotes]);
   useEffect(() => {
     const channel = supabase.channel(`twelve-crypto-quotes-${crypto.randomUUID()}`)

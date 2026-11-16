@@ -285,13 +285,9 @@ export const MarketDataProvider: React.FC<MarketDataProviderProps> = ({ children
     };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    window.addEventListener('focus', catchUp);
-    document.addEventListener('visibilitychange', catchUp);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('focus', catchUp);
-      document.removeEventListener('visibilitychange', catchUp);
     };
   }, [loadDatabaseFallback]);
 

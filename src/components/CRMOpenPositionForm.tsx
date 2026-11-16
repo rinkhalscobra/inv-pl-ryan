@@ -66,8 +66,7 @@ export default function CRMOpenPositionForm({ clientId, clientName, market, audi
     void load();
     const refresh = () => { if (!document.hidden && !busy.current) void load(true); };
     const timer = window.setInterval(refresh, 20_000);
-    window.addEventListener('focus', refresh);
-    return () => { mounted.current = false; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+    return () => { mounted.current = false; window.clearInterval(timer); };
   }, [load]);
 
   useEffect(() => { setLeverage(String(Math.max(minimum, Math.min(10, maximum)))); }, [symbol, minimum, maximum]);

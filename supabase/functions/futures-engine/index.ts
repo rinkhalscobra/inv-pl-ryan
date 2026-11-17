@@ -47,6 +47,10 @@ Deno.serve(async (request: Request) => {
       const limitPrice = body.limitPrice == null ? null : finitePositive(body.limitPrice);
       const stopLoss = body.stopLoss == null ? null : finitePositive(body.stopLoss);
       const takeProfit = body.takeProfit == null ? null : finitePositive(body.takeProfit);
+      const requestKey = body.requestKey == null ? null : String(body.requestKey);
+      if (requestKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey)) {
+        return json({ error: "Invalid order request reference" }, 400);
+      }
       if (!symbol || !amount || !Number.isInteger(leverage) || !["long", "short"].includes(side)) {
         return json({ error: "Invalid order parameters" }, 400);
       }
@@ -60,7 +64,7 @@ Deno.serve(async (request: Request) => {
         || Date.now() - quoteTime > (symbol.endsWith("USDT") ? CRYPTO_QUOTE_MAX_AGE_MS : CFD_QUOTE_MAX_AGE_MS)) throw new Error("Market quote is stale");
       const marketPrice = finitePositive(quote.price);
 
-      const { data, error } = await admin.rpc("place_derivative_order", {
+      const { data, error } = await admin.rpc("place_client_derivative_order", {
         p_user_id: authData.user.id,
         p_symbol: symbol,
         p_side: side,
@@ -72,6 +76,7 @@ Deno.serve(async (request: Request) => {
         p_limit_price: orderType === "limit" ? limitPrice : null,
         p_stop_loss: stopLoss,
         p_take_profit: takeProfit,
+        p_request_key: requestKey,
       });
       if (error) throw error;
       return json({ success: true, result: data, executionPrice: marketPrice });
@@ -104,6 +109,7 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Unsupported action" }, 400);
   } catch (error) {
     console.error("Futures engine request failed", error);
-    return json({ error: error instanceof Error ? error.message : "Trading request failed" }, 400);
+    const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Trading request failed";
+    return json({ error: message }, 400);
   }
 });

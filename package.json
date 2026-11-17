@@ -11,6 +11,7 @@
     "test:chart": "node --experimental-strip-types --test tests/chartCandles.test.ts tests/chartViewport.test.ts",
     "test:market-refresh": "node --test tests/marketRefresh.test.mjs",
     "test:crm-trading": "node --experimental-strip-types --test tests/crmTrading.test.mjs",
+    "test:accounting": "node --experimental-strip-types --test tests/derivativeAccounting.test.mjs tests/futuresEngine.test.mjs",
     "test:client-access": "node --test tests/scopedClientAccess.test.mjs",
     "test:session": "node --test tests/authSession.test.mjs",
     "test:kyc": "node --test tests/kycStatus.test.mjs",

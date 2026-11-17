@@ -59,3 +59,11 @@ database, including ownership, lot conversion, margin, risk prices, idempotency,
 permissions and audit rollback. The hosted regression in
 `supabase/tests/crm_client_position_opening.sql` also passed. Its sample accounts,
 companies, quotes, positions and audit entries are always rolled back.
+
+The 17 November [derivatives audit](derivatives-audit.md) also covers CRM-created
+positions. Opening immediately records the same net P&L shown to the client;
+it includes both spread legs. The corrected maintenance liquidation rule applies
+only to new positions, as explicitly requested. Existing positions retain their
+legacy threshold. The accounting migration and updated `futures-engine` function
+are deployed to Atlas; the matching Dashboard/Futures/CFD frontend changes require
+publication from this checkout.

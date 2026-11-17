@@ -6,9 +6,10 @@ import { getCfdLotSize as getLotSize } from '../lib/cfdLots';
 import { CFD_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { getInstrumentTypeFromSymbol } from '../constants/tradingTiers';
-import { calculateSpreadCostFromNotional, getSpreadForSymbol } from '../constants/spreadConfig';
+import { useInstrumentSpread } from '../hooks/useInstrumentSpread';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { configuredSpreadCost, positionSizeForMargin } from '../lib/positionValuation';
 import { calculateDerivativeNotionalUsd, calculateDerivativePnlUsd } from '../utils/derivativeCalculations';
 
 interface CFDTradingFormsProps {
@@ -62,6 +63,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   onCFDTrade
 }) => {
   const { t } = useTranslation();
+  const spreadConfig = useInstrumentSpread(selectedPair);
   const { code, convertUsdToDisplay, convertDisplayToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getMarketDataBySymbol, getPriceBySymbol, getSnapshotPriceBySymbol, refreshQuotes, quotesReady, error: quoteRefreshError } = useMarketData();
   const [marginType, setMarginType] = useState<'isolated' | 'cross'>('isolated');
@@ -177,13 +179,8 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     const targetMargin = balanceToUse * (percentage / 100);
     const notionalPerLot = calculateDerivativeNotionalUsd(selectedPair, lotSize, priceToUse, getPriceBySymbol);
     if (notionalPerLot <= 0) return '';
-    const amount = (targetMargin * leverage) / notionalPerLot;
-
-    // Ensure amount meets minimum trade size
-    const minTradeSize = getMinTradeSize();
-    const adjustedAmount = Math.max(amount, minTradeSize);
-
-    return adjustedAmount.toFixed(5);
+    const amount = positionSizeForMargin(targetMargin, leverage, notionalPerLot, 5);
+    return amount >= getMinTradeSize() ? amount.toFixed(5) : '';
   }, [availableBalance, usdtBalance, leverage, orderEntryPrice, selectedPair, getPriceBySymbol]);
 
   // Calculate amount from percentage for short positions
@@ -197,13 +194,8 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     const targetMargin = balanceToUse * (percentage / 100);
     const notionalPerLot = calculateDerivativeNotionalUsd(selectedPair, lotSize, priceToUse, getPriceBySymbol);
     if (notionalPerLot <= 0) return '';
-    const amount = (targetMargin * leverage) / notionalPerLot;
-
-    // Ensure amount meets minimum trade size
-    const minTradeSize = getMinTradeSize();
-    const adjustedAmount = Math.max(amount, minTradeSize);
-
-    return adjustedAmount.toFixed(5);
+    const amount = positionSizeForMargin(targetMargin, leverage, notionalPerLot, 5);
+    return amount >= getMinTradeSize() ? amount.toFixed(5) : '';
   }, [availableBalance, usdtBalance, leverage, orderEntryPrice, selectedPair, getPriceBySymbol]);
 
   // Stop Loss / Take Profit states
@@ -390,11 +382,11 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   const getSpreadCost = (amount: number = 1) => {
     const lotSize = getLotSize(selectedPair);
     const notionalUsd = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, orderEntryPrice, getPriceBySymbol);
-    return calculateSpreadCostFromNotional(selectedPair, notionalUsd);
+    return spreadConfig ? configuredSpreadCost(spreadConfig, notionalUsd) : 0;
   };
 
   const getSpreadDisplay = (amount: number = 1) => {
-    const spreadConfig = getSpreadForSymbol(selectedPair);
+    if (!spreadConfig) return null;
     const spreadCost = getSpreadCost(amount);
     return {
       cost: spreadCost.toFixed(8),
@@ -534,8 +526,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     const lotSize = getLotSize(selectedPair);
     const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
-    const spreadCost = amount > 0 ? getSpreadCost(amount) : 0;
-    return requiredMargin + spreadCost;
+    return requiredMargin;
   };
 
   const calculateShortCost = () => {
@@ -544,8 +535,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
     const lotSize = getLotSize(selectedPair);
     const notionalValue = calculateDerivativeNotionalUsd(selectedPair, amount * lotSize, priceToUse, getPriceBySymbol);
     const requiredMargin = notionalValue / leverage;
-    const spreadCost = amount > 0 ? getSpreadCost(amount) : 0;
-    return requiredMargin + spreadCost;
+    return requiredMargin;
   };
 
 

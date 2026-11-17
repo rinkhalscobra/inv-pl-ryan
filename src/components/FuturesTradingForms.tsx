@@ -4,9 +4,10 @@ import { AlertTriangle, CheckCircle, Plus, CreditCard as Edit2, X } from 'lucide
 import { useTranslation } from 'react-i18next';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { usePrevious } from '../hooks/usePrevious';
-import { formatSpreadDisplay } from '../constants/spreadConfig';
+import { useInstrumentSpread } from '../hooks/useInstrumentSpread';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { configuredSpreadCost, positionSizeForMargin } from '../lib/positionValuation';
 import { CRYPTO_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 
 interface FuturesTradingFormsProps {
@@ -48,6 +49,7 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   onFuturesTrade
 }) => {
   const { t } = useTranslation();
+  const spreadConfig = useInstrumentSpread(selectedPair);
   const { code, convertUsdToDisplay, convertDisplayToUsd, formatFiat, formatFiatPrice } = useFiatCurrency();
   const { getCryptoDataBySymbol, getPriceDirection, quotesReady } = useBybitData();
   const [quoteClock, setQuoteClock] = useState(Date.now());
@@ -141,9 +143,9 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     const entryPrice = orderType === 'limit' ? convertDisplayToUsd(Number(limitPrice)) : livePairPrice;
     if (!(entryPrice > 0)) return '';
     const targetMargin = (availableBalance ?? usdtBalance) * (percentage / 100);
-    const amount = (targetMargin * leverage) / entryPrice;
+    const amount = positionSizeForMargin(targetMargin, leverage, entryPrice);
     
-    return amount.toFixed(6);
+    return amount.toFixed(8);
   }, [availableBalance, convertDisplayToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
 
   // Calculate amount from percentage for short positions
@@ -155,9 +157,9 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
     const entryPrice = orderType === 'limit' ? convertDisplayToUsd(Number(limitPrice)) : livePairPrice;
     if (!(entryPrice > 0)) return '';
     const targetMargin = (availableBalance ?? usdtBalance) * (percentage / 100);
-    const amount = (targetMargin * leverage) / entryPrice;
+    const amount = positionSizeForMargin(targetMargin, leverage, entryPrice);
     
-    return amount.toFixed(6);
+    return amount.toFixed(8);
   }, [availableBalance, convertDisplayToUsd, leverage, limitPrice, livePairPrice, orderType, usdtBalance]);
 
   // Stop Loss / Take Profit states
@@ -371,8 +373,12 @@ const FuturesTradingForms: React.FC<FuturesTradingFormsProps> = ({
   };
 
 
-  const longSpreadInfo = longAmount ? formatSpreadDisplay(selectedPair, livePairPrice, parseFloat(longAmount), 1) : null;
-  const shortSpreadInfo = shortAmount ? formatSpreadDisplay(selectedPair, livePairPrice, parseFloat(shortAmount), 1) : null;
+  const spreadAtSize = (amount: number) => spreadConfig ? {
+    cost: configuredSpreadCost(spreadConfig, amount * (orderType === 'limit' ? convertDisplayToUsd(Number(limitPrice)) : livePairPrice)).toFixed(8),
+    percentage: `${(spreadConfig.spreadPercentage * 100).toFixed(4)}%`,
+  } : null;
+  const longSpreadInfo = longAmount ? spreadAtSize(parseFloat(longAmount)) : null;
+  const shortSpreadInfo = shortAmount ? spreadAtSize(parseFloat(shortAmount)) : null;
 
   if (isFuturesSurface) {
     const isLong = activeSide === 'long';

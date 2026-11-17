@@ -89,7 +89,7 @@ BEGIN
     PERFORM public.crm_open_client_position(v_client,'futures','CRMTESTUSDT','long',0.01,10,'isolated',gen_random_uuid(),'Client denial');
     RAISE EXCEPTION 'Client order through CRM unexpectedly succeeded';
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM NOT LIKE '%Administrator access required%' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%CRM staff access required%' THEN RAISE; END IF;
   END;
   IF has_function_privilege('authenticated','public.place_derivative_order(uuid,text,text,numeric,integer,text,text,numeric,numeric,numeric,numeric)','EXECUTE')
     OR has_function_privilege('anon','public.crm_open_client_position(uuid,text,text,text,numeric,integer,text,uuid,text,numeric,numeric)','EXECUTE') THEN

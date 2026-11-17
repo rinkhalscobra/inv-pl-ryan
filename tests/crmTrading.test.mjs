@@ -50,8 +50,8 @@ before(async () => {
     INSERT INTO public.crm_staff_roles VALUES('${staff}','agent');
     CREATE TABLE crm_private.admin_ip_allowlist(address inet,access_scope text,company_id uuid);
     INSERT INTO crm_private.admin_ip_allowlist VALUES('192.0.2.1','company','${company}'),('192.0.2.2','platform',NULL);
-    CREATE TABLE public.balances(user_id uuid PRIMARY KEY,usdt_balance numeric NOT NULL);
-    INSERT INTO public.balances VALUES('${client}',2000),('${otherClient}',5000);
+    CREATE TABLE public.balances(user_id uuid PRIMARY KEY,usdt_balance numeric NOT NULL,updated_at timestamptz DEFAULT now());
+    INSERT INTO public.balances(user_id,usdt_balance) VALUES('${client}',2000),('${otherClient}',5000);
     CREATE TABLE public.market_data(symbol text,price numeric,timestamp timestamptz,updated_at timestamptz);
     INSERT INTO public.market_data VALUES('GBP/USD',1.25,now(),now());
     CREATE TABLE public.crypto_market_quotes(symbol text PRIMARY KEY,price numeric,timestamp timestamptz);
@@ -64,8 +64,10 @@ before(async () => {
     CREATE TABLE public.futures_positions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid REFERENCES public.users(id),
       symbol text,side text,entry_price numeric,current_price numeric,amount numeric,leverage integer,margin_type text,
       liquidation_price numeric,unrealized_pnl numeric,margin numeric,roi numeric,is_open boolean,position_size numeric,
-      tp_price numeric,sl_price numeric,spread_cost numeric,spread_percentage numeric,maintenance_margin_rate numeric,swap_accrued_at timestamptz);
+      tp_price numeric,sl_price numeric,spread_cost numeric,spread_percentage numeric,maintenance_margin_rate numeric,swap_accrued_at timestamptz,
+      accumulated_swap_cost numeric DEFAULT 0,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
     CREATE TABLE public.futures_orders(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,reserved_margin numeric,status text);
+    CREATE TABLE public.futures_position_history(id uuid PRIMARY KEY,user_id uuid,symbol text,side text,pnl numeric);
     CREATE TABLE public.admin_action_logs(admin_user_id uuid,target_user_id uuid,company_id uuid,action text,after_data jsonb,reason text);
   `);
   const tenancy = await migration('20260925120000_add_crm_company_tenancy');
@@ -73,10 +75,15 @@ before(async () => {
   const scopes = await migration('20261014140000_allow_company_admins_to_manage_kyc');
   for (const name of ['public.require_admin', 'crm_private.admin_can_manage_user', 'crm_private.assert_actor_user_access']) await db.exec(sqlFunction(scopes, name));
   const pricing = await migration('20260911163000_fix_realtime_derivatives_accounting');
-  for (const name of ['public.derivative_usd_per_currency', 'public.calculate_derivative_notional_usd', 'public.calculate_derivative_spread_cost_usd']) await db.exec(sqlFunction(pricing, name));
+  for (const name of ['public.derivative_usd_per_currency', 'public.derivative_swap_rate', 'public.calculate_derivative_pnl_usd', 'public.calculate_derivative_notional_usd', 'public.calculate_derivative_spread_cost_usd']) await db.exec(sqlFunction(pricing, name));
   const engine = await migration('20260917120000_rebuild_futures_engine');
   for (const name of ['public.futures_liquidation_price', 'public.place_derivative_order']) await db.exec(sqlFunction(engine, name));
+  for (const name of ['public.update_futures_risk', 'public.process_futures_engine']) await db.exec(sqlFunction(engine, name));
+  const closeStart = engine.indexOf('CREATE FUNCTION public.close_futures_position(');
+  await db.exec(engine.slice(closeStart, engine.indexOf('$$;', closeStart) + 3));
   await db.exec(await migration('20261116230000_add_crm_client_position_opening'));
+  await db.exec(sqlFunction(await migration('20261028160000_edit_crm_module_statuses'), 'public.admin_update_module_record'));
+  await db.exec(await migration('20261117160000_unify_derivative_position_valuation'));
 });
 beforeEach(async () => { await db.exec('BEGIN'); await login(); });
 afterEach(async () => { await db.exec('ROLLBACK'); });

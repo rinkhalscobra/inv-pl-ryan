@@ -58,22 +58,7 @@ import CRMNetworkGate from './components/CRMNetworkGate';
 
 export type TradingMode = 'home' | 'swap' | 'futures' | 'cfd' | 'robot' | 'wallet' | 'profile' | 'staking' | 'wheel' | 'payment_sandbox';
 
-export interface FuturesPosition {
-  id: string;
-  symbol: string;
-  side: 'long' | 'short';
-  amount: number;
-  entryPrice: number;
-  currentPrice: number;
-  leverage: number;
-  marginType: 'isolated' | 'cross';
-  liquidationPrice: number;
-  unrealizedPnl: number;
-  margin: number;
-  roi: number;
-  created_at: string;
-  user_email?: string;
-}
+export type { FuturesPosition } from './hooks/useFuturesTrading';
 
 export interface Transaction {
   id: string;
@@ -228,7 +213,9 @@ const handleUpdatePassword = async (newPassword: string) => {
     balances.usd_balance,
     balances.btc_balance,
     currentBtcPrice,
-    getCurrentPrice
+    getCurrentPrice,
+    activePositions,
+    openOrders
   );
   const {
     unrealizedPnl,
@@ -245,35 +232,7 @@ const handleUpdatePassword = async (newPassword: string) => {
 
   // Get current price for selected pair
   // Calculate total portfolio value
- const totalPortfolioValue = useMemo(() => {
-  let total = balances.usdt_balance + balances.usd_balance;
-
-  // Use the same BTC price as displayed in wallet (real-time price)
-  const btcUsdtPrice = getCurrentPrice('BTCUSDT');
-
-  total += balances.btc_balance * btcUsdtPrice; // Add BTC value
-
-  // Add value of other user assets
-  const allAssets = assets || [];
-  if (allAssets.length > 0) {
-    allAssets.forEach(asset => {
-    // Skip USDT and BTC as they are handled above
-    if (asset.asset_symbol !== 'USDT' && asset.asset_symbol !== 'BTC') {
-      // Construct the USDT pair symbol (e.g., 'ETHUSDT')
-      const assetUsdtSymbol = `${asset.asset_symbol}USDT`;
-
-      // Use getCurrentPrice for consistency with real-time data
-      const assetPrice = getCurrentPrice(assetUsdtSymbol);
-
-      total += asset.balance * assetPrice;
-    }
-    });
-  }
-
-  total += robotState?.allocated_balance || 0;
-
-  return total;
-}, [balances, assets, getCurrentPrice, robotState?.allocated_balance]);
+  const totalPortfolioValue = Math.max(0, walletBreakdown.totalBalance + unrealizedPnl);
 
   // Calculate user's CFD tier based on portfolio value
   const userCfdTier = useMemo(() => {
@@ -346,6 +305,12 @@ const handleUpdatePassword = async (newPassword: string) => {
       }, refreshAccount)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'futures_orders', filter: `user_id=eq.${user.id}`,
+      }, refreshAccount)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'crypto_market_quotes',
+      }, refreshAccount)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'cfd_market_quotes',
       }, refreshAccount)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') refreshAccount();

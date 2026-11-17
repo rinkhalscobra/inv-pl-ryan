@@ -33,11 +33,16 @@ through subsequent updates and Candles/Line changes. Switching the market,
 symbol or timeframe starts a fresh view with automatic price scaling.
 
 The selected CFD quote can be used for orders while its source timestamp is
-less than three minutes old. The order form, Edge Function, and database
-processing guard use the same limit. Older prices remain visible for reference
-and cannot execute new orders. The three-minute window accounts for Twelve
+no more than six minutes old. The order form, Edge Function, and database
+processing and settlement guards use the same limit. Older prices remain visible for reference
+and cannot execute new orders or closes. The six-minute window accounts for Twelve
 Data's minute-bar timestamp and normal request scheduling; it does not turn a
 stale provider response into a current quote.
+
+The 17 November accounting audit unified position valuation and closing on the
+same provider quote cache. Position P&L includes opening spread, estimated
+closing spread and accrued financing. See [the audit record](derivatives-audit.md)
+for formulas, preserved legacy liquidation rules and validation results.
 
 The one-minute server cadence was deployed to Atlas Supabase project
 `vvomlpkrfehkgkxnglrn` on 16 November 2026, using migration

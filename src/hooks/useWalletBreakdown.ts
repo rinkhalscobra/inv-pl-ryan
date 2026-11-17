@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './useAuth';
+import { positionNetPnl, type ValuedPosition } from '../lib/positionValuation';
 
 export interface WalletBreakdown {
   totalBalance: number;
@@ -51,7 +52,9 @@ export const useWalletBreakdown = (
   usdBalanceProp?: number,
   btcBalanceProp?: number,
   btcPriceProp?: number,
-  getPriceFn?: (symbol: string) => number
+  getPriceFn?: (symbol: string) => number,
+  positionsOverride?: readonly ValuedPosition[],
+  ordersOverride?: readonly { reservedMargin?: number; reserved_margin?: number }[]
 ) => {
   const { user } = useAuth();
   const [sources, setSources] = useState<WalletSources>(emptySources);
@@ -71,7 +74,7 @@ export const useWalletBreakdown = (
       const [balancesResult, assetsResult, positionsResult, ordersResult, robotResult, stakesResult] = await Promise.all([
         supabase.from('balances').select('usdt_balance, usd_balance, btc_balance').eq('user_id', user.id).single(),
         supabase.from('user_assets').select('asset_symbol, balance').eq('user_id', user.id),
-        supabase.from('futures_positions').select('margin, unrealized_pnl').eq('user_id', user.id).eq('is_open', true),
+        supabase.rpc('get_my_derivative_positions'),
         supabase.from('futures_orders').select('reserved_margin').eq('user_id', user.id).eq('status', 'open'),
         supabase.from('robot_states').select('allocated_balance').eq('user_id', user.id).maybeSingle(),
         supabase.from('user_stakes').select('asset_symbol, staked_amount').eq('user_id', user.id).eq('status', 'active'),
@@ -89,7 +92,7 @@ export const useWalletBreakdown = (
           asset_symbol: String(asset.asset_symbol).toUpperCase(),
           balance: asNumber(asset.balance),
         })),
-        positions: (positionsResult.data || []).map(position => ({
+        positions: (Array.isArray(positionsResult.data) ? positionsResult.data : []).map((position: Record<string, unknown>) => ({
           margin: asNumber(position.margin),
           unrealized_pnl: asNumber(position.unrealized_pnl),
         })),
@@ -165,10 +168,12 @@ export const useWalletBreakdown = (
       liquidBalance += asset.balance * price;
     }
 
-    const futuresUsedMargin = sources.positions.reduce((sum, position) => sum + position.margin, 0);
-    const futuresOrdersReserved = sources.orders.reduce((sum, order) => sum + order.reserved_margin, 0);
+    const positions = positionsOverride ?? sources.positions;
+    const futuresUsedMargin = positions.reduce((sum, position) => sum + Number(position.margin || 0), 0);
+    const orders: readonly { reservedMargin?: number; reserved_margin?: number }[] = ordersOverride ?? sources.orders;
+    const futuresOrdersReserved = orders.reduce((sum, order) => sum + Number(order.reservedMargin ?? order.reserved_margin ?? 0), 0);
     const usedMargin = futuresUsedMargin + futuresOrdersReserved;
-    const unrealizedPnl = sources.positions.reduce((sum, position) => sum + position.unrealized_pnl, 0);
+    const unrealizedPnl = positions.reduce((sum, position) => sum + positionNetPnl(position), 0);
 
     let stakedAmount = 0;
     for (const stake of sources.stakes) {
@@ -204,7 +209,7 @@ export const useWalletBreakdown = (
         ? `Live price unavailable for: ${Array.from(missingPrices).join(', ')}`
         : null),
     };
-  }, [btcBalanceProp, btcPriceProp, error, getPriceFn, loading, sources, usdtBalanceProp, usdBalanceProp]);
+  }, [btcBalanceProp, btcPriceProp, error, getPriceFn, loading, ordersOverride, positionsOverride, sources, usdtBalanceProp, usdBalanceProp]);
 
   return {
     ...breakdown,

@@ -1,6 +1,6 @@
-// Stored CFD quotes refresh every four minutes. Allow one refresh interval plus
-// source-bar and network drift before disabling trading.
+// Both markets refresh each minute. The same bounded source-time window is
+// enforced by client forms, CRM, execution, valuation and settlement.
 export const CFD_QUOTE_MAX_AGE_MS = 6 * 60_000;
 
-// Crypto quotes use the same four-minute stored-price cycle.
+// Keep the crypto execution window aligned with the shared trading engine.
 export const CRYPTO_QUOTE_MAX_AGE_MS = 6 * 60_000;

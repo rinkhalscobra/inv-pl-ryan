@@ -8,15 +8,10 @@ import { CFD_INSTRUMENTS, isCryptoDerivativeSymbol } from '../constants/tradingP
 import { TradingMode } from '../App';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
-import { calculateDailySwapCost } from '../constants/swapConfig';
-import { calculateSpreadCostFromNotional } from '../constants/spreadConfig';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
-import {
-  calculateDerivativeNotionalUsd,
-  calculateDerivativePnlUsd,
-  calculateLiveSwapCost
-} from '../utils/derivativeCalculations';
+import { positionNetPnl, sumPositionPnl } from '../lib/positionValuation';
+import { getCfdLotSize } from '../lib/cfdLots';
 
 interface FuturesMyOrdersProps {
   currentBtcPrice: number;
@@ -174,13 +169,6 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
 
   const [flashingPrices, setFlashingPrices] = useState<Map<string, 'up' | 'down'>>(new Map());
   const previousPricesRef = useRef<Map<string, number>>(new Map());
-  const [calculationTime, setCalculationTime] = useState(() => Date.now());
-  const triggeredPositionsRef = useRef(new Set<string>());
-
-  useEffect(() => {
-    const clock = window.setInterval(() => setCalculationTime(Date.now()), 1000);
-    return () => window.clearInterval(clock);
-  }, []);
 
   const [activeTab, setActiveTab] = useState('positions');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -256,15 +244,7 @@ const FuturesMyOrders: React.FC<FuturesMyOrdersProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  const getLotSize = (symbol: string): number => {
-    if (tradingMode === 'cfd') {
-      if (symbol.includes('XAU') || symbol.includes('XAG') || symbol.includes('WTI') || symbol.includes('BRENT')) {
-        return 100;
-      }
-      return 100000;
-    }
-    return 1;
-  };
+  const getLotSize = (symbol: string): number => tradingMode === 'cfd' ? getCfdLotSize(symbol) : 1;
 
   // Helper function to determine price precision based on symbol
 const getPricePrecision = useCallback((symbol: string): number => {
@@ -356,81 +336,17 @@ const getPricePrecision = useCallback((symbol: string): number => {
     }
   }, [openOrders, tradingMode, selectedPair, getInstrumentType]);
 
-  // Calculate real-time PnL and ROI for each position
-  const positionsWithLiveData = filteredFuturesPositions.map(position => {
-    let livePrice = position.currentPrice || position.current_price || 0;
-    const symbol = position.symbol;
-    
-    // Use market data from context - getPriceBySymbol handles symbol conversion
-    const realtimePrice = getPriceBySymbol(symbol);
-    if (realtimePrice > 0) {
-      livePrice = realtimePrice;
-      
-    }
-    
-    const entryPrice = position.entryPrice || position.entry_price || 0;
-    const amount = position.amount || 0;
-    const leverage = position.leverage || 1;
-    const margin = position.margin || 0;
-    const side = position.side || 'long';
-    const liquidationPrice = position.liquidationPrice || position.liquidation_price || 0;
-    const accumulatedSwapCost = position.accumulated_swap_cost || position.accumulatedSwapCost || 0;
-    const entrySpreadCost = position.spread_cost || position.spreadCost || 0;
-
-    const positionSize = calculateDerivativeNotionalUsd(symbol, amount, livePrice || entryPrice, getPriceBySymbol);
-    const dailySwapCost = calculateDailySwapCost(symbol, positionSize, leverage);
-    const liveSwapCost = calculateLiveSwapCost(
-      dailySwapCost,
-      accumulatedSwapCost,
-      position.createdAt || position.created_at,
-      position.lastSwapChargeDate || position.last_swap_charge_date,
-      position.swapAccruedAt || position.swap_accrued_at,
-      calculationTime
-    );
-    const unrealizedPnl = calculateDerivativePnlUsd(
-      symbol,
-      side,
-      entryPrice,
-      livePrice,
-      amount,
-      getPriceBySymbol
-    );
-    const estimatedExitSpreadCost = calculateSpreadCostFromNotional(symbol, positionSize);
-    const netUnrealizedPnl = Math.max(
-      unrealizedPnl - entrySpreadCost - estimatedExitSpreadCost - liveSwapCost,
-      -margin,
-    );
-
-    // Calculate ROI based on net PnL
-    const roi = margin > 0 ? (netUnrealizedPnl / margin) * 100 : 0;
-    
-    return {
-      ...position,
-      currentPrice: livePrice,
-      entryPrice,
-      amount,
-      leverage,
-      margin,
-      side,
-      liquidationPrice,
-      unrealizedPnl: netUnrealizedPnl,
-      grossUnrealizedPnl: unrealizedPnl,
-      accumulatedSwapCost: liveSwapCost,
-      bookedSwapCost: accumulatedSwapCost,
-      entrySpreadCost,
-      estimatedExitSpreadCost,
-      dailySwapCost,
-      roi,
-      takeProfit: position.takeProfit || position.tp_price || null,
-      stopLoss: position.stopLoss || position.sl_price || null
-    };
-  });
-
-  const visibleIds = new Set(positionsWithLiveData.map(position => position.id));
-  const otherUnrealizedPnl = futuresPositions.reduce((sum, position) => (
-    visibleIds.has(position.id) ? sum : sum + Number(position.unrealizedPnl || position.unrealized_pnl || 0)
-  ), 0);
-  const totalUnrealizedPnl = positionsWithLiveData.reduce((sum, pos) => sum + (pos.unrealizedPnl || 0), otherUnrealizedPnl);
+  // The server supplies the same net valuation used by settlement and Dashboard.
+  const positionsWithLiveData = filteredFuturesPositions.map(position => ({
+    ...position,
+    unrealizedPnl: positionNetPnl(position),
+    accumulatedSwapCost: position.estimatedSwapCost ?? position.accumulatedSwapCost ?? 0,
+    bookedSwapCost: position.accumulatedSwapCost ?? 0,
+    entrySpreadCost: position.spreadCost ?? 0,
+    takeProfit: position.takeProfit ?? null,
+    stopLoss: position.stopLoss ?? null,
+  }));
+  const totalUnrealizedPnl = sumPositionPnl(futuresPositions);
   const totalMargin = futuresPositions.reduce((sum, position) => sum + Number(position.margin || 0), 0);
   const totalReservedOrderMargin = openOrders.reduce((sum, order) => (
     sum + Number(order.reservedMargin || order.reserved_margin || 0)
@@ -549,48 +465,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
     }
   }, [successMessage]);
 
-  // Monitor positions for TP/SL triggers
-  useEffect(() => {
-    // CFD fills and risk exits are processed against server quotes by the engine.
-    if (isCfdMode) return;
-    positionsWithLiveData.forEach(position => {
-      const { id, currentPrice, side, takeProfit, stopLoss } = position;
-
-      if (!currentPrice || currentPrice <= 0) return;
-
-      let shouldClose = false;
-      let reason = '';
-
-      if (takeProfit && takeProfit > 0) {
-        if (side === 'long' && currentPrice >= takeProfit) {
-          shouldClose = true;
-          reason = 'Take Profit triggered';
-        } else if (side === 'short' && currentPrice <= takeProfit) {
-          shouldClose = true;
-          reason = 'Take Profit triggered';
-        }
-      }
-
-      if (!shouldClose && stopLoss && stopLoss > 0) {
-        if (side === 'long' && currentPrice <= stopLoss) {
-          shouldClose = true;
-          reason = 'Stop Loss triggered';
-        } else if (side === 'short' && currentPrice >= stopLoss) {
-          shouldClose = true;
-          reason = 'Stop Loss triggered';
-        }
-      }
-
-      if (shouldClose && !processingPositions[id] && !triggeredPositionsRef.current.has(id)) {
-        triggeredPositionsRef.current.add(id);
-        void handleClosePosition(id, position.symbol).then((closed) => {
-          if (closed) setSuccessMessage(reason);
-          else triggeredPositionsRef.current.delete(id);
-        });
-      }
-    });
-  }, [positionsWithLiveData.map(p => `${p.id}-${p.currentPrice}`).join(','), processingPositions, isCfdMode]);
-
+  // Risk exits run on the server even when no client page is open.
   const handleClosePosition = async (positionId: string, symbol?: string): Promise<boolean> => {
     try {
       setProcessingPositions(prev => ({ ...prev, [positionId]: true }));
@@ -710,6 +585,10 @@ const getPricePrecision = useCallback((symbol: string): number => {
         </div>
       )}
 
+      {futuresPositions.some(position => position.valuationAvailable === false || position.quoteFresh === false) && (
+        <p className="px-4 py-2 text-xs text-amber-400">Some positions use the last available valuation. Waiting for fresh market data.</p>
+      )}
+
       {isTerminalSurface ? (
         <div className="shrink-0 border-b border-white/[0.07]">
           <div className="flex flex-col gap-3 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
@@ -723,12 +602,12 @@ const getPricePrecision = useCallback((symbol: string): number => {
                 <dd className="mt-1 font-mono text-sm font-medium tabular-nums text-slate-200">{formatFiat(estimatedAvailableMargin)}</dd>
               </div>
               <div>
-                <dt className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Unrealized PnL</dt>
+                <dt className="text-[10px] uppercase tracking-[0.12em] text-slate-600" title="Estimated net P&L after opening spread, estimated closing spread and accrued financing.">Unrealized PnL</dt>
                 <dd className={`mt-1 font-mono text-sm font-medium tabular-nums ${totalUnrealizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatFiat(totalUnrealizedPnl)}</dd>
               </div>
               <div>
                 <dt className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Used margin</dt>
-                <dd className="mt-1 font-mono text-sm font-medium tabular-nums text-slate-200">{formatFiat(totalMargin)}</dd>
+                <dd className="mt-1 font-mono text-sm font-medium tabular-nums text-slate-200">{formatFiat(totalMargin + totalReservedOrderMargin)}</dd>
               </div>
             </dl>
 
@@ -781,7 +660,7 @@ const getPricePrecision = useCallback((symbol: string): number => {
             <div className={`rounded-xl border border-slate-700/40 p-4 md:p-5 ${cardSurfaceClass}`}>
               <div className="mb-2 text-xs text-slate-400">{t('futures.overallBalance')}</div>
               <div className="break-words font-mono text-lg leading-tight text-white md:text-2xl">
-                {formatFiat(totalMargin)}
+                {formatFiat(totalMargin + totalReservedOrderMargin)}
               </div>
             </div>
 

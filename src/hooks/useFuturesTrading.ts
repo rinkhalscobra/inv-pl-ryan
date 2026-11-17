@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from './useAuth';
 
@@ -36,6 +36,13 @@ export interface FuturesPosition {
   spreadPercentage: number;
   maintenanceMarginRate: number;
   swapAccruedAt?: string | null;
+  grossUnrealizedPnl: number;
+  estimatedExitSpreadCost: number;
+  estimatedSwapCost: number;
+  dailySwapCost: number;
+  valuationAvailable: boolean;
+  quoteFresh: boolean;
+  quoteTimestamp?: string | null;
 }
 
 export interface FuturesOrder {
@@ -79,9 +86,14 @@ const numberValue = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const edgeError = (error: unknown, data: unknown, fallback: string): Error => {
+const edgeError = async (error: unknown, data: unknown, fallback: string): Promise<Error> => {
   const response = data as { error?: string } | null;
-  const message = response?.error || (error instanceof Error ? error.message : fallback);
+  let message = response?.error;
+  const context = error && typeof error === 'object' && 'context' in error ? error.context : null;
+  if (!message && context instanceof Response) {
+    try { message = ((await context.clone().json()) as { error?: string }).error; } catch { /* Keep the SDK error. */ }
+  }
+  message ||= error instanceof Error ? error.message : fallback;
   return new Error(message);
 };
 
@@ -92,6 +104,11 @@ export const useFuturesTrading = () => {
   const [positionHistory, setPositionHistory] = useState<PositionHistoryEntry[]>([]);
   const [activePositions, setActivePositions] = useState<FuturesPosition[]>([]);
   const [openOrders, setOpenOrders] = useState<FuturesOrder[]>([]);
+  const currentUserId = useRef(user?.id);
+  currentUserId.current = user?.id;
+  const positionsRequest = useRef(0);
+  const orderRequest = useRef<{ fingerprint: string; key: string } | null>(null);
+  const opening = useRef(false);
 
   const calculateLiquidationPrice = useCallback((
     side: 'long' | 'short',
@@ -115,36 +132,43 @@ export const useFuturesTrading = () => {
   }, []);
 
   const fetchActivePositions = useCallback(async (): Promise<FuturesPosition[]> => {
+    const requestId = ++positionsRequest.current;
     if (!user) {
       setActivePositions([]);
       return [];
     }
     try {
-      const { data, error: fetchError } = await supabase.from('futures_positions')
-        .select('*').eq('user_id', user.id).eq('is_open', true)
-        .order('created_at', { ascending: false });
+      const { data, error: fetchError } = await supabase.rpc('get_my_derivative_positions');
+      if (requestId !== positionsRequest.current || currentUserId.current !== user.id) return [];
       if (fetchError) throw fetchError;
-      const positions: FuturesPosition[] = (data || []).map((position) => ({
-        id: position.id,
-        symbol: position.symbol,
-        side: position.side,
+      const positions: FuturesPosition[] = (Array.isArray(data) ? data : []).map((position: Record<string, unknown>) => ({
+        id: String(position.id),
+        symbol: String(position.symbol),
+        side: position.side === 'short' ? 'short' : 'long',
         amount: numberValue(position.amount),
         entryPrice: numberValue(position.entry_price),
         currentPrice: numberValue(position.current_price),
         leverage: numberValue(position.leverage) || 1,
-        marginType: position.margin_type || 'isolated',
+        marginType: position.margin_type === 'cross' ? 'cross' : 'isolated',
         margin: numberValue(position.margin),
         liquidationPrice: numberValue(position.liquidation_price),
         unrealizedPnl: numberValue(position.unrealized_pnl),
         roi: numberValue(position.roi),
         stopLoss: position.sl_price == null ? undefined : numberValue(position.sl_price),
         takeProfit: position.tp_price == null ? undefined : numberValue(position.tp_price),
-        createdAt: position.created_at,
+        createdAt: String(position.created_at || ''),
         accumulatedSwapCost: numberValue(position.accumulated_swap_cost),
         spreadCost: numberValue(position.spread_cost),
         spreadPercentage: numberValue(position.spread_percentage),
         maintenanceMarginRate: numberValue(position.maintenance_margin_rate) || 0.005,
-        swapAccruedAt: position.swap_accrued_at,
+        swapAccruedAt: typeof position.swap_accrued_at === 'string' ? position.swap_accrued_at : null,
+        grossUnrealizedPnl: numberValue(position.gross_unrealized_pnl),
+        estimatedExitSpreadCost: numberValue(position.estimated_exit_spread_cost),
+        estimatedSwapCost: numberValue(position.estimated_swap_cost),
+        dailySwapCost: numberValue(position.daily_swap_cost),
+        valuationAvailable: position.valuation_available === true,
+        quoteFresh: position.quote_fresh === true,
+        quoteTimestamp: typeof position.quote_timestamp === 'string' ? position.quote_timestamp : null,
       }));
       setActivePositions(positions);
       return positions;
@@ -190,20 +214,26 @@ export const useFuturesTrading = () => {
   }, [user]);
 
   const openPosition = useCallback(async (params: FuturesOrderParams): Promise<string | null> => {
+    if (opening.current) return null;
+    opening.current = true;
     setLoading(true);
     setError(null);
     try {
       if (!user) throw new Error('Authentication required');
-      const effectiveAmount = params.amount * (params.contractSize || 1);
+      const effectiveAmount = Number((params.amount * (params.contractSize || 1)).toFixed(8));
+      const fingerprint = JSON.stringify({ ...params, price: params.orderType === 'limit' ? params.price : null, userId: user.id });
+      if (orderRequest.current?.fingerprint !== fingerprint) orderRequest.current = { fingerprint, key: crypto.randomUUID() };
       const { data, error: invokeError } = await supabase.functions.invoke('futures-engine', {
         body: {
           action: 'place', symbol: params.symbol, side: params.side,
           amount: effectiveAmount, leverage: params.leverage, marginType: params.marginType,
           orderType: params.orderType, limitPrice: params.orderType === 'limit' ? params.price : null,
           stopLoss: params.stopLoss ?? null, takeProfit: params.takeProfit ?? null,
+          requestKey: orderRequest.current.key,
         },
       });
-      if (invokeError || !data?.success) throw edgeError(invokeError, data, 'Order placement failed');
+      if (invokeError || !data?.success) throw await edgeError(invokeError, data, 'Order placement failed');
+      orderRequest.current = null;
       await Promise.all([fetchActivePositions(), fetchOpenOrders()]);
       return data.result?.id || null;
     } catch (caught) {
@@ -211,6 +241,7 @@ export const useFuturesTrading = () => {
       setError(failure.message);
       throw failure;
     } finally {
+      opening.current = false;
       setLoading(false);
     }
   }, [fetchActivePositions, fetchOpenOrders, user]);
@@ -222,7 +253,7 @@ export const useFuturesTrading = () => {
       const { data, error: invokeError } = await supabase.functions.invoke('futures-engine', {
         body: { action: 'close', positionId },
       });
-      if (invokeError || !data?.success) throw edgeError(invokeError, data, 'Position close failed');
+      if (invokeError || !data?.success) throw await edgeError(invokeError, data, 'Position close failed');
       await fetchActivePositions();
       return true;
     } catch (caught) {

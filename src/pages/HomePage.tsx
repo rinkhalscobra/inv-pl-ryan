@@ -32,11 +32,12 @@ import { FuturesPosition, Transaction, TradingMode } from '../App';
 import { useDatabase } from '../hooks/useDatabase';
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
-import { isCryptoDerivativeSymbol, TOP_CRYPTO_PAIRS } from '../constants/tradingPairs';
+import { getCfdInstrument, isCryptoDerivativeSymbol, TOP_CRYPTO_PAIRS } from '../constants/tradingPairs';
 import GiveawayCampaignPopup from '../components/GiveawayCampaignPopup';
 import GiveawayWinnerPopup from '../components/GiveawayWinnerPopup';
 import GiveawayComingSoonPopup from '../components/GiveawayComingSoonPopup';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import { positionNetPnl, sumPositionPnl } from '../lib/positionValuation';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
@@ -78,13 +79,13 @@ const HomePage: React.FC<HomePageProps> = ({
   transactions,
   setTradingMode,
   newsItems,
-  totalPortfolioValue = 0,
+  totalPortfolioValue,
   userAssets = []
 }) => {
   const { t } = useTranslation();
   const { formatFiat, formatFiatCompact, formatFiatPrice, formatTradingPair } = useFiatCurrency();
   const { fetchPortfolioSnapshots, portfolioSnapshots, createPortfolioSnapshot, coingeckoMarketCapData } = useDatabase();
-  const { marketData, getPriceBySymbol } = useMarketData();
+  const { marketData } = useMarketData();
   const { getPriceBySymbol: getBybitPrice, getCryptoDataBySymbol, quotesReady } = useBybitData();
   const [activeTab, setActiveTab] = useState<'overview' | 'positions' | 'transactions'>('overview');
   const [filteredSnapshots, setFilteredSnapshots] = useState<PortfolioSnapshot[]>([]);
@@ -131,37 +132,13 @@ const HomePage: React.FC<HomePageProps> = ({
   const marketFeedAvailable = quotesReady && currentBtcPrice > 0;
   
   // Calculate actual portfolio value if not provided or is zero
-  const actualPortfolioValue = totalPortfolioValue > 0 ? totalPortfolioValue : (usdtBalance + usdBalance + (btcBalance * currentBtcPrice));
+  const actualPortfolioValue = totalPortfolioValue ?? (usdtBalance + usdBalance + (btcBalance * currentBtcPrice) + sumPositionPnl(futuresPositions));
   
   // Check if data is still loading
   const isDataLoading = actualPortfolioValue === 0 && (usdtBalance === 0 && usdBalance === 0 && btcBalance === 0 && currentBtcPrice === 0);
   
-  // Calculate total PnL from futures positions
-  const totalPositionsPnl = futuresPositions.reduce((sum, position) => {
-    // Calculate correct unrealized PnL without extra leverage multiplication
-    const entryPrice = position.entryPrice || position.entry_price || 0;
-    
-    // Get live price from market data context first, then fallback to position data
-    let currentPrice = 0;
-    const livePrice = position.symbol.endsWith('USDT') ? getBybitPrice(position.symbol) : getPriceBySymbol(position.symbol);
-    if (livePrice > 0) {
-      currentPrice = livePrice;
-    } else {
-      currentPrice = position.currentPrice || position.current_price || 0;
-    }
-    
-    const amount = position.amount || 0;
-    const side = position.side || 'long';
-    let unrealizedPnl = 0;
-    if (position.side === 'long') {
-      unrealizedPnl = (currentPrice - entryPrice) * amount;
-    } else {
-      unrealizedPnl = (entryPrice - currentPrice) * amount;
-    }
-    
-    return sum + unrealizedPnl;
-  }, 0);
-  const portfolioPerformanceValue = actualPortfolioValue + totalPositionsPnl;
+  const totalPositionsPnl = sumPositionPnl(futuresPositions);
+  const portfolioPerformanceValue = actualPortfolioValue;
 
   // Fetch portfolio snapshots based on selected period
   useEffect(() => {
@@ -607,7 +584,7 @@ const HomePage: React.FC<HomePageProps> = ({
               <TrendingUp size={18} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-[13px] text-slate-400">Positions P&amp;L</div>
+              <div className="text-[13px] text-slate-400" title="Estimated net P&L after opening spread, estimated closing spread and accrued financing.">Positions P&amp;L</div>
               <div className="text-lg font-bold text-white sm:text-xl" translate="no">
                 {totalPositionsPnl >= 0 ? '+' : ''}{formatFiat(totalPositionsPnl)}
               </div>
@@ -617,6 +594,9 @@ const HomePage: React.FC<HomePageProps> = ({
             <div className="text-slate-400">Open Positions</div>
             <div className="text-white" translate="no">{futuresPositions.length}</div>
           </div>
+          {futuresPositions.some(position => position.valuationAvailable === false || position.quoteFresh === false) && (
+            <p className="mt-2 text-xs text-amber-400">Some positions use the last available valuation. Waiting for fresh market data.</p>
+          )}
         </div>
         
         <div className={`${primaryCardClass} p-2.5 sm:p-3.5`}>
@@ -881,26 +861,10 @@ const HomePage: React.FC<HomePageProps> = ({
               {futuresPositions.length > 0 ? (
                 futuresPositions.map((position, index) => {
                   const workspace = isCryptoDerivativeSymbol(position.symbol) ? 'futures' : 'cfd';
-                  // Get live price from market data context first, then fallback to position data
-                  let currentPrice = 0;
-                  const livePrice = position.symbol.endsWith('USDT') ? getBybitPrice(position.symbol) : getPriceBySymbol(position.symbol);
-                  if (livePrice > 0) {
-                    currentPrice = livePrice;
-                  } else {
-                    currentPrice = position.currentPrice || position.current_price || 0;
-                  }
-                  
-                  const entryPrice = position.entryPrice || position.entry_price || 0;
-                  const amount = position.amount || 0;
+                  const currentPrice = position.currentPrice || 0;
+                  const entryPrice = position.entryPrice || 0;
                   const side = position.side || 'long';
-                  
-                  // Calculate unrealized PnL based on live price (WITHOUT leverage multiplier)
-                  let unrealizedPnl = 0;
-                  if (side === 'long') {
-                    unrealizedPnl = (currentPrice - entryPrice) * amount;
-                  } else {
-                    unrealizedPnl = (entryPrice - currentPrice) * amount;
-                  }
+                  const unrealizedPnl = positionNetPnl(position);
                   
                   return (
                     <button type="button" onClick={() => setTradingMode(workspace)} key={position.id || index} className={`flex w-full flex-col gap-4 text-left ${secondaryItemCardClass} p-4 sm:flex-row sm:items-center sm:justify-between`}>
@@ -929,7 +893,7 @@ const HomePage: React.FC<HomePageProps> = ({
                           {unrealizedPnl >= 0 ? '+' : ''}{formatFiat(unrealizedPnl)}
                         </div>
                         <div className="text-sm text-slate-400">
-                          {formatFiatPrice(entryPrice, 2)} → {formatFiatPrice(currentPrice, 2)}
+                          {workspace === 'futures' ? formatFiatPrice(entryPrice, 2) : entryPrice.toFixed(getCfdInstrument(position.symbol)?.type === 'forex' ? 5 : 2)} → {workspace === 'futures' ? formatFiatPrice(currentPrice, 2) : currentPrice.toFixed(getCfdInstrument(position.symbol)?.type === 'forex' ? 5 : 2)}
                         </div>
                       </div>
                     </button>

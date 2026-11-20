@@ -184,6 +184,6 @@ export default function AppSelect({ value, onChange, children, className = '', d
             {selected === choice.value && <Check aria-hidden="true" size={15} className="shrink-0 text-violet-300" />}
           </div>
         </div>)}
-      </div>, document.body)}
+      </div>, buttonRef.current?.closest('dialog') ?? document.body)}
   </>;
 }

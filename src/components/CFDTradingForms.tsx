@@ -8,6 +8,7 @@ import { useMarketData } from '../contexts/MarketDataContext';
 import { getInstrumentTypeFromSymbol } from '../constants/tradingTiers';
 import { useInstrumentSpread } from '../hooks/useInstrumentSpread';
 import TakeProfitStopLossModal from './TakeProfitStopLossModal';
+import AppSelect from './AppSelect';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
 import { configuredSpreadCost, positionSizeForMargin } from '../lib/positionValuation';
 import { calculateDerivativeNotionalUsd, calculateDerivativePnlUsd } from '../utils/derivativeCalculations';
@@ -546,20 +547,329 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
   const longSpreadInfo = longAmount ? getSpreadDisplay(parseFloat(longAmount)) : null;
   const shortSpreadInfo = shortAmount ? getSpreadDisplay(parseFloat(shortAmount)) : null;
 
-  return (
-    <div className={`${isTerminal ? 'cfd-order-ticket h-full min-h-[620px] overflow-y-auto bg-[#0b0e11] p-4 [scrollbar-width:thin]' : `${panelSurfaceClass} rounded-2xl border border-slate-700/50 p-3 shadow-2xl backdrop-blur-sm md:p-8`}`} translate="no">
-      {isTerminal && (
-        <>
-          <div className="mb-4 flex items-center justify-between border-b border-white/[0.07] pb-3">
+  const riskModals = (
+    <>
+      {/* Take Profit / Stop Loss Modals */}
+      <TakeProfitStopLossModal
+        isOpen={showLongSLModal}
+        onClose={() => setShowLongSLModal(false)}
+        type="stopLoss"
+        side="long"
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
+        amount={parseFloat(longAmount) || 0}
+        leverage={leverage}
+        lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
+        onConfirm={(price, type, execPrice) => {
+          setLongStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice });
+        }}
+      />
+
+      <TakeProfitStopLossModal
+        isOpen={showLongTPModal}
+        onClose={() => setShowLongTPModal(false)}
+        type="takeProfit"
+        side="long"
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
+        amount={parseFloat(longAmount) || 0}
+        leverage={leverage}
+        lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
+        onConfirm={(price, type, execPrice) => {
+          setLongTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice });
+        }}
+      />
+
+      <TakeProfitStopLossModal
+        isOpen={showShortSLModal}
+        onClose={() => setShowShortSLModal(false)}
+        type="stopLoss"
+        side="short"
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
+        amount={parseFloat(shortAmount) || 0}
+        leverage={leverage}
+        lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
+        onConfirm={(price, type, execPrice) => {
+          setShortStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice });
+        }}
+      />
+
+      <TakeProfitStopLossModal
+        isOpen={showShortTPModal}
+        onClose={() => setShowShortTPModal(false)}
+        type="takeProfit"
+        side="short"
+        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
+        amount={parseFloat(shortAmount) || 0}
+        leverage={leverage}
+        lotSize={getLotSize(selectedPair)}
+        priceIsUsd={priceIsUsd}
+        onConfirm={(price, type, execPrice) => {
+          setShortTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice });
+        }}
+      />
+    </>
+  );
+
+  if (isTerminal) {
+    const isLong = activeSide === 'long';
+    const activeAmount = isLong ? longAmount : shortAmount;
+    const activePercentage = isLong ? longPercentage : shortPercentage;
+    const activeStopLoss = isLong ? longStopLoss : shortStopLoss;
+    const activeTakeProfit = isLong ? longTakeProfit : shortTakeProfit;
+    const activeSpreadInfo = isLong ? longSpreadInfo : shortSpreadInfo;
+    const requiredMargin = isLong ? calculateLongCost() : calculateShortCost();
+    const parsedAmount = Number(activeAmount) || 0;
+    const submitDisabled = !canTradeSelectedInstrument || isSubmitting
+      || !Number.isFinite(parsedAmount) || parsedAmount < minTradeSize
+      || !Number.isFinite(orderEntryPrice) || orderEntryPrice <= 0;
+
+    const updateAmount = (value: string) => {
+      if (isLong) {
+        setLongAmount(value);
+        setLongPercentage(0);
+      } else {
+        setShortAmount(value);
+        setShortPercentage(0);
+      }
+    };
+
+    const updatePercentage = (percentage: number) => {
+      if (isLong) handleLongPercentage(percentage);
+      else handleShortPercentage(percentage);
+    };
+
+    return (
+      <>
+        <div className="cfd-order-ticket flex h-full min-h-[620px] flex-col bg-[#0b0e11]" translate="no">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.07] px-4">
             <h2 className="text-sm font-semibold text-white">Place order</h2>
-            <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{displayInstrumentType} · {userCfdTier}</span>
+            <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
+              <span className={`h-2 w-2 rounded-full ${hasVerifiedPrice ? 'bg-emerald-400' : 'bg-slate-500'}`} /> {hasVerifiedPrice ? 'Market current' : quotesReady ? 'Unavailable' : 'Loading'}
+            </div>
           </div>
-          <div className="mb-4 grid grid-cols-2 rounded-md bg-[#161a1e] p-1">
-            <button type="button" onClick={() => setActiveSide('long')} className={`rounded px-3 py-2 text-xs font-semibold ${activeSide === 'long' ? 'bg-emerald-400/15 text-emerald-300' : 'text-slate-500 hover:text-slate-300'}`}>Buy / Long</button>
-            <button type="button" onClick={() => setActiveSide('short')} className={`rounded px-3 py-2 text-xs font-semibold ${activeSide === 'short' ? 'bg-rose-400/15 text-rose-300' : 'text-slate-500 hover:text-slate-300'}`}>Sell / Short</button>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+            {(errorMessage || successMessage) && (
+              <div className={`mb-3 flex items-start gap-2 rounded-md border px-3 py-2.5 text-xs ${errorMessage ? 'border-rose-400/25 bg-rose-400/[0.08] text-rose-300' : 'border-emerald-400/25 bg-emerald-400/[0.08] text-emerald-300'}`}>
+                {errorMessage ? <AlertTriangle size={15} className="mt-0.5 shrink-0" /> : <CheckCircle size={15} className="mt-0.5 shrink-0" />}
+                <span>{errorMessage || successMessage}</span>
+              </div>
+            )}
+
+            {quotesReady && !canTradeSelectedInstrument && (
+              <div className="mb-4 flex items-center gap-3 rounded-md border border-white/[0.09] bg-white/[0.025] p-3 text-slate-300">
+                <AlertTriangle size={15} className="flex-shrink-0" />
+                <span className="text-xs">
+                  {selectedInstrument?.tradable === false
+                    ? 'This market is listed, but trading is unavailable until a verified quote source is connected.'
+                    : 'This market is temporarily unavailable for trading.'}
+                  {selectedInstrument?.tradable !== false && (
+                    <span className="mt-1 block text-xs text-slate-400">
+                      {quoteIssue} {quoteRefreshError || ''}
+                    </span>
+                  )}
+                  {selectedInstrument?.tradable !== false && (
+                    <button type="button" disabled={isRetryingQuote} onClick={async () => {
+                      setIsRetryingQuote(true);
+                      try { await refreshQuotes(selectedPair, true); }
+                      finally { setIsRetryingQuote(false); }
+                    }} className="mt-2 block text-xs font-semibold text-slate-300 underline underline-offset-2 disabled:opacity-50">
+                      {isRetryingQuote ? 'Checking quote...' : 'Retry quote'}
+                    </button>
+                  )}
+                </span>
+              </div>
+            )}
+
+            <div className="mb-4 grid grid-cols-2 rounded-md bg-[#161a1e] p-1">
+              <button
+                type="button"
+                onClick={() => setActiveSide('long')}
+                aria-pressed={isLong}
+                className={`rounded px-3 py-2 text-xs font-semibold transition ${isLong ? 'bg-emerald-400/15 text-emerald-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Buy / Long
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSide('short')}
+                aria-pressed={!isLong}
+                className={`rounded px-3 py-2 text-xs font-semibold transition ${!isLong ? 'bg-rose-400/15 text-rose-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Sell / Short
+              </button>
+            </div>
+
+            <div className="mb-4 flex items-center gap-5 border-b border-white/[0.07]">
+              {(['market', 'limit'] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  aria-pressed={orderType === type}
+                  onClick={() => {
+                    setOrderType(type);
+                    if (type === 'limit' && !limitPrice && livePairPrice > 0) setLimitPrice((priceIsUsd ? convertUsdToDisplay(livePairPrice) : livePairPrice).toFixed(getPricePrecision()));
+                  }}
+                  className={`border-b-2 pb-2.5 text-xs font-semibold capitalize transition ${orderType === type ? 'border-violet-400 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
+                >
+                  {t(`trading.${type}`)}
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1.5 block text-[11px] text-slate-500">Margin mode</label>
+                <div className="grid grid-cols-2 rounded-md border border-white/[0.08] bg-[#161a1e] p-0.5">
+                  {(['isolated', 'cross'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setMarginType(type)}
+                      aria-pressed={marginType === type}
+                      className={`rounded px-1 py-2 text-[11px] font-medium capitalize transition ${marginType === type ? 'bg-violet-500/20 text-violet-200' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      {t(`trading.${type}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label htmlFor="cfd-leverage" className="mb-1.5 block text-[11px] text-slate-500">{t('common.leverage')}</label>
+                <div className="relative">
+                  <AppSelect
+                    id="cfd-leverage"
+                    value={leverage}
+                    onChange={(event) => setLeverage(Number(event.target.value))}
+                    disabled={isLeverageLocked}
+                    className="h-[38px] w-full appearance-none rounded-md border border-white/[0.08] bg-[#161a1e] px-3 font-mono text-xs font-semibold text-white outline-none transition focus:border-violet-400/50 disabled:cursor-not-allowed"
+                  >
+                    {leverageOptions.map((option) => <option key={option} value={option}>{option}x</option>)}
+                  </AppSelect>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-3 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500">{t('trading.availableMargin')}</span>
+              <span className="font-mono font-medium tabular-nums text-slate-200">{formatFiat(availableBalance !== undefined ? availableBalance : usdtBalance)}</span>
+            </div>
+
+            <label className="mb-1.5 flex items-center justify-between text-[11px] text-slate-500">
+              <span>{orderType === 'market' ? 'Mark price' : 'Limit price'}</span>
+              <span className="text-slate-600">{priceIsUsd ? code : 'Rate'}</span>
+            </label>
+            {orderType === 'market' ? (
+              <div className="mb-3 flex h-11 items-center justify-between rounded-md border border-white/[0.09] bg-[#161a1e] px-3 font-mono text-sm tabular-nums text-slate-200">
+                <span>{(priceIsUsd ? convertUsdToDisplay(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}</span>
+                <span className="text-[10px] font-sans text-slate-600">Market</span>
+              </div>
+            ) : (
+              <div className="relative mb-3">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label="Limit price"
+                  value={limitPrice}
+                  onChange={(event) => setLimitPrice(event.target.value)}
+                  placeholder={(priceIsUsd ? convertUsdToDisplay(livePairPrice) : livePairPrice).toFixed(getPricePrecision())}
+                  className="h-11 w-full rounded-md border border-white/[0.09] bg-[#161a1e] px-3 pr-14 font-mono text-sm text-white outline-none transition placeholder:text-slate-700 hover:border-white/[0.16] focus:border-violet-400/50 focus:ring-1 focus:ring-violet-400/20"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">{priceIsUsd ? code : 'Rate'}</span>
+              </div>
+            )}
+
+            <label className="mb-1.5 flex items-center justify-between text-[11px] text-slate-500">
+              <span>{t('trading.size')}</span>
+              <span>Lots</span>
+            </label>
+            <div className="relative mb-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder={`Min ${minTradeSize}`}
+                aria-label="Size in lots"
+                value={activeAmount}
+                onChange={(event) => updateAmount(event.target.value)}
+                className="h-11 w-full rounded-md border border-white/[0.09] bg-[#161a1e] px-3 pr-14 font-mono text-sm text-white outline-none transition placeholder:text-slate-700 hover:border-white/[0.16] focus:border-violet-400/50 focus:ring-1 focus:ring-violet-400/20"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500">Lots</span>
+            </div>
+
+            <div className="relative mb-5 pt-3">
+              <div className="absolute left-2 right-2 top-[18px] h-px bg-slate-700" />
+              <div className="relative grid grid-cols-4">
+                {percentageOptions.map((percentage) => (
+                  <button
+                    key={percentage}
+                    type="button"
+                    onClick={() => updatePercentage(percentage)}
+                    aria-pressed={activePercentage === percentage}
+                    className="group flex flex-col items-center gap-1.5 text-[10px] text-slate-500 transition hover:text-slate-300"
+                  >
+                    <span className={`h-3 w-3 rotate-45 border transition ${activePercentage >= percentage ? (isLong ? 'border-emerald-400 bg-emerald-400' : 'border-rose-400 bg-rose-400') : 'border-slate-600 bg-[#0b0e11] group-hover:border-slate-400'}`} />
+                    {percentage}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => isLong ? setShowLongTPModal(true) : setShowShortTPModal(true)}
+                className={`rounded-md border px-2 py-2.5 text-[11px] font-medium transition ${activeTakeProfit ? 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300' : 'border-white/[0.08] bg-white/[0.025] text-slate-400 hover:border-white/[0.15] hover:text-slate-200'}`}
+              >
+                {activeTakeProfit ? <Edit2 size={12} className="mr-1 inline" /> : <Plus size={12} className="mr-1 inline" />} Take profit
+              </button>
+              <button
+                type="button"
+                onClick={() => isLong ? setShowLongSLModal(true) : setShowShortSLModal(true)}
+                className={`rounded-md border px-2 py-2.5 text-[11px] font-medium transition ${activeStopLoss ? 'border-rose-400/35 bg-rose-400/10 text-rose-300' : 'border-white/[0.08] bg-white/[0.025] text-slate-400 hover:border-white/[0.15] hover:text-slate-200'}`}
+              >
+                {activeStopLoss ? <Edit2 size={12} className="mr-1 inline" /> : <Plus size={12} className="mr-1 inline" />} Stop loss
+              </button>
+            </div>
+
+            {(activeTakeProfit || activeStopLoss) && (
+              <div className="mb-4 space-y-2 text-[11px]">
+                {activeTakeProfit && <div className="flex items-center justify-between gap-2 text-slate-400"><span>Take profit <span className="ml-2 font-mono text-slate-200">{displayCfdPrice(activeTakeProfit.trigger_price)}</span></span><button type="button" aria-label="Remove take profit" onClick={() => isLong ? setLongTakeProfit(null) : setShortTakeProfit(null)} className="p-1 hover:text-white"><X size={12} /></button></div>}
+                {activeStopLoss && <div className="flex items-center justify-between gap-2 text-slate-400"><span>Stop loss <span className="ml-2 font-mono text-slate-200">{displayCfdPrice(activeStopLoss.trigger_price)}</span></span><button type="button" aria-label="Remove stop loss" onClick={() => isLong ? setLongStopLoss(null) : setShortStopLoss(null)} className="p-1 hover:text-white"><X size={12} /></button></div>}
+              </div>
+            )}
+
+            <dl className="mb-4 space-y-2 border-t border-white/[0.07] pt-3 text-[11px]">
+              <div className="flex justify-between gap-3"><dt className="text-slate-500">{t('trading.requiredMargin')}</dt><dd className="font-mono tabular-nums text-slate-300">{formatFiat(requiredMargin)}</dd></div>
+              {activeSpreadInfo && <div className="flex justify-between gap-3"><dt className="text-slate-500">Spread ({activeSpreadInfo.percentage})</dt><dd className="font-mono tabular-nums text-slate-300">{formatFiat(parseFloat(activeSpreadInfo.cost))}</dd></div>}
+            </dl>
+
+            <button
+              type="button"
+              onClick={isLong ? handleLong : handleShort}
+              disabled={submitDisabled}
+              className={`h-12 w-full rounded-md text-sm font-bold text-white transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500 ${isLong ? 'bg-emerald-600' : 'bg-rose-600'}`}
+            >
+              {isSubmitting ? 'Placing order...' : isLong ? t('futures.buyLong') : t('futures.sellShort')}
+            </button>
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-white/[0.07] pt-3 text-[10px]">
+              <div className="flex justify-between gap-2"><dt className="text-slate-500">Lot size</dt><dd className="font-mono text-slate-400">{lotSize.toLocaleString()}</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-slate-500">Min size</dt><dd className="font-mono text-slate-400">{minTradeSize} lots</dd></div>
+              <div className="flex justify-between gap-2"><dt className="text-slate-500">Type</dt><dd className="text-slate-400">{displayInstrumentType}</dd></div>
+              {userCfdTier && <div className="flex justify-between gap-2"><dt className="text-slate-500">Account tier</dt><dd className="text-slate-400">{userCfdTier}</dd></div>}
+            </dl>
           </div>
-        </>
-      )}
+        </div>
+
+        {riskModals}
+      </>
+    );
+  }
+
+
+  return (
+    <div className={`${panelSurfaceClass} rounded-2xl border border-slate-700/50 p-3 shadow-2xl backdrop-blur-sm md:p-8`} translate="no">
       {/* Status Messages */}
       {errorMessage && (
         <div className="mb-4 md:mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-3 md:p-4 flex items-center gap-2 md:gap-3">
@@ -763,7 +1073,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
 
       <div className="cfd-side-forms flex flex-col md:flex-row gap-4 md:gap-8">
         {/* Long Form */}
-        <div className={`flex-1 ${isTerminal && activeSide !== 'long' ? 'hidden' : ''}`}>
+        <div className="flex-1">
           <div className="mb-6">
             <div className="flex justify-between text-sm text-slate-400 mb-3">
               <span>{t('trading.availableMargin')}</span>
@@ -902,7 +1212,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
         </div>
 
         {/* Short Form */}
-        <div className={`flex-1 ${isTerminal && activeSide !== 'short' ? 'hidden' : ''}`}>
+        <div className="flex-1">
           <div className="mb-6">
             <div className="flex justify-between text-sm text-slate-400 mb-3">
               <span>{t('trading.availableMargin')}</span>
@@ -1041,66 +1351,7 @@ const CFDTradingForms: React.FC<CFDTradingFormsProps> = ({
         </div>
       </div>
 
-      {/* Take Profit / Stop Loss Modals */}
-      <TakeProfitStopLossModal
-        isOpen={showLongSLModal}
-        onClose={() => setShowLongSLModal(false)}
-        type="stopLoss"
-        side="long"
-        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
-        amount={parseFloat(longAmount) || 0}
-        leverage={leverage}
-        lotSize={getLotSize(selectedPair)}
-        priceIsUsd={priceIsUsd}
-        onConfirm={(price, type, execPrice) => {
-          setLongStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice });
-        }}
-      />
-
-      <TakeProfitStopLossModal
-        isOpen={showLongTPModal}
-        onClose={() => setShowLongTPModal(false)}
-        type="takeProfit"
-        side="long"
-        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
-        amount={parseFloat(longAmount) || 0}
-        leverage={leverage}
-        lotSize={getLotSize(selectedPair)}
-        priceIsUsd={priceIsUsd}
-        onConfirm={(price, type, execPrice) => {
-          setLongTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice });
-        }}
-      />
-
-      <TakeProfitStopLossModal
-        isOpen={showShortSLModal}
-        onClose={() => setShowShortSLModal(false)}
-        type="stopLoss"
-        side="short"
-        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
-        amount={parseFloat(shortAmount) || 0}
-        leverage={leverage}
-        lotSize={getLotSize(selectedPair)}
-        priceIsUsd={priceIsUsd}
-        onConfirm={(price, type, execPrice) => {
-          setShortStopLoss({ trigger_price: price, execution_type: type, execution_price: execPrice });
-        }}
-      />
-
-      <TakeProfitStopLossModal
-        isOpen={showShortTPModal}
-        onClose={() => setShowShortTPModal(false)}
-        type="takeProfit"
-        side="short"
-        entryPrice={orderEntryPrice > 0 ? orderEntryPrice : livePairPrice}
-        amount={parseFloat(shortAmount) || 0}
-        leverage={leverage}
-        lotSize={getLotSize(selectedPair)}
-        priceIsUsd={priceIsUsd}
-        onConfirm={(price, type, execPrice) => {
-          setShortTakeProfit({ trigger_price: price, execution_type: type, execution_price: execPrice });
-        }}
-      />
+      {riskModals}
     </div>
   );
 };

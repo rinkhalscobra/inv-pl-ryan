@@ -9,7 +9,7 @@ interface BankWithdrawalModalProps {
   onWithdraw: (amount: number, bankDetails: {
     bankName: string;
     accountNumber: string;
-    routingNumber: string;
+    iban: string;
     beneficiaryName: string;
   }) => Promise<string>;
 }
@@ -27,7 +27,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
   const [amount, setAmount] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
-  const [routingNumber, setRoutingNumber] = useState('');
+  const [iban, setIban] = useState('');
   const [beneficiaryName, setBeneficiaryName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
       setAmount('');
       setBankName('');
       setAccountNumber('');
-      setRoutingNumber('');
+      setIban('');
       setBeneficiaryName('');
       setError(null);
       setSuccess(null);
@@ -87,7 +87,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
       return;
     }
     
-    if (!bankName || !accountNumber || !routingNumber || !beneficiaryName) {
+    if (!bankName || !accountNumber || !iban || !beneficiaryName) {
       setError('Please fill in all bank details');
       return;
     }
@@ -106,7 +106,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
       const newTransactionId = await onWithdraw(parseFloat(amount), {
         bankName,
         accountNumber,
-        routingNumber,
+        iban: iban.replace(/\s+/g, ''),
         beneficiaryName
       });
       
@@ -242,17 +242,24 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm text-slate-400 mb-1 sm:mb-2">Routing Number / SWIFT Code</label>
+              <label htmlFor="withdrawal-iban" className="block text-xs sm:text-sm text-slate-400 mb-1 sm:mb-2">IBAN</label>
               <div className="relative">
                 <Landmark size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  value={routingNumber}
-                  onChange={(e) => setRoutingNumber(e.target.value)}
-                  placeholder="Enter routing number or SWIFT code"
+                  id="withdrawal-iban"
+                  value={iban}
+                  onChange={(e) => setIban(e.target.value.toUpperCase())}
+                  placeholder="Enter IBAN"
+                  aria-describedby="withdrawal-iban-help"
+                  autoCapitalize="characters"
+                  spellCheck={false}
                   className="w-full app-input pl-11 pr-4 py-2 sm:py-3 rounded-xl border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all text-sm sm:text-base"
                 />
               </div>
+              <p id="withdrawal-iban-help" className="text-xs text-slate-500 mt-1 ml-1">
+                International Bank Account Number. Find it in your bank account details.
+              </p>
             </div>
 
             <div>
@@ -294,7 +301,7 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
 
             <button
               type="submit"
-              disabled={loading || !amount || !bankName || !accountNumber || !routingNumber || !beneficiaryName}
+              disabled={loading || !amount || !bankName || !accountNumber || !iban || !beneficiaryName}
               className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 disabled:from-slate-700 disabled:to-slate-800 text-white py-2 sm:py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 text-sm sm:text-base"
             >
               {loading ? (
@@ -328,8 +335,8 @@ const BankWithdrawalModal: React.FC<BankWithdrawalModalProps> = ({
                   <span className="text-white text-right">••••{accountNumber.slice(-4)}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-slate-400 mr-2">Routing Number</span>
-                  <span className="text-white text-right">{routingNumber}</span>
+                  <span className="text-slate-400 mr-2">IBAN</span>
+                  <span className="text-white text-right break-all">{iban}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-400 mr-2">Beneficiary</span>

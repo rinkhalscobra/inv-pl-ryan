@@ -104,6 +104,31 @@ export default function PairDetailsPanel({ selectedPair, currentPrice, tradingMo
     }
   };
 
+  if (compact) {
+    const metrics = [
+      ['Previous close', formatDisplayedPrice(stats.prevClose)],
+      ['Open', formatDisplayedPrice(stats.open)],
+      ['24h high', formatDisplayedPrice(stats.dayHigh)],
+      ['24h low', formatDisplayedPrice(stats.dayLow)],
+      ['24h volume', stats.volume24h > 0 ? formatFiatCompact(stats.volume24h) : '--'],
+      ['Source time', lastUpdate],
+    ];
+    return (
+      <div className="h-full overflow-y-auto bg-[#0b0e11] p-4 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]" translate="no">
+        <div className="border-b border-white/[0.07] pb-4">
+          <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">{getTypeLabel(pairType)} ? CFD</div>
+          <h2 className="mt-2 text-sm font-semibold text-slate-200">{pairName}</h2>
+          <div className="mt-4 font-mono text-2xl font-semibold tabular-nums text-white">{displayPrice}</div>
+          <div className={`mt-1 font-mono text-xs tabular-nums ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>{isPositive ? '+' : ''}{stats.priceChangePercent24h.toFixed(2)}% <span className="font-sans text-slate-500">24h change</span></div>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-5 border-b border-white/[0.07] py-5">
+          {metrics.map(([label, value]) => <div key={label}><dt className="text-[11px] text-slate-500">{label}</dt><dd className="mt-1 font-mono text-xs tabular-nums text-slate-300">{value}</dd></div>)}
+        </dl>
+        <p className="pt-4 text-[11px] leading-relaxed text-slate-500">Latest available {pairType} market data. Quote availability depends on the source and trading hours.</p>
+      </div>
+    );
+  }
+
   return (
     <div className={`${compact ? 'cfd-details-compact' : ''} h-full flex flex-col`}>
       <div className="flex-1 overflow-y-auto hide-scrollbar">

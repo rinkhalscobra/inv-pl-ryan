@@ -118,7 +118,7 @@ const WalletPage: React.FC<WalletPageProps> = ({
   const handleBankWithdrawalSubmit = async (amount: number, bankDetails: {
     bankName: string;
     accountNumber: string;
-    routingNumber: string;
+    iban: string;
     beneficiaryName: string;
   }): Promise<string> => {
     try {
@@ -128,7 +128,8 @@ const WalletPage: React.FC<WalletPageProps> = ({
         p_amount: amount,
         p_bank_name: bankDetails.bankName,
         p_account_number: bankDetails.accountNumber,
-        p_routing_number: bankDetails.routingNumber,
+        // Keep the existing RPC parameter for compatibility with the withdrawal service.
+        p_routing_number: bankDetails.iban,
         p_beneficiary_name: bankDetails.beneficiaryName,
       });
       if (rpcError) throw rpcError;

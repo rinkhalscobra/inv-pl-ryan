@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown, Search } from 'lucide-react';
 import { CFD_INSTRUMENTS, getCfdInstrument } from '../constants/tradingPairs';
 import { CFD_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 import { useMarketData } from '../contexts/MarketDataContext';
@@ -66,13 +66,13 @@ export default function CfdMarketHeader({ selectedPair, currentPrice, onSelectPa
 
   return (
     <section className="relative z-30 flex min-h-[64px] shrink-0 flex-wrap items-center gap-x-5 gap-y-3 border-b border-[#252a33] bg-[#0b0e11] px-4 py-2.5 text-slate-100 lg:px-5" translate="no">
-      <div ref={menuRef} className="relative min-w-[210px] border-r border-white/[0.08] pr-5">
+      <div ref={menuRef} className="relative min-w-0 flex-1 border-r sm:min-w-[210px] sm:flex-none border-white/[0.08] pr-5">
         <button type="button" onClick={() => setIsOpen((value) => !value)} aria-haspopup="listbox" aria-expanded={isOpen}
           className="flex items-center gap-1.5 rounded px-1 py-0.5 text-left text-base font-semibold text-white hover:bg-white/[0.04]">
           {selectedPair} <ChevronDown size={14} className="text-slate-500" />
         </button>
         <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-          {instrument?.name || 'CFD instrument'} <span className="ml-1 rounded bg-violet-400/10 px-1.5 py-0.5 text-violet-300">CFD</span>
+          {instrument?.name || 'CFD instrument'} <span className="ml-1 text-slate-500">CFD</span>
         </div>
         {isOpen && (
           <div className="absolute left-0 top-[calc(100%+12px)] z-50 w-[370px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-[#2b3139] bg-[#11151b] shadow-2xl shadow-black/60">
@@ -103,19 +103,19 @@ export default function CfdMarketHeader({ selectedPair, currentPrice, onSelectPa
           </div>
         )}
       </div>
-      <div className="min-w-[140px]">
+      <div className="ml-auto min-w-[120px] sm:ml-0 sm:min-w-[140px]">
         <div className="font-mono text-lg font-semibold tabular-nums text-emerald-400">{price > 0 ? formatPrice(price) : '--'}</div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
-          <span className={`h-1.5 w-1.5 rounded-full ${quoteIsFresh ? 'bg-emerald-400' : quoteUnavailable ? 'bg-slate-500' : 'animate-pulse bg-sky-400'}`} />
+          <span className={`h-1.5 w-1.5 rounded-full ${quoteIsFresh ? 'bg-emerald-400' : quoteUnavailable ? 'bg-slate-500' : 'bg-slate-500'}`} />
           {quoteIsFresh ? 'Market price' : quoteUnavailable ? 'Price unavailable' : 'Loading market'} {isForex ? '· rate' : `· ${code}`}
         </div>
       </div>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-2">
+      <div className="grid w-full min-w-0 grid-cols-2 items-center gap-x-8 gap-y-2 sm:flex sm:w-auto sm:flex-1 sm:flex-wrap">
         {metrics.map((metric) => <div key={metric.label} className="min-w-[90px]"><div className="text-[11px] text-slate-500">{metric.label}</div><div className={`mt-1 font-mono text-xs tabular-nums text-slate-200 ${metric.accent || ''}`}>{metric.value}</div></div>)}
       </div>
       {quoteIsFresh && (
-        <div className="hidden items-center gap-2 rounded-md border border-emerald-400/15 bg-emerald-400/[0.06] px-2.5 py-1.5 text-[11px] text-emerald-300 2xl:flex">
-          <Activity size={13} />Market current
+        <div className="hidden items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500 2xl:flex">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Market current
         </div>
       )}
     </section>

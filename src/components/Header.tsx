@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import BrandLogo from './BrandLogo';
@@ -11,7 +11,6 @@ import {
   User,
   LogOut,
   Menu,
-  X,
   ChevronDown,
   ChevronRight,
   Search,
@@ -32,6 +31,7 @@ import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constant
 import { useFiatCurrency, type DisplayCurrency } from '../hooks/useFiatCurrency';
 import AppSelect from './AppSelect';
 import LanguageSwitcher from './LanguageSwitcher';
+import MobileNavigationDrawer from './MobileNavigationDrawer';
 
 interface HeaderProps {
   tradingMode: TradingMode;
@@ -95,6 +95,13 @@ const Header: React.FC<HeaderProps> = ({
   // Refs for dropdown handling
   const userMenuRef = useRef<HTMLDivElement>(null);
   const pairSelectorRef = useRef<HTMLDivElement>(null);
+  const mobilePairSelectorRef = useRef<HTMLDivElement>(null);
+  const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
+  const closeMobileMenu = useCallback(() => {
+    setIsMobileMenuOpen(false);
+    setShowPairSelector(false);
+    setSearchTerm('');
+  }, []);
 
   // Get current price for selected pair
   const getCurrentPairPrice = () => {
@@ -115,7 +122,8 @@ const Header: React.FC<HeaderProps> = ({
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setShowUserMenu(false);
       }
-      if (pairSelectorRef.current && !pairSelectorRef.current.contains(event.target as Node)) {
+      if (!pairSelectorRef.current?.contains(event.target as Node)
+        && !mobilePairSelectorRef.current?.contains(event.target as Node)) {
         setShowPairSelector(false);
         setSearchTerm('');
       }
@@ -536,147 +544,184 @@ const Header: React.FC<HeaderProps> = ({
 
             {/* Mobile Menu Toggle */}
             <button
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              ref={mobileMenuToggleRef}
+              type="button"
+              onClick={() => {
+                setShowUserMenu(false);
+                setShowPairSelector(false);
+                setSearchTerm('');
+                setIsMobileMenuOpen(true);
+              }}
+              aria-label="Open navigation menu"
+              aria-controls="mobile-navigation"
+              aria-haspopup="dialog"
               aria-expanded={isMobileMenuOpen}
               className={`${compactHeaderBreakpoint} rounded-md border border-white/[0.08] p-2 text-slate-400 transition-colors ${headerSurfaceHoverBackgroundClass} hover:text-white`}
             >
-              {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+              <Menu size={18} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Menu */}
-      {isMobileMenuOpen && (
-        <div className={`max-h-[calc(100vh-64px)] overflow-y-auto border-t border-white/[0.08] bg-[#0d1118] py-4 ${compactHeaderBreakpoint}`}>
-          <div className={headerContainerClass}>
-            {/* Mobile Portfolio Value */}
-            <div className={`mb-4 rounded-lg ${headerPanelBackgroundClass} p-3.5`}>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-slate-400 text-xs">{t('header.portfolioValue')}</div>
-                  <div className="truncate text-base font-mono text-white">
-                    {showBalances ? formatPortfolioValue(totalPortfolioValue) : '••••••'}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <AppSelect value={portfolioCurrency} onChange={event => setCurrency(event.target.value as DisplayCurrency)} aria-label="Portfolio display currency" className="w-[76px] rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-xs font-semibold text-slate-200">
-                    <option value="EUR">EUR</option><option value="USD">USD</option>
-                  </AppSelect>
-                  <button
-                    onClick={() => setShowBalances(!showBalances)}
-                    aria-label={showBalances ? 'Hide portfolio value' : 'Show portfolio value'}
-                    className="rounded-md p-2 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-white"
-                  >
-                    {showBalances ? <Eye size={16} /> : <EyeOff size={16} />}
-                  </button>
-                </div>
-              </div>
+      <MobileNavigationDrawer
+        isOpen={isMobileMenuOpen}
+        onClose={closeMobileMenu}
+        desktopMinWidth={usesWideDesktopHeader ? 1536 : 1280}
+        triggerRef={mobileMenuToggleRef}
+        footer={
+          <>
+            <div className="mb-3 flex min-w-0 items-center gap-2 text-xs text-slate-500">
+              <User size={14} className="shrink-0" />
+              <span className="truncate" title={user.email}>{user.email}</span>
             </div>
-
-            {/* Mobile Navigation */}
-            <nav aria-label="Main navigation" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {navigationItems.map((item, index) => {
-                const Icon = item.icon;
-                return (
-                  <React.Fragment key={item.key}>
-                    {(index === 0 || index === 4) && (
-                      <div className={`col-span-full text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${index === 4 ? 'mt-2 border-t border-white/[0.08] pt-4' : ''}`}>
-                        {index === 0 ? 'Trading' : 'Products'}
-                      </div>
-                    )}
-                    <button
-                      onClick={() => {
-                        setTradingMode(item.key as TradingMode);
-                        setIsMobileMenuOpen(false);
-                      }}
-                      aria-current={tradingMode === item.key ? 'page' : undefined}
-                      className={`flex min-w-0 items-center gap-2 rounded-md border px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${tradingMode === item.key
-                        ? 'border-violet-400/40 bg-violet-500/10 text-white'
-                        : `border-white/[0.07] bg-[#141922] text-slate-400 hover:text-white ${headerSurfaceHoverBackgroundClass}`
-                        }`}
-                    >
-                      <Icon size={15} className={tradingMode === item.key ? 'shrink-0 text-violet-300' : 'shrink-0 text-slate-500'} />
-                      <span className="truncate">{item.label}</span>
-                    </button>
-                  </React.Fragment>
-                );
-              })}
-            </nav>
-
-            {/* Mobile Pair Selector */}
-            {(tradingMode === 'futures' || tradingMode === 'cfd') && (
-              <div className="mt-3 border-t border-slate-700/50 pt-3" ref={pairSelectorRef}>
-                <div className="mb-2">
-                  <div className="text-slate-400 text-xs mb-2">Current Pair</div>
-                  <button
-                    onClick={() => setShowPairSelector(!showPairSelector)}
-                    className={`flex w-full items-center justify-between rounded-xl border border-slate-600/50 ${headerSurfaceBackgroundClass} px-3.5 py-2.5 text-sm transition-all ${headerSurfaceHoverBackgroundClass}`}
-                  >
-                    <span className="truncate pr-3 font-semibold text-white">{formatPairDisplay(selectedPair)}</span>
-                    <ChevronDown size={14} className="text-slate-400" />
-                  </button>
-
-                  {showPairSelector && (
-                    <div className={`mt-2 ${headerDropdownBackgroundClass} border border-slate-700 rounded-xl shadow-2xl shadow-black/50 z-50 w-full overflow-hidden`}>
-                      {/* Search Input */}
-                      <div className="border-b border-slate-700 p-2.5">
-                        <div className="relative">
-                          <Search
-                            size={14}
-                            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Search pairs..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className={`w-full rounded-lg border border-slate-600 ${headerSurfaceBackgroundClass} py-1.5 pl-9 pr-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500`}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Pairs List */}
-                      <div className="max-h-64 overflow-y-auto">
-                        {getFilteredPairs().map((data) => {
-                          const instrument = tradingMode === 'cfd' ? getCfdInstrument(data.symbol) : undefined;
-                          const unavailable = instrument?.tradable === false;
-                          return (
-                          <button
-                            key={data.symbol}
-                            onClick={() => {
-                              setSelectedPair(data.symbol);
-                              setShowPairSelector(false);
-                              setSearchTerm('');
-                              setIsMobileMenuOpen(false);
-                            }}
-                            className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors ${headerSurfaceHoverBackgroundClass} ${selectedPair === data.symbol ? `${headerSelectedBackgroundClass} text-blue-400` : 'text-white'
-                              }`}
-                          >
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">{formatPairDisplay(data.symbol)}</div>
-                              {tradingMode === 'cfd' && (
-                                <div className="truncate text-[10px] uppercase text-slate-500">
-                                  {instrument?.type === 'stock' ? `${data.symbol} · ` : ''}{unavailable ? 'View only' : instrument?.category}
-                                </div>
-                              )}
-                            </div>
-                            <span className="shrink-0 text-xs font-mono text-slate-400">
-                              {formatDisplayPrice(data.symbol, data.price || 0)}
-                            </span>
-                          </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            <div className="flex items-center justify-between gap-3">
+              <LanguageSwitcher compact placement="top" />
+              <button type="button" onClick={() => { closeMobileMenu(); signOut(); }}
+                className="flex min-h-10 items-center gap-2 rounded-md px-2 text-xs font-medium text-slate-400 transition-colors hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
+                <LogOut size={15} /> {t('navigation.signOut')}
+              </button>
+            </div>
+          </>
+        }
+      >
+        <div className="mb-5 rounded-md border border-white/[0.08] bg-white/[0.025] px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] text-slate-500">{t('header.portfolioValue')}</span>
+            <button type="button" onClick={() => setShowBalances(value => !value)}
+              aria-label={showBalances ? 'Hide portfolio value' : 'Show portfolio value'}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
+              {showBalances ? <Eye size={15} /> : <EyeOff size={15} />}
+            </button>
+          </div>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="truncate font-mono text-base font-semibold tabular-nums text-slate-100">
+              {showBalances ? formatPortfolioValue(totalPortfolioValue) : '\u2022\u2022\u2022\u2022\u2022\u2022'}
+            </span>
+            <AppSelect value={portfolioCurrency} onChange={event => setCurrency(event.target.value as DisplayCurrency)} aria-label="Portfolio display currency"
+              className="w-[68px] shrink-0 rounded border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 text-[11px] font-medium text-slate-400">
+              <option value="EUR">EUR</option><option value="USD">USD</option>
+            </AppSelect>
           </div>
         </div>
-      )}
+
+        <nav aria-label="Mobile navigation" className="space-y-5">
+          {[{ label: 'Trading', items: navigationItems.slice(0, 4) }, { label: 'Products', items: navigationItems.slice(4) }].map(group => (
+            <div key={group.label}>
+              <h2 className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">{group.label}</h2>
+              <div className="space-y-0.5">
+                {group.items.map(item => {
+                  const Icon = item.icon;
+                  const selected = tradingMode === item.key;
+                  return (
+                    <button key={item.key} type="button" onClick={() => { setTradingMode(item.key as TradingMode); closeMobileMenu(); }}
+                      aria-current={selected ? 'page' : undefined}
+                      className={`relative flex min-h-11 w-full min-w-0 items-center gap-3 rounded-md px-3 text-left text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${selected ? 'bg-violet-500/[0.10] text-white' : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'}`}>
+                      {selected && <span aria-hidden="true" className="absolute inset-y-3 left-0 w-0.5 rounded-full bg-violet-400" />}
+                      <Icon size={17} className={`shrink-0 ${selected ? 'text-violet-300' : 'text-slate-500'}`} />
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      {selected && <ChevronRight size={14} className="shrink-0 text-slate-500" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <div className="border-t border-white/[0.07] pt-4">
+            <h2 className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">Account</h2>
+            {[
+              { key: 'wallet', label: t('navigation.wallet'), icon: Wallet },
+              { key: 'profile', label: t('navigation.profile'), icon: User },
+            ].map(item => {
+              const Icon = item.icon;
+              const selected = tradingMode === item.key;
+              return <button key={item.key} type="button" onClick={() => { setTradingMode(item.key as TradingMode); closeMobileMenu(); }}
+                aria-current={selected ? 'page' : undefined}
+                className={`flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${selected ? 'bg-violet-500/[0.10] text-white' : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'}`}>
+                <Icon size={17} className={`shrink-0 ${selected ? 'text-violet-300' : 'text-slate-500'}`} />{item.label}
+              </button>;
+            })}
+            {(isAdmin || (['workflow_manager', 'desk_manager', 'agent', 'retention_manager', 'retention'] as const).some(role => role === crmRole)) && (
+              <button type="button" onClick={() => { closeMobileMenu(); navigate(isAdmin ? '/admin' : '/crm'); }}
+                className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-[13px] font-medium text-slate-400 transition-colors hover:bg-white/[0.04] hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
+                <ShieldCheck size={17} className="shrink-0 text-slate-500" />{isAdmin ? 'Administration CRM' : 'CRM workspace'}
+              </button>
+            )}
+          </div>
+        </nav>
+
+        {/* Mobile Pair Selector */}
+        {(tradingMode === 'futures' || tradingMode === 'cfd') && (
+          <div className="mt-3 border-t border-slate-700/50 pt-3" ref={mobilePairSelectorRef}>
+            <div className="mb-2">
+              <div className="text-slate-400 text-xs mb-2">Current Pair</div>
+              <button
+                onClick={() => setShowPairSelector(!showPairSelector)}
+                aria-label="Select current pair"
+                aria-expanded={showPairSelector}
+                className={`flex w-full items-center justify-between rounded-md border border-slate-600/50 ${headerSurfaceBackgroundClass} px-3.5 py-2.5 text-sm transition-all ${headerSurfaceHoverBackgroundClass}`}
+              >
+                <span className="truncate pr-3 font-semibold text-white">{formatPairDisplay(selectedPair)}</span>
+                <ChevronDown size={14} className="text-slate-400" />
+              </button>
+
+              {showPairSelector && (
+                <div className={`mt-2 ${headerDropdownBackgroundClass} border border-slate-700 rounded-md shadow-2xl shadow-black/50 z-50 w-full overflow-hidden`}>
+                  {/* Search Input */}
+                  <div className="border-b border-slate-700 p-2.5">
+                    <div className="relative">
+                      <Search
+                        size={14}
+                        className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Search pairs..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className={`w-full rounded-lg border border-slate-600 ${headerSurfaceBackgroundClass} py-1.5 pl-9 pr-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Pairs List */}
+                  <div className="max-h-64 overflow-y-auto">
+                    {getFilteredPairs().map((data) => {
+                      const instrument = tradingMode === 'cfd' ? getCfdInstrument(data.symbol) : undefined;
+                      const unavailable = instrument?.tradable === false;
+                      return (
+                      <button
+                        key={data.symbol}
+                        onClick={() => {
+                          setSelectedPair(data.symbol);
+                          setShowPairSelector(false);
+                          setSearchTerm('');
+                          closeMobileMenu();
+                        }}
+                        className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors ${headerSurfaceHoverBackgroundClass} ${selectedPair === data.symbol ? `${headerSelectedBackgroundClass} text-blue-400` : 'text-white'
+                          }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{formatPairDisplay(data.symbol)}</div>
+                          {tradingMode === 'cfd' && (
+                            <div className="truncate text-[10px] uppercase text-slate-500">
+                              {instrument?.type === 'stock' ? `${data.symbol} · ` : ''}{unavailable ? 'View only' : instrument?.category}
+                            </div>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-xs font-mono text-slate-400">
+                          {formatDisplayPrice(data.symbol, data.price || 0)}
+                        </span>
+                      </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </MobileNavigationDrawer>
     </header>
 
   );

@@ -10,8 +10,9 @@ const languages = [
   { code: "it", name: "Italiano" },
 ];
 
-const LanguageSwitcher: React.FC<{ compact?: boolean }> = ({
+const LanguageSwitcher: React.FC<{ compact?: boolean; placement?: 'top' | 'bottom' }> = ({
   compact = false,
+  placement = 'bottom',
 }) => {
   const { i18n, t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -134,7 +135,7 @@ const LanguageSwitcher: React.FC<{ compact?: boolean }> = ({
           role="menu"
           aria-label={t("languages.selectLanguage")}
           aria-busy={changing}
-          className="absolute right-0 top-full z-[80] mt-2 min-w-44 overflow-hidden rounded-xl border border-white/10 bg-[#12141f] p-1.5 shadow-xl shadow-black/40"
+          className={`absolute right-0 z-[80] min-w-44 overflow-hidden rounded-xl border border-white/10 bg-[#12141f] p-1.5 shadow-xl shadow-black/40 ${placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'}`}
         >
           {languages.map((language) => (
             <button

@@ -7,6 +7,7 @@ import { TOP_CRYPTO_PAIRS, CFD_INSTRUMENTS, getCfdInstrument } from '../constant
 import { useMarketData } from '../contexts/MarketDataContext';
 import { useBybitData } from '../contexts/BybitDataContext';
 import { useFiatCurrency } from '../hooks/useFiatCurrency';
+import AppSelect from './AppSelect';
 import { CFD_QUOTE_MAX_AGE_MS, CRYPTO_QUOTE_MAX_AGE_MS } from '../constants/quoteFreshness';
 
 interface MarketData {
@@ -41,6 +42,7 @@ const Markets: React.FC<MarketsProps> = ({
   const { formatFiatPrice, formatTradingPair } = useFiatCurrency();
   const isFuturesTheme = tradingMode === 'futures';
   const isCfdTheme = tradingMode === 'cfd';
+  const isCompactCfd = compact && isCfdTheme;
   const isGlassTheme = isFuturesTheme || isCfdTheme;
   const panelSurfaceClass = isFuturesTheme
     ? 'app-surface-primary'
@@ -397,52 +399,66 @@ const Markets: React.FC<MarketsProps> = ({
 
       {tradingMode === 'cfd' && (
         <div className={`space-y-3 border-b border-slate-700/30 ${compact ? 'px-2 py-2' : 'px-6 py-4'}`}>
-          <div className={`flex items-center justify-between rounded-xl border border-slate-700/50 p-2 ${categorySurfaceClass}`}>
-            <button
-              onClick={() => {
-                const categories = ['forex', 'commodity', 'stock', 'index'];
-                const currentIndex = categories.indexOf(cfdCategory);
-                const prevIndex = currentIndex === 0 ? categories.length - 1 : currentIndex - 1;
-                setCfdCategory(categories[prevIndex] as 'forex' | 'commodity' | 'stock' | 'index');
-              }}
-              className={`text-slate-400 hover:text-white transition-colors p-2 rounded-lg ${categoryArrowHoverClass}`}
+          {compact ? (
+            <AppSelect
+              aria-label="Market category"
+              value={cfdCategory}
+              onChange={(event) => setCfdCategory(event.target.value as typeof cfdCategory)}
+              className="h-9 w-full rounded-md border border-white/[0.08] bg-[#161a1e] px-3 text-xs font-medium text-slate-300 outline-none focus:border-violet-400/50"
             >
-              <ChevronLeft size={20} />
-            </button>
+              <option value="forex">{t('cfd.forexPairs')}</option>
+              <option value="commodity">{t('cfd.commodities')}</option>
+              <option value="stock">{t('cfd.stocks')}</option>
+              <option value="index">Indices</option>
+            </AppSelect>
+          ) : (
+            <div className={`flex items-center justify-between rounded-xl border border-slate-700/50 p-2 ${categorySurfaceClass}`}>
+              <button
+                onClick={() => {
+                  const categories = ['forex', 'commodity', 'stock', 'index'];
+                  const currentIndex = categories.indexOf(cfdCategory);
+                  const prevIndex = currentIndex === 0 ? categories.length - 1 : currentIndex - 1;
+                  setCfdCategory(categories[prevIndex] as 'forex' | 'commodity' | 'stock' | 'index');
+                }}
+                className={`text-slate-400 hover:text-white transition-colors p-2 rounded-lg ${categoryArrowHoverClass}`}
+              >
+                <ChevronLeft size={20} />
+              </button>
 
-            <div className={`flex items-center gap-2 ${compact ? 'px-2 py-1.5' : 'px-6 py-2.5'} rounded-lg font-semibold transition-all duration-300 ${
-              cfdCategory === 'forex'
-                ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-purple-500/25'
-                : cfdCategory === 'commodity'
-                ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25'
-                : cfdCategory === 'stock'
-                ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25'
-                : categoryActiveSurfaceClass || 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white shadow-lg shadow-purple-500/25'
-            }`}>
-              <span className={compact ? 'hidden' : 'text-xl'}>
-                {cfdCategory === 'forex' ? '💱' :
-                 cfdCategory === 'commodity' ? '🥇' :
-                 cfdCategory === 'stock' ? '📈' : '📊'}
-              </span>
-              <span className={compact ? 'text-xs' : 'text-sm md:text-base'}>
-                {cfdCategory === 'forex' ? t('cfd.forexPairs') :
-                 cfdCategory === 'commodity' ? t('cfd.commodities') :
-                 cfdCategory === 'stock' ? t('cfd.stocks') : 'Indices'}
-              </span>
+              <div className={`flex items-center gap-2 ${compact ? 'px-2 py-1.5' : 'px-6 py-2.5'} rounded-lg font-semibold transition-all duration-300 ${
+                cfdCategory === 'forex'
+                  ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-purple-500/25'
+                  : cfdCategory === 'commodity'
+                  ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25'
+                  : cfdCategory === 'stock'
+                  ? categoryActiveSurfaceClass || 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25'
+                  : categoryActiveSurfaceClass || 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white shadow-lg shadow-purple-500/25'
+              }`}>
+                <span className={compact ? 'hidden' : 'text-xl'}>
+                  {cfdCategory === 'forex' ? '💱' :
+                   cfdCategory === 'commodity' ? '🥇' :
+                   cfdCategory === 'stock' ? '📈' : '📊'}
+                </span>
+                <span className={compact ? 'text-xs' : 'text-sm md:text-base'}>
+                  {cfdCategory === 'forex' ? t('cfd.forexPairs') :
+                   cfdCategory === 'commodity' ? t('cfd.commodities') :
+                   cfdCategory === 'stock' ? t('cfd.stocks') : 'Indices'}
+                </span>
+              </div>
+
+              <button
+                onClick={() => {
+                  const categories = ['forex', 'commodity', 'stock', 'index'];
+                  const currentIndex = categories.indexOf(cfdCategory);
+                  const nextIndex = currentIndex === categories.length - 1 ? 0 : currentIndex + 1;
+                  setCfdCategory(categories[nextIndex] as 'forex' | 'commodity' | 'stock' | 'index');
+                }}
+                className={`text-slate-400 hover:text-white transition-colors p-2 rounded-lg ${categoryArrowHoverClass}`}
+              >
+                <ChevronRight size={20} />
+              </button>
             </div>
-
-            <button
-              onClick={() => {
-                const categories = ['forex', 'commodity', 'stock', 'index'];
-                const currentIndex = categories.indexOf(cfdCategory);
-                const nextIndex = currentIndex === categories.length - 1 ? 0 : currentIndex + 1;
-                setCfdCategory(categories[nextIndex] as 'forex' | 'commodity' | 'stock' | 'index');
-              }}
-              className={`text-slate-400 hover:text-white transition-colors p-2 rounded-lg ${categoryArrowHoverClass}`}
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
+          )}
 
           {cfdCategory === 'stock' && (
             <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -472,7 +488,7 @@ const Markets: React.FC<MarketsProps> = ({
         </div>
       )}
       <div
-        className={`min-h-0 flex-1 overscroll-contain ${compact ? 'space-y-1.5 px-2 py-2' : 'space-y-2 px-4 py-4 sm:px-6'} ${
+        className={`min-h-0 flex-1 overscroll-contain ${isCompactCfd ? 'px-2' : compact ? 'space-y-1.5 px-2 py-2' : 'space-y-2 px-4 py-4 sm:px-6'} ${
           compact
             ? 'overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#475569_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600/70'
             : tradingMode === 'futures'
@@ -499,6 +515,30 @@ const Markets: React.FC<MarketsProps> = ({
             ? 'text-red-400'
             : 'text-slate-400';
           const instrument = tradingMode === 'cfd' ? getCfdInstrument(market.symbol) : undefined;
+
+          if (isCompactCfd) {
+            const selected = selectedPair === market.symbol;
+            return (
+              <div key={market.symbol} className={`flex items-center border-b border-white/[0.06] ${selected ? 'bg-white/[0.05]' : 'hover:bg-white/[0.025]'}`}>
+                <button type="button" aria-label={`${isFavorite(market.symbol) ? 'Remove' : 'Add'} ${formatPairDisplay(market.symbol)} ${isFavorite(market.symbol) ? 'from' : 'to'} favorites`}
+                  aria-pressed={isFavorite(market.symbol)} onClick={() => toggleFavorite(market.symbol)}
+                  className="shrink-0 p-2 text-slate-600 transition hover:text-slate-300 focus-visible:outline focus-visible:outline-violet-400">
+                  <Star size={13} className={isFavorite(market.symbol) ? 'fill-slate-400 text-slate-400' : ''} />
+                </button>
+                <button type="button" onClick={() => setSelectedPair(market.symbol)} aria-pressed={selected}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 py-3 pl-1 pr-3 text-left focus-visible:outline focus-visible:outline-violet-400">
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-medium text-slate-200">{formatPairDisplay(market.symbol)}</span>
+                    <span className="mt-1 block font-mono text-[11px] tabular-nums text-slate-500">{market.price > 0 ? formatDisplayPrice(market.symbol, market.price) : '--'}</span>
+                    {!market.isTradable && <span className="mt-1 block text-[10px] text-slate-500">View only</span>}
+                  </span>
+                  <span className={`shrink-0 font-mono text-[11px] tabular-nums ${market.change_24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {market.change_24h >= 0 ? '+' : ''}{market.change_24h.toFixed(2)}%
+                  </span>
+                </button>
+              </div>
+            );
+          }
 
           return (
             <div
